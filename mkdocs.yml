@@ -1,0 +1,126 @@
+site_name: The CMP 170HX Wiki
+site_description: >-
+  A comprehensive technical reference for the NVIDIA CMP 170HX: silicon, firmware,
+  the community unlock, procedures, and the open frontier.
+docs_dir: docs
+site_dir: ../site
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: green
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: green
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.caret
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.keys
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Start here:
+      - start/what-is-this-card.md
+      - start/how-to-read-this-wiki.md
+      - start/identify-your-card.md
+      - start/quick-start.md
+      - start/risks.md
+      - start/glossary.md
+  - Hardware:
+      - hardware/overview.md
+      - hardware/ga100-silicon.md
+      - hardware/board-and-variants.md
+      - hardware/memory-subsystem.md
+      - hardware/fuses-and-otp.md
+      - hardware/pcie-subsystem.md
+      - hardware/nvlink-hardware.md
+      - hardware/power-delivery.md
+      - hardware/thermals.md
+      - hardware/vbios.md
+  - The unlock:
+      - unlock/overview.md
+      - unlock/how-it-works.md
+      - unlock/falcon-and-booter.md
+      - unlock/rop-chain.md
+      - unlock/privilege-level-masks.md
+      - unlock/memory-geometry.md
+      - unlock/compute-throttle.md
+      - unlock/driver-patches.md
+      - unlock/pcie-gen2.md
+      - unlock/register-reference.md
+  - Procedures:
+      - procedures/install.md
+      - procedures/verify.md
+      - procedures/troubleshooting.md
+      - procedures/recovery.md
+      - procedures/multi-gpu.md
+      - procedures/driver-versions.md
+      - procedures/uninstall.md
+  - Running the card:
+      - operations/cooling.md
+      - operations/power-and-psu.md
+      - operations/physical-mods.md
+      - operations/performance.md
+      - operations/llm-inference.md
+      - operations/tuning.md
+  - Frontier:
+      - frontier/status-board.md
+      - frontier/pcie-gen3-gen4.md
+      - frontier/nvlink.md
+      - frontier/ecc.md
+      - frontier/80gb.md
+      - frontier/p2p.md
+      - frontier/open-questions.md
+  - History:
+      - history/timeline.md
+      - history/clean-room-and-provenance.md
+      - history/dead-ends.md
+      - history/tool-lineage.md
+  - Appendix:
+      - appendix/register-index.md
+      - appendix/artifacts.md
+      - appendix/external-sources.md
+      - appendix/methodology.md
