@@ -7,7 +7,7 @@ community unlock, operating procedures, and the open frontier.
 
 ## Two ways to read this
 
-- **[Wiki tab](https://github.com/Consensus-Protocol/cmp170hx-wiki/wiki)** for browsing, with a sidebar.
+- **[Wiki tab](https://github.com/Consensus-Protocol/cmp170hx/wiki)** for browsing, with a sidebar.
   Pages there are generated from `docs/` and are identical apart from link style.
 - **`docs/` in this repository** is the source of truth. It is reviewable, takes pull
   requests, and builds the full themed site with search via MkDocs.
