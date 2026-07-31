@@ -42,22 +42,26 @@ The consequences on current `master`:
 | CMP cards plus an unrelated NVIDIA GPU | The profile may be detected from the *other* card. Still only a metadata error, unless the other card's size falls outside all four detection windows, in which case the install **dies** |
 | A `10de:20b0` card is present | Warned about only if it is the *first* matching `lspci` line; sitting behind a `20c2` or `2082` card the `head -1` hides it entirely and no warning is printed. Either way it is never unlocked, because the in-driver gate accepts only `0x20C2` and `0x2082` |
 
-!!! warning "Always pass `--profile` on a mixed-GPU host"
-    A host with an RTX 3080 10 GB alongside an 8 GB CMP 170HX was reproduced by at least two
-    people detecting "10GB" from the 3080 and selecting the 10 GB profile. A separate report has
-    another CMP SKU (a 50HX) misdetected as a 10 GB 170HX. On current `master` this only
-    mislabels the metadata files, but the habit of passing `--profile=8gb` or `--profile=10gb`
-    explicitly costs nothing and removes a whole class of confusing output.
+> [!WARNING]
+> **Always pass `--profile` on a mixed-GPU host**
+>
+> A host with an RTX 3080 10 GB alongside an 8 GB CMP 170HX was reproduced by at least two
+> people detecting "10GB" from the 3080 and selecting the 10 GB profile. A separate report has
+> another CMP SKU (a 50HX) misdetected as a 10 GB 170HX. On current `master` this only
+> mislabels the metadata files, but the habit of passing `--profile=8gb` or `--profile=10gb`
+> explicitly costs nothing and removes a whole class of confusing output.
 
 ---
 
 ## The `multiple-cards` branch
 
-!!! warning "Experimental: unreleased branch"
-    `multiple-cards` (tip `b1cb6d8` "Added support for multiple cards", committed 2026-07-18,
-    announced 2026-07-19) has **not** merged into `master` as of tip `cc872cb` (2026-07-23). The
-    same installer also exists folded into the `Gen2` lineage via commit `2f27474`
-    "Gen2 + multiple-card support". Everything in this section is branch code.
+> [!WARNING]
+> **Experimental: unreleased branch**
+>
+> `multiple-cards` (tip `b1cb6d8` "Added support for multiple cards", committed 2026-07-18,
+> announced 2026-07-19) has **not** merged into `master` as of tip `cc872cb` (2026-07-23). The
+> same installer also exists folded into the `Gen2` lineage via commit `2f27474`
+> "Gen2 + multiple-card support". Everything in this section is branch code.
 
 ### Per-BDF classification
 
@@ -327,17 +331,19 @@ little benefit at Gen1 x4. See [P2P](../frontier/p2p.md).
 
 ## Merge status
 
-!!! question "Open problem: should multi-card, IOMMU and Gen2 merge to master, and in what order?"
-    Neither `multiple-cards` (`b1cb6d8`, standalone) nor the `Gen2` lineage (which folds it in)
-    has merged as of `cc872cb`. The obstacle is bundling: merging `Gen2` wholesale would drag the
-    experimental PCIe link retraining patches (`0007-pcie-gen2.patch`,
-    `0008-pcie-gen2-probe-retrain.patch`) and their unverified register writes into the stable
-    path. The multi-card installer changes are self-contained and could be cherry-picked alone,
-    and the `mixed` profile already works because master's patch 0001 bakes in both geometries.
-    Separately, `clanker/driver-port` (580/590/595/610 support) and the Gen2 lineage were
-    developed independently and never merged, so choosing one today means giving up the other.
-    See [Status board](../frontier/status-board.md) and
-    [Driver versions](driver-versions.md).
+> [!NOTE]
+> **Open problem: should multi-card, IOMMU and Gen2 merge to master, and in what order?**
+>
+> Neither `multiple-cards` (`b1cb6d8`, standalone) nor the `Gen2` lineage (which folds it in)
+> has merged as of `cc872cb`. The obstacle is bundling: merging `Gen2` wholesale would drag the
+> experimental PCIe link retraining patches (`0007-pcie-gen2.patch`,
+> `0008-pcie-gen2-probe-retrain.patch`) and their unverified register writes into the stable
+> path. The multi-card installer changes are self-contained and could be cherry-picked alone,
+> and the `mixed` profile already works because master's patch 0001 bakes in both geometries.
+> Separately, `clanker/driver-port` (580/590/595/610 support) and the Gen2 lineage were
+> developed independently and never merged, so choosing one today means giving up the other.
+> See [Status board](../frontier/status-board.md) and
+> [Driver versions](driver-versions.md).
 
 ---
 

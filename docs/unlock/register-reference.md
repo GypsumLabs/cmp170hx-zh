@@ -109,14 +109,16 @@ Falcon v4 core, not RISC-V (`FALCON_HWCFG2` bit 10 reads 0). See
 | `0x00840530` | `SCP_P2PRX` | poll bit 3 during driverless reset | |
 | `0x008411ec` | `KFUSE_CTL` | poll bit 0 set, bit 1 clear | |
 
-!!! note "Falcon-internal addresses are a different space"
-    Inside the running Booter, `I[0x1c100]` / `I[0x1c200]` / `I[0x1c000]` are the BAR0-master
-    address, data and command ports in Falcon CSB space (`0x800000f2` = write,
-    `0x800000f1` = read), and `I[0x1c300]` is the watchdog, seeded with `0x1312d00`
-    (20,000,000). `I[0x12000]`, `I[0x12100]`, `I[0x12400]` and `I[0x12600]` are Falcon-local
-    aperture/PLM words the Booter programs early in `main()`. None of these are BAR0 offsets and
-    none can be poked from the host. Likewise `0x9100` is `FALCON_CSBERRSTAT`, whose bit 31 is
-    the fail-closed fault flag after every CSB access. See [The ROP chain](rop-chain.md).
+> [!NOTE]
+> **Falcon-internal addresses are a different space**
+>
+> Inside the running Booter, `I[0x1c100]` / `I[0x1c200]` / `I[0x1c000]` are the BAR0-master
+> address, data and command ports in Falcon CSB space (`0x800000f2` = write,
+> `0x800000f1` = read), and `I[0x1c300]` is the watchdog, seeded with `0x1312d00`
+> (20,000,000). `I[0x12000]`, `I[0x12100]`, `I[0x12400]` and `I[0x12600]` are Falcon-local
+> aperture/PLM words the Booter programs early in `main()`. None of these are BAR0 offsets and
+> none can be poked from the host. Likewise `0x9100` is `FALCON_CSBERRSTAT`, whose bit 31 is
+> the fail-closed fault flag after every CSB access. See [The ROP chain](rop-chain.md).
 
 ## GSP RISC-V and BSI secure scratch (BAR0 + `0x110000` / `0x118000`)
 
@@ -134,12 +136,14 @@ Falcon v4 core, not RISC-V (`FALCON_HWCFG2` bit 10 reads 0). See
 | `0x001182d0` | AON secure scratch | | reachable at PL3 |
 | `0x00118f78` | auxiliary scratch | | reads `0x00000000` on every card surveyed |
 
-!!! question "Open problem: the correct `0x001180f8` handoff value"
-    `0x11000000`, `0x13100000` and `0x17100000` were all proposed. `0x17100000` was measured to
-    satisfy both the Booter's `0x29` check and the host DONE poll, but writing it also caused
-    both `FBPA_008` and `FBPA_00C` to fail their Booter PLM opens. The shipping chain sidesteps
-    the whole question by never touching the register. See
-    [Open questions](../frontier/open-questions.md).
+> [!NOTE]
+> **Open problem: the correct `0x001180f8` handoff value**
+>
+> `0x11000000`, `0x13100000` and `0x17100000` were all proposed. `0x17100000` was measured to
+> satisfy both the Booter's `0x29` check and the host DONE poll, but writing it also caused
+> both `FBPA_008` and `FBPA_00C` to fail their Booter PLM opens. The shipping chain sidesteps
+> the whole question by never touching the register. See
+> [Open questions](../frontier/open-questions.md).
 
 ## WPR block (`0x001fa7xx` / `0x001fa8xx`)
 
@@ -190,10 +194,6 @@ target back. Success is defined purely by readback equality. Timing from a 2026-
 capture on an 8 GB card: PLM[0] at 11.32 s, PLM[1] 11.50 s, PLM[2] 11.68 s, PLM[3] 11.86 s,
 about 180 ms per Booter pass.
 
-!!! note "Superseded"
-    The project README and `docs/DEBUGGING.md` say "all PLMs must show `0xffffffff`". That is
-    loose wording: `0x001fa7cc` is deliberately opened to `0xfffff0ff`. Believe the patch.
-
 ### Added by the Gen2-family branches (nine entries total)
 
 Branches `Gen2`, `debug-gen2`, `far` and `deced` carry an identical modified patch 0001 whose
@@ -208,9 +208,11 @@ written `0xffffffff`:
 | `0x00823b00` | `FEAT2` (row-remapper PLM) | stock `0xffffff8f`; one in-HS sweep read it `0xffffffff` after FLR, so it may be AON, but opening it did not make geometry persist |
 | `0x008200fc` | `OPT_PLM` (aliases: `FUSE_SS_PLM`) | already reads `0xffffffff` on stock cards in one sweep and `0x000003ff` in another; **never written by shipping master** |
 
-!!! warning "Experimental"
-    The nine-entry table exists only on unreleased branches. All nine were reported succeeding
-    on the first attempt on both GPUs of one two-card rig. See [PCIe Gen2](pcie-gen2.md).
+> [!WARNING]
+> **Experimental**
+>
+> The nine-entry table exists only on unreleased branches. All nine were reported succeeding
+> on the first attempt on both GPUs of one two-card rig. See [PCIe Gen2](pcie-gen2.md).
 
 ### The FB-geometry PLM set (clean-room tools only)
 
@@ -308,14 +310,6 @@ card) and equals twice the active-FBPA count. SCALE is what the unlock changes.
 | `0x0000028B` | 40 | 11 | 81920 MiB | inert metadata on the `80` branch, but fired for real by the clean-room refire script, see below |
 | `0x0000020A` | 32 | 10 | 32768 MiB | stock on the PG199 Drive reference board |
 
-!!! note "Superseded"
-    `0x40A` and `0x50A` circulated as "64 GB" and "80 GB" encodings. They are refuted, not
-    observed: `(0x40A >> 4) & 0x3F = 0` and `(0x50A >> 4) & 0x3F = 16`, so under a 6-bit MAG
-    field they decode to nothing useful. `0x40A` was actually tried on a 10 GB card on
-    2026-07-11 and neither register moved. Whether `LOWER_MAG` is 6 bits at [9:4] or 7 bits at
-    [10:4] has never been read out of `dev_fb.h`, and that header lookup is the last thing
-    standing between this and a clean answer.
-
 **CFG1 alone is not enough.** A controlled three-way comparison: no memory writes gives CPU-RM
 failure `0x24` (`kbusVerifyBar2`); the 40 GB CFG1 with a stock 10 GB LMR still gives `0x24`;
 CFG1 plus a matched LMR reaches `0x25` (StateLoad). GSP-RM additionally treats the LMR as
@@ -370,9 +364,11 @@ Instance *n* of every FBPA register lives at `0x00900000 + n*0x4000`, for n = 0.
 | Per-FBPA `CFG1` | `0x00900204 + n*0x4000` | must be hand-written only in a driverless context with no devinit |
 | Per-FBPA `CSTATUS_RAMAMOUNT` | `0x0090020c + n*0x4000` | the verification target: `0x200` stock, `0x800` at the 40 GB tier, `0x1000` at the 64/80 GB tier |
 
-!!! note "Stride is `0x4000`, not `0x400`"
-    One adjudicated document carries a dropped-zero typo. The stride is `0x4000`, corroborated
-    by the broadcast aperture being `0x009a0000`-`0x009a3fff`, i.e. exactly `0x4000` wide.
+> [!NOTE]
+> **Stride is `0x4000`, not `0x400`**
+>
+> One adjudicated document carries a dropped-zero typo. The stride is `0x4000`, corroborated
+> by the broadcast aperture being `0x009a0000`-`0x009a3fff`, i.e. exactly `0x4000` wide.
 
 Per-FBPA capacity follows from LMR SCALE as `2^(SCALE+1)` MiB, which is precisely the value
 CSTATUS_RAMAMOUNT reports. Cross-check: `0x800` x 20 FBPAs = 40960 MiB; `0x1000` x 16 FBPAs =
@@ -431,14 +427,16 @@ This block is the compute unlock. Narrative in [Compute throttle](compute-thrott
 | `0x0082382c` | `FEAT_READOUT_2` (alias in one dump) | `0x0000000a` | | RO | | naming unsettled between two dumps |
 | `0x00823b00` | row-remapper PLM (`FEAT2`) | `0xffffff8f` | `0xffffffff` when opened | is a PLM | one sweep read it open after FLR | Gen2-family patch 0001 only |
 
-!!! question "Open problem: `0x00823808` `FEAT_OVR_QUADRO` reads differently in every dump"
-    Per-die and unexplained. Observed: `0x00100183` (stock, PLM range scan, medium),
-    `0x00000081` (post-unlock probe, medium), `0x00000181` / `0x00000182` (two physical 170HX
-    units, high, one of the 13 binning differences), `0x01000282` (A100 80 GB). Read only.
-    **Open question:** why the value differs across all three dumps; something in the unlock or
-    the driver may be touching the Quadro-versus-consumer classification word, which could be the
-    lever for driver-visible feature classes. Next step: re-read this register before and after
-    each stage of the shipping sequence on one card.
+> [!NOTE]
+> **Open problem: `0x00823808` `FEAT_OVR_QUADRO` reads differently in every dump**
+>
+> Per-die and unexplained. Observed: `0x00100183` (stock, PLM range scan, medium),
+> `0x00000081` (post-unlock probe, medium), `0x00000181` / `0x00000182` (two physical 170HX
+> units, high, one of the 13 binning differences), `0x01000282` (A100 80 GB). Read only.
+> **Open question:** why the value differs across all three dumps; something in the unlock or
+> the driver may be touching the Quadro-versus-consumer classification word, which could be the
+> lever for driver-visible feature classes. Next step: re-read this register before and after
+> each stage of the shipping sequence on one card.
 
 **What SS0/SS1 encode.** `0x0082381c` holds eight 4-bit fields for IMLA0-3, FMLA16, FMLA32,
 FFMA and DP; `0x00823820` holds the ninth field for IMLA4. Each nibble reads best as
@@ -447,16 +445,12 @@ therefore says "override enabled, full rate" on all eight SS0 units, and `0x0000
 same for IMLA4. No stock dump anywhere in the archive has any nibble at or above `8`. This
 encoding is inferred, not documented.
 
-!!! danger "Do not use SS0/SS1 readbacks as a per-part reference"
-    They are runtime state, not fuse state. Two archived dumps of the same A100 80 GB device ID
-    disagree (`0x00112011`/`0x00000002` versus `0x00343015`/`0x00000004`). Use `0x00823818 == 0`
-    instead.
-
-!!! note "Superseded"
-    The project `docs` branch calls SS0/SS1 "Suspension State" registers that "disable clusters
-    of SMs" and claims cmpunlocker writes `0xffffffff` to both. All three claims are false. SM
-    count is 70 before and after the unlock, and the written values are `0x88888888` and
-    `0x00000008`.
+> [!CAUTION]
+> **Do not use SS0/SS1 readbacks as a per-part reference**
+>
+> They are runtime state, not fuse state. Two archived dumps of the same A100 80 GB device ID
+> disagree (`0x00112011`/`0x00000002` versus `0x00343015`/`0x00000004`). Use `0x00823818 == 0`
+> instead.
 
 Both writes are required; writing only one is not enough. Both are identical on both SKUs and
 in every one of the twelve unreleased branches: no branch ever experimented with different
@@ -521,12 +515,14 @@ supersedes them.
 | `0x0082056c` | `OPT_PCIE_DEVIDB` | `0x000020c2` on both SKUs | A100 `0x20f2`; PG199 `0x000020fb` | on the 10 GB card DEVIDA and DEVIDB disagree |
 | `0x00820148` | OTP spare bit | `0x00000000` | | never settable |
 
-!!! question "Open problem: is `0x00820520` writable?"
-    One analysis annotates bit 25 "(writable)"; one clean-room tool writes `0x00200000` to it as
-    part of a working Gen2 chain; the PCIe field manual lists it read-only; and the shipping
-    Gen2 patch only ever reads it. Nobody has published a write-then-readback. Gen4 is untestable
-    anyway because no one working on it has a Gen4 host. See
-    [Gen3 and Gen4](../frontier/pcie-gen3-gen4.md).
+> [!NOTE]
+> **Open problem: is `0x00820520` writable?**
+>
+> One analysis annotates bit 25 "(writable)"; one clean-room tool writes `0x00200000` to it as
+> part of a working Gen2 chain; the PCIe field manual lists it read-only; and the shipping
+> Gen2 patch only ever reads it. Nobody has published a write-then-readback. Gen4 is untestable
+> anyway because no one working on it has a Gen4 host. See
+> [Gen3 and Gen4](../frontier/pcie-gen3-gen4.md).
 
 ### NVLink fuses
 
@@ -566,16 +562,6 @@ Per-card, not per-SKU. Every surveyed 170HX lands at 70 SM regardless of which G
 | `0x00820c38 + i*4` | `FUSE_STATUS_OPT_TPC_GPC(i)` | GPC0/3/5 = `0xff`, others = `0x01` on one card | |
 | `0x00820d38` | `STATUS_FBP` | `0x00000180` on one unit | |
 
-!!! note "Superseded"
-    Three separate attacks on the floorsweep are closed. HS-privileged writes to `0x00820350`,
-    `0x00820c1c`, `0x00820768` and `0x00820084` all read back unchanged, with two controls
-    proving the write primitive was live at the time: an HS write to `0x009a0204` moved CFG1
-    from `0x02449000` to `0x02779000` and stuck, and an HS write to `CTRL_OPT 0x0082083c`
-    changed `0` to `0x80` with `STATUS 0x00820c3c` responding `0x1` to `0x81`. The GPC-disable
-    registers are latched. Forcing `gpcMask` at `0x00408970` from `0xdc` to `0xff` three
-    different ways made the software stack report 8 GPC / 112 SM while `0x00408970` read back
-    `0xdc` every time and `cuInit` segfaulted.
-
 ### Topology scalars (`0x0002xxxx`)
 
 Read-only, and they describe the full GA100 die, not the harvested part.
@@ -604,10 +590,12 @@ case-insensitive grep of its installer, remover, README and build script for
 `gen2|gen 2|pcie|iommu|retrain|RMPcieLinkSpeed` returns zero hits. See
 [PCIe Gen2](pcie-gen2.md) and [PCIe subsystem](../hardware/pcie-subsystem.md).
 
-!!! warning "Experimental"
-    Patch `0007-pcie-gen2.patch` exists on branches `debug-gen2`, `Gen2`, `far` and `deced`;
-    `0008-pcie-gen2-probe-retrain.patch` on `Gen2`, `far` and `deced`. Nothing here has been
-    merged to master.
+> [!WARNING]
+> **Experimental**
+>
+> Patch `0007-pcie-gen2.patch` exists on branches `debug-gen2`, `Gen2`, `far` and `deced`;
+> `0008-pcie-gen2-probe-retrain.patch` on `Gen2`, `far` and `deced`. Nothing here has been
+> merged to master.
 
 ### XVE config-space shadow (BAR0 base `0x88000`)
 
@@ -683,10 +671,12 @@ plain host writes: `0x00088610`, `0x000880a8`, `0x0008c2c0`, `0x0008c040`, `0x00
 | `0x00085080`, `0x00085084` | read `0xbadf1100`; "GSP writes `0x85084`" is true, but at a privilege the injection point never reaches |
 | `0x00409664`, `0x00409668` | `0xbadf5040` on every Ampere card, including unthrottled ones |
 
-!!! note "Do not repeat `0x8808c` as the LnkCap2 mirror"
-    One field manual lists `NV_XVE_LINK_CAPABILITIES_2` as "cfg 0xA4 / BAR0 mirror `0x8808c`",
-    which is internally inconsistent. With the XVE mirror base at `0x88000`, config `0xA4` maps
-    to `0x880a4`, and that is what both patch 0007 and the independent `pcielink.sh` use.
+> [!NOTE]
+> **Do not repeat `0x8808c` as the LnkCap2 mirror**
+>
+> One field manual lists `NV_XVE_LINK_CAPABILITIES_2` as "cfg 0xA4 / BAR0 mirror `0x8808c`",
+> which is internally inconsistent. With the XVE mirror base at `0x88000`, config `0xA4` maps
+> to `0x880a4`, and that is what both patch 0007 and the independent `pcielink.sh` use.
 
 ---
 
@@ -708,9 +698,11 @@ zero hits.
 | `0x00409668` | `FECS_FEAT_READOUT_1` | `0xbadf5040` | same |
 | `0x00504204` | `SM_ISSUE_RATE_MODIFIER` | `0x00000005` with a driver, `0xbadf1201` without | **not** the throttle: reads `0x00000005` on 13 comparison Ampere cards and on a 96-SM `0x20bb` GA100 whose every speed-select fuse is 0. Host-writable; zeroing it changes nothing |
 
-!!! question "Open problem: does `0x00504204` impose a residual limit on an already-unlocked card?"
-    Nobody has run the obvious A/B: write it to 0 on an unlocked card and re-run the benchmark
-    suite. The write primitive already exists.
+> [!NOTE]
+> **Open problem: does `0x00504204` impose a residual limit on an already-unlocked card?**
+>
+> Nobody has run the obvious A/B: write it to 0 on an unlocked card and re-run the benchmark
+> suite. The write primitive already exists.
 
 ---
 
@@ -773,20 +765,24 @@ copy).
 | `0x8700` | end of booter code/data |
 | `0xffec` | the slot that feeds `main`'s exit status and decides whether `secure_teardown` runs |
 
-!!! question "Open problem: `0x00000ccb` at DMEM `0xfff4`"
-    `0x0ccb` is `regtable_rw_indexed`, which indexes the very descriptor tables at DMEM `0x2383`
-    and `0x8e08` that the payload smashes, and a 2026-07-06 isolation matrix showed every
-    write-carrying rejoin chain dying at `0xccb`. Yet the shipping payload plants `0x00000ccb`
-    at `0xfff4` and the unlock demonstrably works. Settled by tracing whether `0xfff4` is ever
-    loaded into PC during the unwind or is only a live-through saved slot in a frame that is
-    never returned through.
+> [!NOTE]
+> **Open problem: `0x00000ccb` at DMEM `0xfff4`**
+>
+> `0x0ccb` is `regtable_rw_indexed`, which indexes the very descriptor tables at DMEM `0x2383`
+> and `0x8e08` that the payload smashes, and a 2026-07-06 isolation matrix showed every
+> write-carrying rejoin chain dying at `0xccb`. Yet the shipping payload plants `0x00000ccb`
+> at `0xfff4` and the unlock demonstrably works. Settled by tracing whether `0xfff4` is ever
+> loaded into PC during the unwind or is only a live-through saved slot in a frame that is
+> never returned through.
 
-!!! question "Open problem: the unexplained payload constants"
-    `0x00000007` at DMEM `0x1900`, `0x00000003` at `0xffd8`, `0x0000582d`, `0x0000ffbc`,
-    `0x00008e18`, `0x0000815a` (twice), `0x00000cbd` (twice), `0x00001fbd` (three times),
-    `0x00007f2f`, and the fill dword `0x000004a7` itself. The ROP write-ups name a neighbouring
-    gadget family (`0x1fb9`, `0x1fca`, `0x814e`, `0x8173`, `0x7f82`), so these are plausibly the
-    same tail translated. One pass over the annotated disassembly should resolve all of them.
+> [!NOTE]
+> **Open problem: the unexplained payload constants**
+>
+> `0x00000007` at DMEM `0x1900`, `0x00000003` at `0xffd8`, `0x0000582d`, `0x0000ffbc`,
+> `0x00008e18`, `0x0000815a` (twice), `0x00000cbd` (twice), `0x00001fbd` (three times),
+> `0x00007f2f`, and the fill dword `0x000004a7` itself. The ROP write-ups name a neighbouring
+> gadget family (`0x1fb9`, `0x1fca`, `0x814e`, `0x8173`, `0x7f82`), so these are plausibly the
+> same tail translated. One pass over the annotated disassembly should resolve all of them.
 
 ### Payload override hook
 
@@ -794,13 +790,6 @@ copy).
 freshly created `0xf800` buffer, falling back to the built-in template (pre-seeded with
 `writeAddr 0x009a0148`, `writeValue 0xffffffff`) if absent. Absence is reported as status
 `0x59` and is benign.
-
-!!! note "Superseded"
-    `dmem.bin` is vestigial on the released path. No Booter Load runs between that file load and
-    the first `kgspSec2PostblTimingRefillPayload()` call, which overwrites the entire buffer with
-    the built-in template. Dropping a file there has no effect. It is a leftover from the 580-era
-    workflow that injected payloads into the `.fwsignature_ga100` section of
-    `/lib/firmware/nvidia/580.159.03/gsp_tu10x.bin` at offset `0x1d09f0f`.
 
 ### Payload variants across the archive
 

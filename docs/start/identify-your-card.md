@@ -114,12 +114,14 @@ nvidia-smi -q | grep -E 'Board Part Number|GPU Part Number|VBIOS Version|Bus Id'
     GPU Part Number                       : 20C2-105-A1
 ```
 
-!!! danger "A mismatched `nvidia-smi` invalidates every reading on this page"
-    NVML refuses to talk across driver versions, so a `memory.total` read through a mismatched
-    `nvidia-smi` binary is meaningless. One multi-day measurement series was invalidated exactly this
-    way, running a 580.159.03 userspace against a different kernel module build. If `nvidia-smi`
-    prints "driver/library version mismatch", fix that before trusting anything it says. See
-    [Troubleshooting](../procedures/troubleshooting.md#version-mismatch).
+> [!CAUTION]
+> **A mismatched `nvidia-smi` invalidates every reading on this page**
+>
+> NVML refuses to talk across driver versions, so a `memory.total` read through a mismatched
+> `nvidia-smi` binary is meaningless. One multi-day measurement series was invalidated exactly this
+> way, running a 580.159.03 userspace against a different kernel module build. If `nvidia-smi`
+> prints "driver/library version mismatch", fix that before trusting anything it says. See
+> [Troubleshooting](../procedures/troubleshooting.md#version-mismatch).
 
 ---
 
@@ -132,7 +134,7 @@ If the card is out of the machine, or the cooler is off, three markings are read
 | ASIC (die) marking | `GA100-105F-A1` | `GA100-105A-A1` |
 | Board part number | `900-11001-0108-000` | `900-11001-0105-000` |
 | GPU part number | `20C2-105-A1` | `2082-105-A1` |
-| PCB silkscreen, above the gold fingers | `180-11001-DAAA-B15` (also seen: `180-11001-DAAA-045`) | same board family |
+| PCB silkscreen, above the gold fingers | `180-11001-DAAA-B15` (also seen: `180-11001-DAAA-B35`, `180-11001-DAAA-045`) | same board family |
 | Board ID | not recorded | `0x8100` |
 
 The two silkscreen strings are the same board family; the trailing field is a revision or variant
@@ -140,12 +142,14 @@ code, and both have been photographed under a USB microscope. The 170HX package 
 `NVIDIA / B KR 2120A1 / TBSG42.M0W e1`. For contrast, a retail Tesla A100 40 GB die photographed
 alongside a 170HX is marked `GA100-883AA-A1`, so the `-105x-` middle field is what says "CMP".
 
-!!! warning "Experimental: the 10 GB die marking is not photographed here"
-    `GA100-105F-A1` on the 8 GB card is confirmed by a teardown photograph and by the TechPowerUp
-    database, two independent sources agreeing on the variant string. `GA100-105A-A1` for the 10 GB
-    card comes from the documented specification table and is not independently photographed anywhere
-    in this corpus. Reading the die also means removing the cooler, so this is the least practical
-    identification route on the page: use `lspci`.
+> [!WARNING]
+> **Experimental: the 10 GB die marking is not photographed here**
+>
+> `GA100-105F-A1` on the 8 GB card is confirmed by a teardown photograph and by the TechPowerUp
+> database, two independent sources agreeing on the variant string. `GA100-105A-A1` for the 10 GB
+> card comes from the documented specification table and is not independently photographed anywhere
+> in this corpus. Reading the die also means removing the cooler, so this is the least practical
+> identification route on the page: use `lspci`.
 
 The board and GPU part numbers are the more useful physical identifiers because `nvidia-smi` reports
 them without disassembly, and they were identical across all four 8 GB cards examined on two hosts.
@@ -197,11 +201,13 @@ Note that **stock CFG1 is `0x02449000` on both SKUs**, so CFG1 alone cannot tell
 have; the LMR can. `NV_PTOP_FS4` is the cleanest single-register split, and bit 0 is `GEN2_PCIE` with
 bit 7 `GEN2_PCIE_SPEED`, which makes the 8 GB card's `0x00000000` reading the more interesting half.
 
-!!! warning "`OPT_GPC_DISABLE` is not a SKU fingerprint"
-    The GPC floorsweep mask varies per die, not per SKU. Values observed across 170HX cards of both
-    SKUs include `0x13`, `0x15`, `0x23`, `0x25`, `0x45`, `0x85`, `0xa8` and `0xd0`, and all of them
-    still enumerate 70 SMs. Never hard-code a floorsweep value or infer a SKU from one. Use
-    `FUSE_SKU_ID` `0x00821060` (`0x80` on the 8 GB card, `0x68` on the 10 GB card) instead.
+> [!WARNING]
+> **`OPT_GPC_DISABLE` is not a SKU fingerprint**
+>
+> The GPC floorsweep mask varies per die, not per SKU. Values observed across 170HX cards of both
+> SKUs include `0x13`, `0x15`, `0x23`, `0x25`, `0x45`, `0x85`, `0xa8` and `0xd0`, and all of them
+> still enumerate 70 SMs. Never hard-code a floorsweep value or infer a SKU from one. Use
+> `FUSE_SKU_ID` `0x00821060` (`0x80` on the 8 GB card, `0x68` on the 10 GB card) instead.
 
 Structural differences that follow from the SKU:
 
@@ -215,14 +221,16 @@ Structural differences that follow from the SKU:
 | Memory clock | **unresolved**, see the box below | 1215 MHz, current equals max, no headroom |
 | Unlocks to | **64 GB** | **40 GB** |
 
-!!! question "Open problem: the stock 8 GB memory clock"
-    The stock 8 GB memory clock is unresolved: 1458 MHz (one sweep and TechPowerUp), 1728 MHz
-    (`nvidia-smi -q` Supported Clocks, noted as "432 MHz × 4"), 1890 MHz (`nvtop` during an
-    unlocked 64 GB `gpu_burn` at 300 W). 1215 MHz is the 10 GB card and is solid. The plausible
-    reconciliation, 1458 stock / 1728 OC VBIOS / 1890 overclocked OC VBIOS, is unproven, and the
-    1728 MHz figure is separately attributed to FWSEC devinit at POST rather than to the OC VBIOS,
-    since no Memory Clock Table appears in any of the eight dumped ROMs. A raw FBPA PLL read would
-    settle it.
+> [!NOTE]
+> **Open problem: the stock 8 GB memory clock**
+>
+> The stock 8 GB memory clock is unresolved: 1458 MHz (one sweep and TechPowerUp), 1728 MHz
+> (`nvidia-smi -q` Supported Clocks, noted as "432 MHz × 4"), 1890 MHz (`nvtop` during an
+> unlocked 64 GB `gpu_burn` at 300 W). 1215 MHz is the 10 GB card and is solid. The plausible
+> reconciliation, 1458 stock / 1728 OC VBIOS / 1890 overclocked OC VBIOS, is unproven, and the
+> 1728 MHz figure is separately attributed to FWSEC devinit at POST rather than to the OC VBIOS,
+> since no Memory Clock Table appears in any of the eight dumped ROMs. A raw FBPA PLL read would
+> settle it.
 
 Which specific FBPs are floorswept varies per card. One 10 GB dump reads `FBP_DEFECTIVE` = `0x840`
 (FBP6, FBP11), the same pattern as the A100 PCIe 40/80 GB parts, but the card identity behind that
@@ -294,27 +302,21 @@ The banner then prints one of:
 ==> Unlock geometry: 40GB (CFG1=0x02669000 LMR=0x0000028A)
 ```
 
-!!! warning "Auto-detection is unsafe on mixed-GPU hosts"
-    `detect_card_profile()` takes the **first GPU in `nvidia-smi` order**, which is not necessarily
-    the CMP that `lspci` found. A host with an RTX 3080 10 GB alongside an 8 GB CMP 170HX was
-    reproduced by at least two people detecting "10GB" from the 3080, and a separate report has a
-    CMP 50HX misdetected as a 10 GB 170HX. If the first GPU reports a size outside all four windows,
-    a 24 GB card for example, the install dies outright.
-
-    Always pass `--profile` explicitly on any host with more than one NVIDIA card:
-
-    ```bash
-    sudo ./install.sh --profile=8gb     # 8 GB physical card  -> 64 GB
-    sudo ./install.sh --profile=10gb    # 10 GB physical card -> 40 GB
-    ```
-
-!!! note "Superseded"
-    On shipping `master`, `--profile` no longer selects the unlock geometry. Since the
-    "Fixed dual geometry support" commit, both geometries are baked into patch 0001 and chosen at GSP
-    boot from the PCI device ID. Today `--profile` affects only the printed banner, the expected-MiB
-    message, and the `card_profile` / `unlock_geometry` metadata files. A mis-detected profile writes
-    wrong metadata but **cannot** produce the wrong geometry. Pre-2026-07-18 instructions, and the
-    earlier `memory` branch, still say otherwise.
+> [!WARNING]
+> **Auto-detection is unsafe on mixed-GPU hosts**
+>
+> `detect_card_profile()` takes the **first GPU in `nvidia-smi` order**, which is not necessarily
+> the CMP that `lspci` found. A host with an RTX 3080 10 GB alongside an 8 GB CMP 170HX was
+> reproduced by at least two people detecting "10GB" from the 3080, and a separate report has a
+> CMP 50HX misdetected as a 10 GB 170HX. If the first GPU reports a size outside all four windows,
+> a 24 GB card for example, the install dies outright.
+>
+> Always pass `--profile` explicitly on any host with more than one NVIDIA card:
+>
+> ```bash
+> sudo ./install.sh --profile=8gb     # 8 GB physical card  -> 64 GB
+> sudo ./install.sh --profile=10gb    # 10 GB physical card -> 40 GB
+> ```
 
 After installing, the recorded profile is readable at:
 
@@ -345,13 +347,15 @@ Nothing in the kernel modules reads any of these three files. They exist for hum
 | Any other `10de:` ID | Not a 170HX | installer exits | n/a | n/a |
 | `[10de:2082]` forced to the 80 GB geometry | 10 GB, over-provisioned | archived `80` branch | reports 81920 MiB | `0x02779000` / `0x0000028A` |
 
-!!! danger "The 80 GB row is not a supported option"
-    The archived `80` branch programs the 10 GB card to report 81920 MiB, but the card is unusable
-    above roughly 40 GB: hangs, Xid 154, and burn-in errors within minutes. It is presented as
-    unstable or rejected in every source that mentions it, and it is power-limit independent. What it
-    actually programs is a three-way-inconsistent combination (CFG1 `0x02779000` with LMR
-    `0x0000028A` and an 80 GiB `fb_length`), which is itself the likely cause. See
-    [80 GB](../frontier/80gb.md).
+> [!CAUTION]
+> **The 80 GB row is not a supported option**
+>
+> The archived `80` branch programs the 10 GB card to report 81920 MiB, but the card is unusable
+> above roughly 40 GB: hangs, Xid 154, and burn-in errors within minutes. It is presented as
+> unstable or rejected in every source that mentions it, and it is power-limit independent. What it
+> actually programs is a three-way-inconsistent combination (CFG1 `0x02779000` with LMR
+> `0x0000028A` and an 80 GiB `fb_length`), which is itself the likely cause. See
+> [80 GB](../frontier/80gb.md).
 
 ---
 

@@ -28,18 +28,20 @@ of driver load, re-runs on every module load, and writes nothing to flash. Eight
 benchmarked in one session measured under 2.5% spread and passed 8/8 full-VRAM byte-compare
 integrity tests.
 
-!!! warning "Two things to get right before you read anything else"
-    **Capacity is per SKU and is not interchangeable.** The 8 GB card unlocks to **64 GB**.
-    The 10 GB card unlocks to **40 GB**, and 40 GB is the supported configuration. The 80 GB
-    driver branch for 10 GB cards was built, tested and abandoned: it reports 81920 MiB but fails
-    above roughly 40 GB of real use. A separate script-driven coherent register set does reach
-    real memory past 40 GiB, but it is unshipped, experimental and gives roughly one CUDA context
-    per fire.
-
-    **PCIe speed and PCIe width are two different problems with two different fixes.**
-    Gen1 to Gen2 is a *software* unlock that exists only on unreleased branches. Going beyond
-    x4 *width* requires hand-soldering 24 AC-coupling capacitors onto the board. Neither one
-    does anything for the other.
+> [!WARNING]
+> **Two things to get right before you read anything else**
+>
+> **Capacity is per SKU and is not interchangeable.** The 8 GB card unlocks to **64 GB**.
+> The 10 GB card unlocks to **40 GB**, and 40 GB is the supported configuration. The 80 GB
+> driver branch for 10 GB cards was built, tested and abandoned: it reports 81920 MiB but fails
+> above roughly 40 GB of real use. A separate script-driven coherent register set does reach
+> real memory past 40 GiB, but it is unshipped, experimental and gives roughly one CUDA context
+> per fire.
+>
+> **PCIe speed and PCIe width are two different problems with two different fixes.**
+> Gen1 to Gen2 is a *software* unlock that exists only on unreleased branches. Going beyond
+> x4 *width* requires hand-soldering 24 AC-coupling capacitors onto the board. Neither one
+> does anything for the other.
 
 ## Status today
 
@@ -118,18 +120,15 @@ Readers must be able to tell settled fact from active speculation at a glance.
 
 - **Plain prose is confirmed.** It carries no marker because none is needed. Where a figure is
   code-derived, the source file is named; where it is measured, the conditions are given.
-- `!!! warning "Experimental"` marks unreleased-branch material and anything resting on a
+- A `> [!WARNING]` **Experimental** alert marks unreleased-branch material and anything resting on a
   single report. Everything about PCIe Gen2 is in this category, because the Gen2 patches have
   never been merged to `master`.
-- `!!! danger` marks anything that can destroy hardware or silently corrupt data. The most
+- A `> [!CAUTION]` alert marks anything that can destroy hardware or silently corrupt data. The most
   important instance in this wiki is not an obvious one: at a 1400 MHz ceiling, a +325 MHz
   clock offset **corrupts memory without crashing**, so a run that completes is not evidence
   that a setting is safe.
-- `!!! question "Open problem"` marks things nobody has solved, and always states what was
+- A `> [!NOTE]` **Open problem** alert marks things nobody has solved, and always states what was
   tried and what the next step would be.
-- `!!! note "Superseded"` marks an approach that has been replaced, with a pointer to what
-  replaced it. These are kept rather than deleted, because a great deal of published material
-  about this card is superseded and readers arrive carrying it.
 
 Claims resting on one observation say so in the sentence itself: "one tester reported", "a
 single rig on one day". Numbers that appear in more than one place have been reconciled

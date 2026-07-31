@@ -65,31 +65,16 @@ reading `7` **is** this Drive A100, not a fourth A100 SKU. The device IDs match.
 
 ### Two corrections worth carrying
 
-!!! note "Superseded: `FUSE_NVLINK_PHYS_DMG = 0x1` means nothing about this card"
-    The register's full name is `OPT_SECURE_NVLINKS_PHYSICAL_DAMAGE_WR_SECURE`, and several
-    writeups flagged the set bit as ominous, possibly making the disable non-recoverable. It
-    reads `0x00000001` on all fourteen probed Ampere cards, including healthy A100s with fully
-    working NVLink. It is a **write-security bit on the damage-flag register**, set
-    architecture-wide. The register that would actually record damage is
-    `FUSE_NVLINK_DEFECTIVE` at `0x0082068C`, and it reads zero.
-
-!!! note "Superseded: GA102 does not read zero for `PTOP_SCAL_NUM_NVLINK`"
-    The claim "A100 = 12, 3090 = 0" appears in at least four writeups. It originates as an inline
-    comment in the project's own probe script:
-    `("PTOP_SCAL_NUM_NVLINK", 0x0002246C, "max NVLink count; A100=12, 3090=0")`. The same
-    project's measured table contradicts it: RTX 3090, RTX 3090 Ti, RTX 3080, RTX 3080 Ti, A10,
-    A5000 and A6000 all read `0x00000004`. Only the A16 reads `0x00000000`. The measured `0x4`
-    matches NVIDIA's documented "four x4 links" for third-generation NVLink on GA102 exactly,
-    which independently confirms the measurement over the comment.
-
-!!! question "Open problem: a 3-bit disable field against 12 physical links"
-    `FUSE_NVLINK_DIS[2:0]` = `0x7` with `PTOP_SCAL_NUM_NVLINK` = 12, and `STATUS_OPT_NVLINK` is
-    annotated as a 16-bit field yet also reads `0x00000007`. The working hypothesis, unconfirmed
-    by anything in the corpus, is **three link groups of four links each** (12 = 3 × 4), which
-    would explain both the recurring "all groups" phrasing and the RTX 3080's `0x1` against its
-    `PTOP_SCAL_NUM_NVLINK` of `0x4`. What would settle it: an A100 with a known *partial* NVLink
-    floorsweep to compare against, or vendor documentation of the
-    `NV_FUSE_OPT_NVLINK_DISABLE` field width on GA100. Neither exists in the corpus.
+> [!NOTE]
+> **Open problem: a 3-bit disable field against 12 physical links**
+>
+> `FUSE_NVLINK_DIS[2:0]` = `0x7` with `PTOP_SCAL_NUM_NVLINK` = 12, and `STATUS_OPT_NVLINK` is
+> annotated as a 16-bit field yet also reads `0x00000007`. The working hypothesis, unconfirmed
+> by anything in the corpus, is **three link groups of four links each** (12 = 3 × 4), which
+> would explain both the recurring "all groups" phrasing and the RTX 3080's `0x1` against its
+> `PTOP_SCAL_NUM_NVLINK` of `0x4`. What would settle it: an A100 with a known *partial* NVLink
+> floorsweep to compare against, or vendor documentation of the
+> `NV_FUSE_OPT_NVLINK_DISABLE` field width on GA100. Neither exists in the corpus.
 
 ---
 
@@ -99,14 +84,16 @@ The CMP 170HX reuses the A100 board layout. **The gold fingers of the NVLink edg
 physically present, and three bridge connector positions exist.** This was established by an
 external teardown in October 2023 and agreed by card owners in 2026.
 
-!!! note "Correction: 'the CMP PCB lacks the NVLink connector entirely' is about the 90HX"
-    The observation "the case has an opening for the NVLink connector, but the PCB lacks it"
-    appears twice in the archive: once attributed to the 170HX, and once, with the fuller context
-    that "the same unknown brand also makes an RTX 3080 20 GB [which] uses a PCB with the NVLink
-    connectors", attributed to the **CMP 90HX**. The 90HX is a GA102 RTX 3080-class mining board,
-    which is exactly what that RTX 3080 20 GB sibling remark describes. Applied to the 170HX the
-    claim contradicts the teardown evidence. Treat the 170HX-attributed instance, and the
-    parenthetical "CMP boards have no NVLink connector" in one writeup, as mis-attributions.
+> [!NOTE]
+> **Correction: 'the CMP PCB lacks the NVLink connector entirely' is about the 90HX**
+>
+> The observation "the case has an opening for the NVLink connector, but the PCB lacks it"
+> appears twice in the archive: once attributed to the 170HX, and once, with the fuller context
+> that "the same unknown brand also makes an RTX 3080 20 GB [which] uses a PCB with the NVLink
+> connectors", attributed to the **CMP 90HX**. The 90HX is a GA102 RTX 3080-class mining board,
+> which is exactly what that RTX 3080 20 GB sibling remark describes. Applied to the 170HX the
+> claim contradicts the teardown evidence. Treat the 170HX-attributed instance, and the
+> parenthetical "CMP boards have no NVLink connector" in one writeup, as mis-attributions.
 
 ### The shroud is in the way
 
@@ -203,11 +190,6 @@ EOF
 
 Expected on any CMP 170HX: `0x00000007`, `0x00000007`, `0x00000000`, `0x0000000c`.
 
-!!! note "Superseded: 'NVLink already shows in the boot logs, so we just need a bridge'"
-    Raised on 2026-07-16 and again on 2026-07-20, refuted by the analysis above. It is the single
-    most common wrong conclusion about this card and it is entirely understandable, because the
-    dmesg line does read like the subsystem coming up.
-
 ---
 
 ## Why it stays locked
@@ -261,13 +243,15 @@ reads `0x00000001` on every card. The 25-entry `NV_FUSE_CTRL_OPT_*` table found 
 `0x47341` inside the unsigned FwSec VBIOS tail (`0x43A00` to `0x47700`) reads all zero across 13
 probed GA100 cards and is inert on this hardware.
 
-!!! question "Open problem: nobody has ever performed the write"
-    Across all 31 archived unlocker attachments and every clean-room artifact, NVLink appears
-    only as fuse read-outs. There is no probe script, no override attempt and no recorded write.
-    The strong prior is that a write to `0x008209B8` is dropped and `STATUS_OPT_NVLINK` stays
-    `0x00000007`. That negative is still worth having on record, because right now the corpus
-    cannot say whether it was tried. The experiment is a read-write-read on an expendable card
-    followed by a re-read of `0x00820DB8`.
+> [!NOTE]
+> **Open problem: nobody has ever performed the write**
+>
+> Across all 31 archived unlocker attachments and every clean-room artifact, NVLink appears
+> only as fuse read-outs. There is no probe script, no override attempt and no recorded write.
+> The strong prior is that a write to `0x008209B8` is dropped and `STATUS_OPT_NVLINK` stays
+> `0x00000007`. That negative is still worth having on record, because right now the corpus
+> cannot say whether it was tried. The experiment is a read-write-read on an expendable card
+> followed by a re-read of `0x00820DB8`.
 
 ### 4. No spoofable consumer of the fuse has been found
 

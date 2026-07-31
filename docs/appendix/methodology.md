@@ -88,11 +88,13 @@ then checks every published page against a list of **1,036 handles** seen in the
 every relative link, verifies navigation integrity, spot-checks the geometry and compute constants
 for transcription errors, and flags style violations.
 
-!!! warning "Experimental"
-    Passes 1 and 2 were carried out by language-model agents working to a fixed brief, not by hand.
-    That is precisely why pass 3 exists and why it re-derives from source rather than trusting the
-    documents: agents summarising a conversation reproduce the conversation's confident errors.
-    Pass 3 caught 14 of those. It is not safe to assume it caught all of them.
+> [!WARNING]
+> **Experimental**
+>
+> Passes 1 and 2 were carried out by language-model agents working to a fixed brief, not by hand.
+> That is precisely why pass 3 exists and why it re-derives from source rather than trusting the
+> documents: agents summarising a conversation reproduce the conversation's confident errors.
+> Pass 3 caught 14 of those. It is not safe to assume it caught all of them.
 
 ---
 
@@ -165,11 +167,10 @@ than pick a winner:
 | Underlying basis | How it appears on a page |
 |---|---|
 | Settled from shipping code, or reproduced by two or more testers, or arithmetic from either | Plain prose, no marker |
-| Unreleased-branch code, or a single report | `!!! warning "Experimental"`, or an inline hedge naming the limitation |
+| Unreleased-branch code, or a single report | a `> [!WARNING]` alert titled **Experimental**, or an inline hedge naming the limitation |
 | One report, one machine, one capture | Hedged in the sentence itself: "one tester reported", "observed once, on 2026-07-26" |
-| Can destroy hardware or lose data | `!!! danger`, reserved for physical and irreversible risk, never for "this might not work" |
-| Genuinely unsolved | `!!! question "Open problem"`, stating what was tried and what one experiment would close it |
-| Real but replaced | `!!! note "Superseded"`, always pointing at the replacement |
+| Can destroy hardware or lose data | a `> [!CAUTION]` alert, reserved for physical and irreversible risk, never for "this might not work" |
+| Genuinely unsolved | a `> [!NOTE]` alert titled **Open problem**, stating what was tried and what one experiment would close it |
 | Unknown | The word "unknown", never a plausible-looking number |
 
 The reader-facing version of this table, with examples, is on

@@ -14,17 +14,21 @@ The closing position on the record, stated by the maintainer on 2026-07-27, is t
 GSP-RM firmware patch: "Gen 3 doesn't work whatsoever, it's going to require a GSP patch" and
 "I haven't seen anybody at all get a working GSP patch."
 
-!!! question "Open problem"
-    This page describes unsolved work. Nothing here ships. Gen2 (5 GT/s) *is* solved in software
-    but lives only on unreleased branches: see [PCIe Gen2](../unlock/pcie-gen2.md).
+> [!NOTE]
+> **Open problem**
+>
+> This page describes unsolved work. Nothing here ships. Gen2 (5 GT/s) *is* solved in software
+> and shipped in `master` on 2026-07-29: see [PCIe Gen2](../unlock/pcie-gen2.md).
 
-!!! warning "Speed is not width"
-    PCIe link **speed** (Gen1 to Gen2) and PCIe link **width** (x4 to x16) are two entirely
-    separate problems on this card with two entirely separate fixes. Speed is firmware and fuses,
-    the subject of this page. Width is a PCB depopulation fixed only by hand-soldering 24
-    AC-coupling capacitors, covered in [physical mods](../operations/physical-mods.md). A Gen3
-    software unlock at the native x4 width is the community's stated next target precisely
-    because it would need no soldering.
+> [!WARNING]
+> **Speed is not width**
+>
+> PCIe link **speed** (Gen1 to Gen2) and PCIe link **width** (x4 to x16) are two entirely
+> separate problems on this card with two entirely separate fixes. Speed is firmware and fuses,
+> the subject of this page. Width is a PCB depopulation fixed only by hand-soldering 24
+> AC-coupling capacitors, covered in [physical mods](../operations/physical-mods.md). A Gen3
+> software unlock at the native x4 width is the community's stated next target precisely
+> because it would need no soldering.
 
 ---
 
@@ -33,7 +37,7 @@ GSP-RM firmware patch: "Gen 3 doesn't work whatsoever, it's going to require a G
 | Generation | Rate | Status on the 170HX | Mechanism |
 |---|---|---|---|
 | Gen1 | 2.5 GT/s | Stock, always trains at cold boot | Signed DevInit programs the CMP PCIe table |
-| Gen2 | 5.0 GT/s | **Solved in software**, unreleased branches only | Combined register sequence through the SEC2 Booter plus a root-port retrain |
+| Gen2 | 5.0 GT/s | **Solved in software**, shipped in `master` since 2026-07-29 | Combined register sequence through the SEC2 Booter plus a root-port retrain |
 | Gen3 | 8.0 GT/s | **Unsolved.** Capability can be advertised; the link never trains | Stated on 2026-07-27 by the maintainer to need a GSP-RM patch, and no working GSP patch has been produced |
 | Gen4 | 16.0 GT/s | **Unsolved and untestable.** No contributor has a Gen4 host | Fuse bit 25 `GEN4_SPEED_DISABLED` plus the suppressed DevInit block |
 
@@ -42,7 +46,7 @@ Link-state fingerprints for reference:
 | State | LnkCap | LnkCap2 | LnkCtl2 | LnkSta |
 |---|---|---|---|---|
 | Stock (locked) | `0x00456101` | `0x00000002` | `0x0000` | `0x1041` |
-| Gen2 branch, trained | `0x00456102` | `0x00000006` | `0x0002` | `0x1042` |
+| Unlocker installed, trained | `0x00456102` | `0x00000006` | `0x0002` | `0x1042` |
 | Round-3 vector spoof | wrote `0x00457104` (width x16) | wrote `0x0180001E`; clipped back to `0x00456102` / `0x00000006` | not recorded | not recorded |
 | Gen3 advertisement, 2026-07-24 | `Port #1, Speed 8GT/s, Width x4` | not recorded | target 8GT/s accepted | stayed 2.5GT/s x4 |
 
@@ -145,12 +149,14 @@ OPT=00000001/00000001/16680000
 That line is a useful dmesg fingerprint on its own: a Gen1 build emits 34 `SEC2_DEBUG` lines, a
 Gen2 build emits 80.
 
-!!! note "Line counts are not a reliable cross-build fingerprint"
-    34 (Gen1 build) / 80 (Gen2 build) is recorded at high confidence, while a separate Gen2-branch
-    610.43.03 boot counted 152 at medium confidence. Do not read a mismatch as a failed install.
+> [!NOTE]
+> **Line counts are not a reliable cross-build fingerprint**
+>
+> 34 (Gen1 build) / 80 (Gen2 build) is recorded at high confidence, while a separate Gen2-branch
+> 610.43.03 boot counted 152 at medium confidence. Do not read a mismatch as a failed install.
 
 No code path in any branch, and none in the independent clean-room tool
-set, ever requests a target link speed above 2: `constants.yaml` on the Gen2 branches pins
+set, ever requests a target link speed above 2: `constants.yaml` in the Gen2 code pins
 `target_gen: 2`, `TARGET_LINK_SPEED` is written as `2`, the LTSSM speed field is set to `2`, and
 the success test is `LnkCap2 & 0x4`.
 
@@ -219,13 +225,15 @@ non-PCIe SKU features (HBM, NVLink, ECC). The PCIe-relevant consumers are `[0xC9
 and `0x132B70`, `[0x1C-0x1F]` to `0x8C2C0` plus the `0x918050`/`0x91C050`/`0x920050` series, and
 `[0x3F]` (`0x00` on A100, `0x0C` on CMP) to `0x8C040`.
 
-!!! danger "Reflashing is not a path"
-    All five PCIe bytes fall **100 % inside** the Davies-Meyer `csecret(2)` MAC range
-    `0x2200-0x43C00`. A keyless forge is a 2^128 second-preimage problem. The Ampere RSA
-    signature check rejects an edited image and the card will not boot. Gen-cap bytes at
-    `0x40B4B`, `0x40F05-3D` and `0x40FC5-CB` are also inside the MAC. Do not attempt to flash a
-    modified DevInit: see [VBIOS](../hardware/vbios.md) and
-    [recovery](../procedures/recovery.md).
+> [!CAUTION]
+> **Reflashing is not a path**
+>
+> All five PCIe bytes fall **100 % inside** the Davies-Meyer `csecret(2)` MAC range
+> `0x2200-0x43C00`. A keyless forge is a 2^128 second-preimage problem. The Ampere RSA
+> signature check rejects an edited image and the card will not boot. Gen-cap bytes at
+> `0x40B4B`, `0x40F05-3D` and `0x40FC5-CB` are also inside the MAC. Do not attempt to flash a
+> modified DevInit: see [VBIOS](../hardware/vbios.md) and
+> [recovery](../procedures/recovery.md).
 
 ### The refuted intuition: the strap field is monotonic-restrictive
 
@@ -266,11 +274,13 @@ found anywhere to `0x88CE4`, `0x88CE0`, `0x88084`, `0x880A4`, `0x880A8`, `0x8205
 speed reads with Gen1/2/3 branching where Gen4 falls into the default path, `0x8A088`, internal
 reads `0x88A48`/`0x88A4C`/`0x88A64`, and dynamic fuse-block access as `0x82000 | offset`).
 
-!!! note "Method note worth preserving"
-    An early naive 4-byte constant search falsely reported "no XVE references" in the GSP image,
-    because RISC-V builds these addresses dynamically via `lui`/`addi`. A full pattern scan was
-    required. Encrypted GSP regions remain unreadable, so even the corrected scan is not
-    exhaustive.
+> [!NOTE]
+> **Method note worth preserving**
+>
+> An early naive 4-byte constant search falsely reported "no XVE references" in the GSP image,
+> because RISC-V builds these addresses dynamically via `lui`/`addi`. A full pattern scan was
+> required. Encrypted GSP regions remain unreadable, so even the corrected scan is not
+> exhaustive.
 
 ---
 
@@ -372,12 +382,14 @@ A separate clean-room patch, `0007-pcie-gen4-shadow.patch` (not to be confused w
 cmpunlocker `0007-pcie-gen2.patch`, which is a different patch with the same number), was
 abandoned to a boot loop and remains the most interesting unfinished Gen4 artefact.
 
-!!! danger "This experiment bricks the boot cycle until the module is removed"
-    Upstream patches `0001`-`0006` use 4 Booter payload runs per boot and boot fine. The Gen4
-    shadow patch raised that to 7-11 runs including fuse and retrain attempts. The **real**
-    BooterLoad then failed with `mailbox0 != 0` (status `0xffff`), after which RM retried
-    `_kgspBootGspRm` endlessly, with `wprStart` sliding down the frame buffer on each retry
-    (per-retry WPR allocation) and eventually wrapping.
+> [!CAUTION]
+> **This experiment bricks the boot cycle until the module is removed**
+>
+> Upstream patches `0001`-`0006` use 4 Booter payload runs per boot and boot fine. The Gen4
+> shadow patch raised that to 7-11 runs including fuse and retrain attempts. The **real**
+> BooterLoad then failed with `mailbox0 != 0` (status `0xffff`), after which RM retried
+> `_kgspBootGspRm` endlessly, with `wprStart` sliding down the frame buffer on each retry
+> (per-retry WPR allocation) and eventually wrapping.
 
 One cause was eliminated: the loop persisted with `CMP_PCIE_RETRAIN=0`, ruling out the in-driver
 retrain. Two hypotheses survived and were never decided:
@@ -504,10 +516,12 @@ still stands.**
 
 ## If you are testing a Gen3 claim
 
-!!! warning "Verify with LnkSta, never LnkCap"
-    `LnkCap` is the advertised capability and can read a higher generation while the link is
-    still training at Gen1. That trap is the stated source of most "it works" claims that do not
-    hold up. The Gen3 advertisement result of 2026-07-24 is exactly this case.
+> [!WARNING]
+> **Verify with LnkSta, never LnkCap**
+>
+> `LnkCap` is the advertised capability and can read a higher generation while the link is
+> still training at Gen1. That trap is the stated source of most "it works" claims that do not
+> hold up. The Gen3 advertisement result of 2026-07-24 is exactly this case.
 
 ```bash
 # the three honest fields

@@ -42,13 +42,15 @@ instruction issue rate, not the memory subsystem.
   `memoryClockRate`, so query `cudaDeviceGetAttribute` with `cudaDevAttrClockRate` /
   `cudaDevAttrMemoryClockRate` instead.
 
-!!! warning "Theoretical peaks masquerading as measurements"
-    Three separate figures in circulation are tool-computed device properties, not run results.
-    `1769.47 GB/sec` is exactly `864 MHz x 4 x 4096 bits / 8`; `12633.60 GFlops` is exactly
-    `4480 x 2 x 1410 MHz`. Both are derived from the clock and bus-width fields printed two
-    lines above them in the same mixbench dump. **No card has ever measured 1769 GB/s.** The
-    same 12633.6 GFLOPS reappears in a second dump as "4480 cores, 12.634 TFLOPs/s", again as a
-    device property.
+> [!WARNING]
+> **Theoretical peaks masquerading as measurements**
+>
+> Three separate figures in circulation are tool-computed device properties, not run results.
+> `1769.47 GB/sec` is exactly `864 MHz x 4 x 4096 bits / 8`; `12633.60 GFlops` is exactly
+> `4480 x 2 x 1410 MHz`. Both are derived from the clock and bus-width fields printed two
+> lines above them in the same mixbench dump. **No card has ever measured 1769 GB/s.** The
+> same 12633.6 GFLOPS reappears in a second dump as "4480 cores, 12.634 TFLOPs/s", again as a
+> device property.
 
 ---
 
@@ -130,17 +132,21 @@ FP16 and BF16 stay tight. FP16 with fp16 accumulate reads consistently *above* F
 accumulate, where on A100 the two should be the same rate; the likeliest explanation is that
 mmapeak-style microbenchmarks keep operands in shared memory and therefore flatter the card.
 
-!!! question "Open problem: INT4 measures below INT8"
-    `mma_s4s4s32_8_8_32` returns **320.2 TOPS** against INT8's 335.0/335.6 TOPS. On Ampere INT4
-    tensor throughput should be roughly 2x INT8. Nobody re-ran it. The INT8 side is sound (two
-    tile shapes agree); the INT4 side is one run. Re-running the INT4 shape with a longer target
-    time and varied tiles is the cheapest open lead in this domain.
+> [!NOTE]
+> **Open problem: INT4 measures below INT8**
+>
+> `mma_s4s4s32_8_8_32` returns **320.2 TOPS** against INT8's 335.0/335.6 TOPS. On Ampere INT4
+> tensor throughput should be roughly 2x INT8. Nobody re-ran it. The INT8 side is sound (two
+> tile shapes agree); the INT4 side is one run. Re-running the INT4 shape with a longer target
+> time and varied tiles is the cheapest open lead in this domain.
 
-!!! question "Open problem: the INT8 library path is 7.6x below the INT8 tensor path"
-    Direct MMA gives 335 TOPS; torch, cuBLAS and OpenCL all land at 43-48 TOPS. Either those
-    libraries are not issuing IMMA on this device, or the unlock leaves an INT8 issue-rate
-    restriction partially in place. The suggested test is an explicit `CUBLAS_COMPUTE_32I` GEMM
-    with INT8 inputs against the raw MMA figure.
+> [!NOTE]
+> **Open problem: the INT8 library path is 7.6x below the INT8 tensor path**
+>
+> Direct MMA gives 335 TOPS; torch, cuBLAS and OpenCL all land at 43-48 TOPS. Either those
+> libraries are not issuing IMMA on this device, or the unlock leaves an INT8 issue-rate
+> restriction partially in place. The suggested test is an explicit `CUBLAS_COMPUTE_32I` GEMM
+> with INT8 inputs against the raw MMA figure.
 
 ### Silicon-to-silicon reproducibility
 
@@ -182,15 +188,17 @@ moved. The unlock targets SM issue rate, not the graphics path.
 | One OpenCL test | 1333 GB/s | stock VBIOS |
 | 2023 external review ceiling | 1355 GB/s | used for its roofline ridge points |
 
-!!! note "There is no single canonical HBM number"
-    Measured HBM bandwidth spans **1305.86 GB/s to 1600 GB/s** and no methodology reconciles
-    the range. Partial reconciliation: the 8 GB card carries 4 stacks of faster HBM2e
-    (4096-bit) while the 10 GB card carries 5 stacks of slower HBM2 (5120-bit), and
-    read/write/misaligned patterns differ by nearly 10x *within a single tool*. Quote the range,
-    not a point estimate. Separately, "1493 GB/s datasheet" and "1555 GB/s theoretical at full
-    boost" are different quantities (the first is the A100 40 GB PCIe datasheet figure, the
-    second is what 1215 MHz x 5120-bit computes to) and are frequently used interchangeably in
-    circulating documents.
+> [!NOTE]
+> **There is no single canonical HBM number**
+>
+> Measured HBM bandwidth spans **1305.86 GB/s to 1600 GB/s** and no methodology reconciles
+> the range. Partial reconciliation: the 8 GB card carries 4 stacks of faster HBM2e
+> (4096-bit) while the 10 GB card carries 5 stacks of slower HBM2 (5120-bit), and
+> read/write/misaligned patterns differ by nearly 10x *within a single tool*. Quote the range,
+> not a point estimate. Separately, "1493 GB/s datasheet" and "1555 GB/s theoretical at full
+> boost" are different quantities (the first is the A100 40 GB PCIe datasheet figure, the
+> second is what 1215 MHz x 5120-bit computes to) and are frequently used interchangeably in
+> circulating documents.
 
 ### The 79% plateau above an 8 GiB offset
 
@@ -220,11 +228,13 @@ Two shipping-code facts bear on this without settling it:
   manager therefore models the whole unlocked range as uniform-performance memory and has no way
   to prefer the fast region.
 
-!!! question "Open problem: does the plateau exist on shipping geometries?"
-    The sweep was only ever run on the abandoned 80 GB configuration. Repeating the identical
-    offset and chunk sweeps on a shipping 8 GB to 64 GB card would settle whether this is a
-    property of any unlocked geometry or an artefact of the over-fire. See
-    [80gb.md](../frontier/80gb.md).
+> [!NOTE]
+> **Open problem: does the plateau exist on shipping geometries?**
+>
+> The sweep was only ever run on the abandoned 80 GB configuration. Repeating the identical
+> offset and chunk sweeps on a shipping 8 GB to 64 GB card would settle whether this is a
+> property of any unlocked geometry or an artefact of the over-fire. See
+> [80gb.md](../frontier/80gb.md).
 
 ---
 
@@ -247,12 +257,13 @@ depopulated, and restoring them means hand-soldering 24 0402 parts. See
 | Gen2 x4 (vendor claim) | distributed package README | "2 GB/s" | not independently logged, not achievable on shipping `master` | low |
 | Gen2 x16 | branch **and** full 24-capacitor mod | 6.63-6.67 GB/s (~83% of the 8 GB/s line rate); nvtop TX 7.061 GiB/s | `ocl_pcie_bw` | medium |
 
-!!! warning "Experimental: Gen2 x16 is one rig, one day"
-    Gen2 x16 has been observed **once**, on 2026-07-26, on a capacitor-modded card also running
-    the `Gen2` branch. There is no burn-in, no AER counters over time and no second rig, so
-    stability at Gen2 x16 is unestablished. Shipping `master` contains patches `0001`-`0006`
-    only, with no `pcie:` block in `constants.yaml`, so any Gen2 result is
-    experimental-branch-only.
+> [!NOTE]
+> **Gen2 x16 bandwidth figures**
+>
+> Two rigs have published captures: 6.63 to 6.67 GB/s on one card on 2026-07-26, and
+> 5.97 GB/s on each of four cards with zero AER errors over 90 minutes. Nobody has
+> published a long burn-in. Gen2 itself ships in `master`, so these figures are what a
+> capacitor-modded card with the unlocker installed should be expected to reach.
 
 Also relevant: **12 of 24 capacitors populated yields x8**, because width negotiation falls back
 to the next legal width (16, 8, 4, 1). An x8 result after a mod means incomplete or bridged
@@ -282,10 +293,12 @@ neither the tester nor anyone in the channel could explain why the link speed mo
 Both rows are the same tester; there is no independent Gen2 x4 inference measurement.
 Full tables and conditions on [llm-inference.md](llm-inference.md).
 
-!!! question "Open problem: nobody has measured Gen2 x16 on a multi-card LLM rig"
-    The Gen2 x16 bandwidth figure and the Gen1-to-Gen2 inference runs were
-    measured on different systems and never combined. The 2x2 matrix of {Gen1, Gen2} x {x4, x16}
-    on one rig with one model would settle both this and the width-versus-generation dispute.
+> [!NOTE]
+> **Open problem: nobody has measured Gen2 x16 on a multi-card LLM rig**
+>
+> The Gen2 x16 bandwidth figure and the Gen1-to-Gen2 inference runs were
+> measured on different systems and never combined. The 2x2 matrix of {Gen1, Gen2} x {x4, x16}
+> on one rig with one model would settle both this and the width-versus-generation dispute.
 
 ---
 
@@ -319,9 +332,11 @@ Reported clean runs: 30 minutes on a tuned single card; 2 hours on each of four 
 cards with no instability; a 5-minute pass on a 10 GB to 40 GB card. Ensure adequate cooling
 first.
 
-!!! danger "Never validate the 80 GB geometry as if it worked"
-    Firing a 10 GB card to 80 GB produces gpu-burn errors, independently reproduced. 10 GB cards
-    ship at 40 GB for this reason. See [80gb.md](../frontier/80gb.md).
+> [!CAUTION]
+> **Never validate the 80 GB geometry as if it worked**
+>
+> Firing a 10 GB card to 80 GB produces gpu-burn errors, independently reproduced. 10 GB cards
+> ship at 40 GB for this reason. See [80gb.md](../frontier/80gb.md).
 
 Memory overclocking was reported to buy about **+2.5%** (gpu_burn 12,180 Gflop/s average at
 default versus 12,472-12,485 Gflop/s sustained) at a cost of about 5 C (70 C ± 2 versus 75-77 C).
@@ -414,11 +429,6 @@ The community standard for a claimed unlock is a screenshot of
 | gpu-burn | stability and sustained flops | build with `make COMPUTE=80` |
 | `ocl_pcie_bw` | PCIe bandwidth | the tool behind the Gen2 x16 figure |
 
-!!! note "Superseded: mmapeak screenshots as proof of ownership"
-    One widely reposted mmapeak image was shown to be recycled: byte-identical figures with zero
-    run-to-run variance across an original, a blog repost and a forum comment, which does not
-    happen across real repeated runs. Ask for a fresh run with variance, not a screenshot.
-
 ---
 
 ## Non-LLM workload results
@@ -436,9 +446,11 @@ The community standard for a claimed unlock is a screenshot of
 Diffusion is the standout non-LLM fit: the workload is compute-bound and fits entirely in VRAM,
 so the Gen1 x4 link never bites.
 
-!!! question "Open problem: the mining unit is uninterpretable"
-    "140-170 th @ 200 W" is reported with no unit expansion and no second per-card source. The
-    network-level doubling is solid; the per-card figure is not usable as written.
+> [!NOTE]
+> **Open problem: the mining unit is uninterpretable**
+>
+> "140-170 th @ 200 W" is reported with no unit expansion and no second per-card source. The
+> network-level doubling is solid; the per-card figure is not usable as written.
 
 ---
 

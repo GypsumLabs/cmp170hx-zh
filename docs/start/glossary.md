@@ -17,22 +17,24 @@ The `docs` branch of `cmpunlocker` (`docs/docs/ARCHITECTURE.md`) contains five a
 expansions that appear nowhere in the shipping source, in any branch snapshot, or in any
 NVIDIA-published header. They are inventions. They have propagated into downstream guides.
 
-!!! warning "Wrong expansions in circulation"
-
-    | Term | Wrong expansion (and where) | Correct |
-    |---|---|---|
-    | PLM | "Program Logic Modules" (`ARCHITECTURE.md` line 38) | **Privilege Level Mask**, a per-register access-control mask |
-    | PMA | "Power Management Array" (line 30) | **Physical Memory Allocator**, an RM memory-manager object |
-    | SS0 / SS1 | "Suspension State" registers (line 29) | `FEATURE_OVERRIDE_SM_SPEED_SELECT` (`0x0082381c`) and `..._SM_SPEED_SELECT_1` (`0x00823820`) |
-    | LMR | "LM Request" / "LM (Local Memory) Request register" (line 28) | `NV_PFB_PRI_MMU_LOCAL_MEMORY_RANGE`, Local Memory **Range** |
-    | PMM | "the PMM (Permute Mask Model)" (line 41) | No such block exists in the code. The term is fabricated. |
-
-    Two related factual errors travel with them: the same file states that SS0 and SS1 are
-    both written to `0xffffffff` (the shipping patch writes `0x88888888` and `0x00000008`),
-    and that the unlock works by "injecting custom PLM sequences" (it opens four named
-    privilege-level-mask registers by re-running Booter Load with an oversized signature
-    buffer). See [Compute throttle](../unlock/compute-throttle.md) and
-    [Privilege level masks](../unlock/privilege-level-masks.md).
+> [!WARNING]
+> **Wrong expansions in circulation**
+>
+>
+> | Term | Wrong expansion (and where) | Correct |
+> |---|---|---|
+> | PLM | "Program Logic Modules" (`ARCHITECTURE.md` line 38) | **Privilege Level Mask**, a per-register access-control mask |
+> | PMA | "Power Management Array" (line 30) | **Physical Memory Allocator**, an RM memory-manager object |
+> | SS0 / SS1 | "Suspension State" registers (line 29) | `FEATURE_OVERRIDE_SM_SPEED_SELECT` (`0x0082381c`) and `..._SM_SPEED_SELECT_1` (`0x00823820`) |
+> | LMR | "LM Request" / "LM (Local Memory) Request register" (line 28) | `NV_PFB_PRI_MMU_LOCAL_MEMORY_RANGE`, Local Memory **Range** |
+> | PMM | "the PMM (Permute Mask Model)" (line 41) | No such block exists in the code. The term is fabricated. |
+>
+> Two related factual errors travel with them: the same file states that SS0 and SS1 are
+> both written to `0xffffffff` (the shipping patch writes `0x88888888` and `0x00000008`),
+> and that the unlock works by "injecting custom PLM sequences" (it opens four named
+> privilege-level-mask registers by re-running Booter Load with an oversized signature
+> buffer). See [Compute throttle](../unlock/compute-throttle.md) and
+> [Privilege level masks](../unlock/privilege-level-masks.md).
 
 Two further terminology traps, unrelated to that branch:
 
@@ -314,9 +316,8 @@ Two further terminology traps, unrelated to that branch:
 
 **IOMMU**
 :   The host input/output memory management unit. Passthrough mode (`iommu=pt`) is the
-    first thing to check when PCIe stays at Gen1 after installing a Gen2 branch; the
-    `Gen2`, `far` and `deced` branch installers set `intel_iommu=on iommu=pt` or the AMD
-    equivalent automatically.
+    first thing to check when PCIe stays at Gen1 after installing the unlocker; the installer
+    sets `intel_iommu=on iommu=pt` or the AMD equivalent automatically.
 
 ---
 
@@ -333,7 +334,7 @@ Two further terminology traps, unrelated to that branch:
 **LnkCap / LnkCap2 / LnkCtl2 / LnkSta**
 :   PCIe Express Capability registers for link capability, supported speeds, target speed
     and trained status. Stock 170HX: `LnkCap 0x00456101`, `LnkCap2 0x00000002`,
-    `LnkSta 0x1041`. After the Gen2 branch: `LnkCap 0x00456102`, `LnkCap2 0x00000006`,
+    `LnkSta 0x1041`. With the unlocker: `LnkCap 0x00456102`, `LnkCap2 0x00000006`,
     `LnkCtl2 0x0002`, `LnkSta 0x1042`. Advertised capability is not the trained link.
 
 **LTC**
@@ -354,7 +355,8 @@ Two further terminology traps, unrelated to that branch:
     unlocked 170HX by setting bit 0 of `0x820840`, after which `nvidia-smi` reports
     `MIG M. Enabled` with 65536 MiB visible.
 
-    !!! warning "Experimental"
+    > [!WARNING]
+    > **Experimental**
         The MIG enable is a community write and is **not** in the shipping unlocker.
 
 **MOK / Secure Boot**

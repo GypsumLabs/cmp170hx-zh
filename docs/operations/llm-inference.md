@@ -23,13 +23,15 @@ no PCIe code at all: `common/constants.yaml` on `master` has only `driver_versio
 `compute` and `profiles` keys, with no `pcie` section anywhere in the tree. Any benchmark
 described as running on the released unlock ran at the card's stock link.
 
-!!! warning "How to read the numbers on this page"
-    Almost every figure here comes from **one tester, one card, one session**. Very little has
-    been independently reproduced, and several rows that once read as separate confirmations
-    turned out to be two rows of one table, or a chat summary of a report attached ten minutes
-    earlier. Where a figure has more than one source, the text says so explicitly; where it says
-    nothing, assume a single report. Model, quantisation, context and conditions are stated per
-    figure for the same reason.
+> [!WARNING]
+> **How to read the numbers on this page**
+>
+> Almost every figure here comes from **one tester, one card, one session**. Very little has
+> been independently reproduced, and several rows that once read as separate confirmations
+> turned out to be two rows of one table, or a chat summary of a report attached ten minutes
+> earlier. Where a figure has more than one source, the text says so explicitly; where it says
+> nothing, assume a single report. Model, quantisation, context and conditions are stated per
+> figure for the same reason.
 
 ---
 
@@ -51,17 +53,6 @@ available. See [compute-throttle.md](../unlock/compute-throttle.md).
   model size not fully specified, so treat it as an order-of-magnitude check, not a target.
   The rigorous check is BF16 throughput against the 202 TFLOPS ceiling; see
   [verify.md](../procedures/verify.md).
-
-!!! note "Superseded: the DP4A / no-FMA patches"
-    Before the register unlock, the `no-fma` and `no-dp4a` / DP2A-substitution patches were the
-    way to get usable token generation out of a crippled card, roughly doubling decode
-    (Llama-2-7B-Q4_0: 61.7 to 143.6 tg with dp2a plus `--fmad=false`). After the compute unlock
-    they are unnecessary on the 170HX. They remain the correct path for **non-unlocked** CMP
-    cards and for the 90HX / 50HX. DP4A on CMP parts is throttled at roughly a **16x slower
-    dispatch rate** than an RTX 2080, and the substitution is four instructions: `prmt.b32` with
-    selector `0x9180`, `prmt.b32` with `0xB3A2`, then `dp2a.lo.s32.s32` and `dp2a.hi.s32.s32`
-    accumulating into the same register, in `ggml/src/ggml-cuda/common.cuh`, gated by
-    `-DDISABLE_DP4A`.
 
 ---
 
@@ -102,11 +93,13 @@ llama-bench --list-devices
 
 `-DCMAKE_CUDA_ARCHITECTURES=80` is the load-bearing flag: CUDA capability 8.0 is GA100.
 
-!!! danger "Prebuilt `libggml-cuda.so` needs CUDA 13, and fails silently without it"
-    The prebuilt binaries link `libcudart.so.13` and `libcublas.so.13`. On a host with only
-    CUDA 12.4 the weights **load CPU-only and then OOM** rather than erroring cleanly, which
-    makes it hard to diagnose. The working fix is to prepend PyTorch's bundled cu13 libraries to
-    `LD_LIBRARY_PATH`.
+> [!CAUTION]
+> **Prebuilt `libggml-cuda.so` needs CUDA 13, and fails silently without it**
+>
+> The prebuilt binaries link `libcudart.so.13` and `libcublas.so.13`. On a host with only
+> CUDA 12.4 the weights **load CPU-only and then OOM** rather than erroring cleanly, which
+> makes it hard to diagnose. The working fix is to prepend PyTorch's bundled cu13 libraries to
+> `LD_LIBRARY_PATH`.
 
 `llama.cpp` also gained backend-agnostic tensor parallelism via `--split-mode tensor`
 (upstream PR `ggml-org/llama.cpp#19378`), removing the even / power-of-two GPU-count
@@ -175,12 +168,14 @@ session, posted in full with error bars; nobody has re-run it.
 
 Power limit and MTP both move the number substantially. See [tuning.md](tuning.md).
 
-!!! question "Open problem: the 27B single-card decode figure is not reconciled"
-    Published and in-channel figures for "Qwen 27B-class, one unlocked 64 GB card, vLLM" span
-    **97 / 90 / 75 / 58.5 t/s**, plus 36.87 t/s for llama.cpp Q4_K_M. Quantisation, MTP state,
-    context length and vLLM version all differ between reports and were never held constant.
-    Running the published repo configuration verbatim on one card and posting the flags would
-    settle it.
+> [!NOTE]
+> **Open problem: the 27B single-card decode figure is not reconciled**
+>
+> Published and in-channel figures for "Qwen 27B-class, one unlocked 64 GB card, vLLM" span
+> **97 / 90 / 75 / 58.5 t/s**, plus 36.87 t/s for llama.cpp Q4_K_M. Quantisation, MTP state,
+> context length and vLLM version all differ between reports and were never held constant.
+> Running the published repo configuration verbatim on one card and posting the flags would
+> settle it.
 
 ---
 
@@ -215,8 +210,8 @@ It was never proven with a fix.
 ## Multi-card: the headline result and its recipe
 
 A 744B-parameter MoE (GLM-5.2, 40B active) at W4A16 symmetric quantisation on **8 unlocked 64 GB
-cards** under vLLM pipeline parallelism, driver 610.43.02, PCIe Gen1 x4 stock (no capacitor mod,
-no Gen2 branch), rented hardware.
+cards** under vLLM pipeline parallelism, driver 610.43.02, PCIe Gen1 x4 (no capacitor mod, and
+predating the Gen2 merge), rented hardware.
 
 | Metric | Value |
 |---|---|
@@ -251,17 +246,21 @@ quantisation: W4A16 symmetric
 GLM-5.2 uses DeepSeek sparse attention (DSA), which natively needs Hopper or Blackwell. Running
 it on Ampere requires the `TRITON_MLA_SPARSE` backend from vLLM PR #38476.
 
-!!! danger "Quantisation selection: most published guides are wrong for this path"
-    For GLM-5.2 on vLLM the MoE kernels **reject asymmetric quantisation**.
-    Working: `lowbitcoffee/GLM-5.2-W4A16` (symmetric, g128, 388 GB) and
-    `QuantTrio/GLM-5.2-Int4-Int8Mix`.
-    **Fails: `cyankiwi/GLM-5.2-AWQ-INT4`** (asymmetric, g32), which is the quant most guides
-    cite.
+> [!CAUTION]
+> **Quantisation selection: most published guides are wrong for this path**
+>
+> For GLM-5.2 on vLLM the MoE kernels **reject asymmetric quantisation**.
+> Working: `lowbitcoffee/GLM-5.2-W4A16` (symmetric, g128, 388 GB) and
+> `QuantTrio/GLM-5.2-Int4-Int8Mix`.
+> **Fails: `cyankiwi/GLM-5.2-AWQ-INT4`** (asymmetric, g32), which is the quant most guides
+> cite.
 
-!!! warning "Experimental: `VLLM_USE_PRECOMPILED` will not work here"
-    The normal way to apply a vLLM patch is an editable install with `VLLM_USE_PRECOMPILED`. It
-    ships no `vllm._C` and will fail. Use the 0.20.2 release wheel with the PR's python files
-    applied as a diff onto site-packages.
+> [!WARNING]
+> **Experimental: `VLLM_USE_PRECOMPILED` will not work here**
+>
+> The normal way to apply a vLLM patch is an editable install with `VLLM_USE_PRECOMPILED`. It
+> ships no `vllm._C` and will fail. Use the 0.20.2 release wheel with the PR's python files
+> applied as a diff onto site-packages.
 
 ### Other multi-card results
 
@@ -306,11 +305,6 @@ no PCIe or NVLink peer-to-peer, so every token is relayed through host memory se
 cross-NUMA pipeline hop at the layer 49 to 50 transition; and the link itself. Note the host is
 a virtualised or passthrough environment with masked GPU names, and its link reads **active
 Gen1 x4 but device-max Gen2 x16**, so this one sweep is not a clean stock-card measurement.
-
-!!! note "Superseded: 'roughly 2.4 tok/s aggregate across 16 agents'"
-    A chat report from the same day and channel stated 2.4 tok/s as an *aggregate* figure. The
-    accompanying benchmark report gives 38.9 tok/s aggregate and 2.4 tok/s per user
-    (38.9 / 16 = 2.43). The two sources agree; only the wording differed.
 
 ---
 
@@ -386,10 +380,10 @@ does not meaningfully improve token-generation speed; it buys capacity and prefi
 The measured PP2 gain over one card was 27.3 to 29.1 t/s decode, with prefill at 16k rising
 960 to 1,167 t/s.
 
-### The threshold for tensor parallelism, and why the Gen2 branch does not meet it
+### The threshold for tensor parallelism, and why Gen2 x4 does not meet it
 
 The stated threshold is **PCIe Gen2 x16 or Gen3 x4**: "Unless we can unlock at least PCIE 2 16x
-or PCIE 3 4x, Tensor Parallel is out of the question." The `Gen2` branch delivers **Gen2 x4**
+or PCIE 3 4x, Tensor Parallel is out of the question." The unlocker delivers **Gen2 x4**
 (roughly 2 GB/s), which is below that. Chat references to a "Gen 2 x4 lane unlock" are a
 misnomer: there is no lane, width or x16 handling anywhere in `Gen2/_DIFF_vs_master.patch`.
 Restoring x16 is a **physical** modification, 24 hand-soldered 0402 capacitors. See
@@ -430,21 +424,25 @@ bandwidth".
 Direction across both: prefill and latency improve, decode moves much less. That is the shape the
 pipeline-parallel model predicts, but neither run isolates link speed cleanly.
 
-!!! question "Open problem: nobody has re-run the parallelism A/B at Gen2 x4"
-    Every parallelism comparison in this domain ran at Gen1 x4. The two Gen2 x4 inference
-    datasets above come from one tester, and neither is a pipeline-versus-tensor comparison.
-    Others repeatedly noted "didn't try the pcie 2.0 yet". The cleanest single-variable
-    experiment available is the 4-card bifurcation rig above (fully documented configuration)
-    running the identical GLM-5.2 UD-IQ2_XXS workload with the `Gen2` branch installed.
+> [!NOTE]
+> **Open problem: nobody has re-run the parallelism A/B at Gen2 x4**
+>
+> Every parallelism comparison in this domain ran at Gen1 x4. The two Gen2 x4 inference
+> datasets above come from one tester, and neither is a pipeline-versus-tensor comparison.
+> Others repeatedly noted "didn't try the pcie 2.0 yet". The cleanest single-variable
+> experiment available is the 4-card bifurcation rig above (fully documented configuration)
+> running the identical GLM-5.2 UD-IQ2_XXS workload with the Gen2 code installed.
 
-!!! question "Open problem: does lane count matter once weights are resident?"
-    Asked directly and answered only with opinions ("any additional bandwidth is more than
-    welcome", "use MoE models", "PCI-e 3.0 x16 would be more than enough for multi-GPU"). It is
-    blocked on hardware: no x16 card was available to the people asking. The one long-context
-    prefill-versus-width number in the corpus, roughly 6,000 down to 3,000 t/s moving x16 to x8
-    at 64k context, was measured on a different, non-170HX card and does not transfer. The CMP
-    x4-versus-x16 llama.cpp comparison quoted earlier is short-context and single-card, so it
-    does not settle the long-context case either.
+> [!NOTE]
+> **Open problem: does lane count matter once weights are resident?**
+>
+> Asked directly and answered only with opinions ("any additional bandwidth is more than
+> welcome", "use MoE models", "PCI-e 3.0 x16 would be more than enough for multi-GPU"). It is
+> blocked on hardware: no x16 card was available to the people asking. The one long-context
+> prefill-versus-width number in the corpus, roughly 6,000 down to 3,000 t/s moving x16 to x8
+> at 64k context, was measured on a different, non-170HX card and does not transfer. The CMP
+> x4-versus-x16 llama.cpp comparison quoted earlier is short-context and single-card, so it
+> does not settle the long-context case either.
 
 ### Mitigations that are actually supported
 
@@ -471,15 +469,17 @@ pipeline-parallel model predicts, but neither run isolates link speed cleanly.
 | Loader pins RSS and thrashes disk until OOM | llama.cpp's load-time compute-graph pass thrashes system RAM | more host RAM (see below); `swapon` is blocked inside containers |
 | Model loading hangs after ~20 GB | the 80 GB geometry | revert to the shipping 40 GB profile |
 
-!!! danger "The 80 GB profile gives you less usable memory, not more"
-    Under the experimental `80` branch, model loading hung after roughly 20 GB and even models
-    that previously fit the 40 GB unlock stopped loading; a second tester saw failures in the
-    40-60 GB range. Reverting to the 40 GB geometry restored working loads. Note also that the
-    branch's `constants.yaml` advertises `lmr: 0x0000028B` but the build never reads that file:
-    `80/driver/build.sh` line 93 sets `LMR="0x0000028A"`, so every tester who ran that branch
-    actually programmed CFG1 `0x02779000` + LMR `0x0000028A` + `fb_length 0x0000001400000000`, a
-    three-way inconsistency that is itself the likely cause of the instability. See
-    [80gb.md](../frontier/80gb.md).
+> [!CAUTION]
+> **The 80 GB profile gives you less usable memory, not more**
+>
+> Under the experimental `80` branch, model loading hung after roughly 20 GB and even models
+> that previously fit the 40 GB unlock stopped loading; a second tester saw failures in the
+> 40-60 GB range. Reverting to the 40 GB geometry restored working loads. Note also that the
+> branch's `constants.yaml` advertises `lmr: 0x0000028B` but the build never reads that file:
+> `80/driver/build.sh` line 93 sets `LMR="0x0000028A"`, so every tester who ran that branch
+> actually programmed CFG1 `0x02779000` + LMR `0x0000028A` + `fb_length 0x0000001400000000`, a
+> three-way inconsistency that is itself the likely cause of the instability. See
+> [80gb.md](../frontier/80gb.md).
 
 ---
 
@@ -493,12 +493,14 @@ pipeline-parallel model predicts, but neither run isolates link speed cleanly.
 | Model load time? | ~30 s for a single card at Gen1; ~6 min for a 239 GB model across 8 cards; ~440-620 s for GLM-5.2 under vLLM. Over RPC, 20-60 min for a >=500B model at Q4-6, and 4-6 hours for a Kimi K3-class model across 170HX cards |
 | How many cards for Kimi K3? | ~1.4T weights in MXFP4 (e2m1) with MXFP8 activations is **4.25 bits per weight** (4 for the weight, 0.25 for an 8-bit scale per 32 weights), so about **744 GB of weights, twelve 64 GB cards' worth**. The in-channel estimates were off-the-cuff and higher: "so... 25 cards XD" for pipeline-parallel only and "more like 32 to account for inefficiencies, kv cache, and a reasonable parallelism setup". Nobody reconciled the arithmetic, and the tp8 half of that estimate does not hold at Gen1 x4. GA100 handles the group scales via the Marlin kernel |
 
-!!! note "VRAM alone is not the binding constraint on model choice in this range"
-    Going from 40 GB to 84 GB let one user run the same 27B model with only a longer context.
-    Two others corroborated: "even with an 8x64 and 512GB, LLMs like deepseek pro still cant
-    run", and "I think 27b unmatched up to like 200gb". This is a statement about the model
-    landscape at these sizes, not about the hardware. The counterpoint offered was bigger quants
-    and unquantised context.
+> [!NOTE]
+> **VRAM alone is not the binding constraint on model choice in this range**
+>
+> Going from 40 GB to 84 GB let one user run the same 27B model with only a longer context.
+> Two others corroborated: "even with an 8x64 and 512GB, LLMs like deepseek pro still cant
+> run", and "I think 27b unmatched up to like 200gb". This is a statement about the model
+> landscape at these sizes, not about the hardware. The counterpoint offered was bigger quants
+> and unquantised context.
 
 ---
 
@@ -510,12 +512,6 @@ pipeline-parallel model predicts, but neither run isolates link speed cleanly.
 | 170HX versus 3090 | roughly 3090-class for single-stream decode on **dense** models, with far more VRAM; **above** the 3090 on MoE prefill; **below** it on MoE decode, which is bandwidth-bound | the "3090-class" characterisation is disputed and both sides are probably right for different model classes |
 | Two 170HX versus one RTX 5090, image and video | "A little bit slower, but same power draw and would let you run concurrent tasks in 2 separate comfyui containers" | one tester on rented hardware, screenshots only, never reproduced: low confidence |
 | A100, GLM-5.2 | 55 tok/s | second-hand, no configuration, low confidence |
-
-!!! note "Superseded: '13 tok/s on 8x 170HX versus 55 tok/s on a single A100'"
-    Reported second-hand and explicitly labelled unoptimised. The estimate offered at the time
-    was that an optimised setup "should hit 30 tok/s lower bound". The measured PP8 vLLM decode
-    came in at **30.2 t/s** the next day. Cite 13 tok/s only as the llama.cpp / unoptimised
-    baseline.
 
 ---
 
@@ -540,10 +536,12 @@ endpoints** (GPUs 0-4, one model each: `Qwen/Qwen2.5-7B-Instruct-AWQ`,
 `Qwen/Qwen2.5-VL-32B-Instruct-AWQ`, `Qwen/Qwen2.5-Omni-7B-AWQ`) plus ComfyUI on GPU 5. That was
 explicitly a concurrency smoke test, not a benchmark.
 
-!!! question "Open problem: 3D Gaussian splat training"
-    Predicted poor rather than measured poor. Splats have few dense matrix multiplies and
-    generally do not use lower-precision formats, so they run on standard CUDA cores where the
-    card is ~12 TFLOPS FP32, roughly a 3060. Nobody has run an actual splat benchmark.
+> [!NOTE]
+> **Open problem: 3D Gaussian splat training**
+>
+> Predicted poor rather than measured poor. Splats have few dense matrix multiplies and
+> generally do not use lower-precision formats, so they run on standard CUDA cores where the
+> card is ~12 TFLOPS FP32, roughly a 3060. Nobody has run an actual splat benchmark.
 
 ---
 

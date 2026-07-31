@@ -70,7 +70,7 @@ Two rules that prevent most false alarms:
 | CFG1 write bounces back to `0x02449000` | [FLR between PLM open and write](#flr-between) |
 | Card "degraded" over days, `SEC2 MBOX0 = 0x0` | [Deleted firmware directory](#firmware-deleted) |
 | Build fails after a kernel swap | [Build failures](#build) |
-| PCIe still Gen1 after installing a Gen2 branch | [Gen2 stays at Gen1](#gen2-still-gen1) |
+| PCIe still Gen1 after installing the unlocker | [Gen2 stays at Gen1](#gen2-still-gen1) |
 | Black screen, text console, `cmpretrain.service` failed | [Black screens](#black-screen) |
 | Xid 31, `FAULT_INFO_TYPE_REGION_VIOLATION` | [Xid 31](#xid31) |
 | Xid 45 after killing a CUDA job | [Xid 45](#xid45) |
@@ -244,9 +244,11 @@ nvidia-smi --query-gpu=pcie.link.gen.current --format=csv
 cat /sys/bus/pci/devices/0000:$BDF/current_link_speed
 ```
 
-!!! question "Open problem"
-    Whether the DLLLA bit reading zero indicates a real, if benign, link-layer difference between
-    those hosts, rather than only a reporting artifact, was never investigated.
+> [!NOTE]
+> **Open problem**
+>
+> Whether the DLLLA bit reading zero indicates a real, if benign, link-layer difference between
+> those hosts, rather than only a reporting artifact, was never investigated.
 
 ### 2.8 "All PLMs must show `0xffffffff`" { #benign-wprcfg }
 
@@ -263,13 +265,6 @@ the shipping README) says every PLM should read `0xffffffff`. That is over-gener
 
 and the loop's success predicate is `if (regVal == plmTable[plmIdx].value)`. A healthy boot prints
 `SEC2_DEBUG: PLMs: FEAT=0xffffffff FBPA=0xffffffff WPR=0xffffffff WPR_CFG=0xfffff0ff`.
-
-!!! note "Superseded"
-    The same documentation branch also states `SEC2_DEBUG: SS0 = 0xffffffff` and
-    `SS1 = 0xffffffff`. That is wrong. The code writes `0x0082381c = 0x88888888` and
-    `0x00823820 = 0x00000008`, and `common/constants.yaml` agrees. Validating an unlock against
-    the documentation's dmesg strings will wrongly report failure. See
-    [Privilege level masks](../unlock/privilege-level-masks.md).
 
 ---
 
@@ -329,12 +324,14 @@ This is the earliest signal of a module-resolution problem. Module precedence is
 is why no `dpkg-divert` is needed). `build.sh` runs `depmod -a "${KVER}"` and then empirically
 verifies the result with `modprobe -n -v nvidia`.
 
-!!! danger "Multi-GPU hazard"
-    On multi-GPU systems a patched and a stock `nvidia.ko` can both end up under the single
-    `updates` depmod search entry, in which case **depmod picks one arbitrarily and silently drops
-    the other**. One tester root-caused a multi-GPU failure to exactly this, kept only the
-    cmpunlocker variant in the updates search path, rebooted, and then confirmed multi-GPU
-    operation working.
+> [!CAUTION]
+> **Multi-GPU hazard**
+>
+> On multi-GPU systems a patched and a stock `nvidia.ko` can both end up under the single
+> `updates` depmod search entry, in which case **depmod picks one arbitrarily and silently drops
+> the other**. One tester root-caused a multi-GPU failure to exactly this, kept only the
+> cmpunlocker variant in the updates search path, rebooted, and then confirmed multi-GPU
+> operation working.
 
 ### 3.4 The initramfs still carries stock modules { #initramfs }
 
@@ -389,11 +386,13 @@ wrong metadata but does **not** produce wrong geometry.
 **Fix, in order of safety:** reboot; or reload the kernel module; or install a matching
 `nvidia-smi` build. Disabling the version-mismatch check masks the problem rather than fixing it.
 
-!!! danger "A mismatched `nvidia-smi` silently invalidates every measurement"
-    NVML refuses to talk across versions, so unlock verification through a mismatched binary is
-    meaningless. One multi-day measurement series was invalidated this way (a 580.159.03 userspace
-    against a different kernel module build). If your userspace and module versions differ,
-    every `memory.total` reading you have taken is void.
+> [!CAUTION]
+> **A mismatched `nvidia-smi` silently invalidates every measurement**
+>
+> NVML refuses to talk across versions, so unlock verification through a mismatched binary is
+> meaningless. One multi-day measurement series was invalidated this way (a 580.159.03 userspace
+> against a different kernel module build). If your userspace and module versions differ,
+> every `memory.total` reading you have taken is void.
 
 ### 3.7 The unlock did not survive a shutdown { #not-persistent }
 
@@ -404,13 +403,6 @@ Shipping `remove.sh` now does both: it stops, disables and deletes
 `/etc/systemd/system/cmpunlocker.service`, kills `/opt/cmpunlocker/daemon/watchdog.py`, removes
 `/lib/modules/*/updates/cmpunlocker/`, runs `depmod -a` per kernel, rebuilds the initramfs, and
 reloads stock modules. See [Uninstall](uninstall.md) and [Recovery](recovery.md).
-
-!!! note "Superseded"
-    `remove.sh` also deletes leftovers from a superseded on-disk firmware-patching generation of
-    the tool: for every `/lib/firmware/nvidia/*/gsp_tu10x.bin` it removes `.cmpunlocker.bak`,
-    `.cmpunlocker.patched`, `.cmpunlocker.tmp`, `.cmpunlocker.cleanup` and `.cmpunlocker.pat`. If
-    you find those files, an old version patched the GSP blob on disk. That approach was replaced
-    by in-driver `pSignatureMemdesc` enlargement.
 
 No systemd daemon is needed on the shipping tool: patch 0006 sets `NV_FLAG_PERSISTENT_SW_STATE`
 for both device IDs, which is effectively built-in persistence mode.
@@ -471,12 +463,14 @@ Every unlock action **and every `SEC2_DEBUG` print** in patches 0001 and 0002 is
 `pGpu->idInfo.PCIDeviceID >> 16`. A `20b0` card therefore installs cleanly, boots the completely
 stock path, and should print **nothing** in `dmesg | grep SEC2_DEBUG`.
 
-!!! question "Open problem"
-    One tester with A100 Engineering Sample silicon (`20B0`, 8192 MB, 2048-bit, 4096 CUDA cores,
-    Samsung 8Hi HBM2) reported an `NVRM initialization error` *and* that `SEC2_DEBUG` confirmed the
-    registers were written. A stock build cannot print those lines on a `20B0` card. Either a
-    modified build with the ES ID added was running, or the lines came from a different card in
-    the same host. Not resolvable from the record.
+> [!NOTE]
+> **Open problem**
+>
+> One tester with A100 Engineering Sample silicon (`20B0`, 8192 MB, 2048-bit, 4096 CUDA cores,
+> Samsung 8Hi HBM2) reported an `NVRM initialization error` *and* that `SEC2_DEBUG` confirmed the
+> registers were written. A stock build cannot print those lines on a `20B0` card. Either a
+> modified build with the ES ID added was running, or the lines came from a different card in
+> the same host. Not resolvable from the record.
 
 ---
 
@@ -503,23 +497,9 @@ next modprobe the driver sees WPR2 already up and refuses.
 **Fix (cleanroom era).** Full driver teardown, then FLR via
 `echo 1 > /sys/bus/pci/devices/0000:BDF/reset`, or a cold power cycle.
 
-!!! note "Superseded"
-    On the shipping patch this is no longer fatal. Patch 0001 replaces the two `LEVEL_ERROR` lines
-    and `return NV_ERR_INVALID_STATE;` inside the existing
-    `kgspIsWpr2Up_HAL(...) && !PDB_PROP_GPU_PREINITIALIZED_WPR_REGION` guard with a single
-    `NV_PRINTF(LEVEL_WARNING, "WPR2 already up before GSP boot; continuing for recovery\n");`
-    and falls straight through to `kgspPopulateWprMeta_HAL`. A warm reload after a failed attempt
-    no longer hard-fails. This downgrade is *required*, because the unlock itself runs Booter Load
-    repeatedly and leaves WPR2 up.
-
 The shipping patch also saves WPR2 lo/hi from `0x001fa824` / `0x001fa828` once before the PLM loop,
 rewrites both registers before **every** Booter Load attempt, and rewrites them again after the
 loop. It never clears them.
-
-!!! note "Superseded"
-    The 2026-07-05 design tried to *clear* WPR2 between loads. That created a circular dependency:
-    WPR2 must be cleared for the second load, but clearing it re-raises the SEC2 reset PLM to
-    `0x8f`, which blocks the stock `kflcnReset` and yields `0x65`. Save-and-restore replaced it.
 
 ### 4.2 Xid 119, 60 second timeout, function 4097 { #xid119-60s }
 
@@ -566,11 +546,13 @@ driver-side `NV_ERR_TIMEOUT`.
 **Fix.** Full power cycle and retry. Removing old kernel modules alone was **not** sufficient for
 the tester who reported it.
 
-!!! danger "`0x65` is not `0x31`"
-    `0x65` is the driver-side `NV_ERR_TIMEOUT`; `0x31` is a mailbox value. They occur at different
-    stages. The decisive test: the WPR2 error comes from the register writes alone, while a
-    two-load process with no writes at all still hits `0x65`. An early claim that the two codes
-    were the same thing was contradicted within the hour by a controlled no-writes run.
+> [!CAUTION]
+> **`0x65` is not `0x31`**
+>
+> `0x65` is the driver-side `NV_ERR_TIMEOUT`; `0x31` is a mailbox value. They occur at different
+> stages. The decisive test: the WPR2 error comes from the register writes alone, while a
+> two-load process with no writes at all still hits `0x65`. An early claim that the two codes
+> were the same thing was contradicted within the hour by a controlled no-writes run.
 
 Why FLR sometimes cannot recover a `0x65` wedge is covered in [Recovery](recovery.md#flr-vs-sbr).
 
@@ -591,34 +573,38 @@ generated at runtime by the bootloader from constants in bootloader code and/or 
 descriptor, so reconstructing them was itself a substantial sub-problem. Immediately after applying
 the fix the researcher reported getting GSP-RM started.
 
-!!! note "Not reachable on the shipping path"
-    The shipping in-driver patch never hits `0x35`. `kgspSec2PostblTimingRebuildStockSignature()`
-    restores the real 4096-byte signature before the genuine GSP-RM boot, so that boot's DMA
-    reaches only DMEM `0x17FF` and the descriptor tables stay intact. The `0x1B83`/`0x8608`
-    restoration is absent from the shipping payload and is not needed there.
-    *(Confidence: medium; reasoned from the shipping code plus the 2026-07-20 root-cause analysis,
-    not independently instrumented.)*
+> [!NOTE]
+> **Not reachable on the shipping path**
+>
+> The shipping in-driver patch never hits `0x35`. `kgspSec2PostblTimingRebuildStockSignature()`
+> restores the real 4096-byte signature before the genuine GSP-RM boot, so that boot's DMA
+> reaches only DMEM `0x17FF` and the descriptor tables stay intact. The `0x1B83`/`0x8608`
+> restoration is absent from the shipping payload and is not needed there.
+> *(Confidence: medium; reasoned from the shipping code plus the 2026-07-20 root-cause analysis,
+> not independently instrumented.)*
 
 ### 4.6 Booter error `0x54` { #booter-0x54 }
 
-!!! question "Open problem"
-    **Symptom (PG199 / A100D, `10DE:20BB`, 32768 MiB stock):**
-
-    ```text
-    kgspBootstrap_TU102: kflcnResetIntoRiscv 0x0
-    s_executeBooterUcode_TU102: Booter failed 0x54
-    ```
-
-    State reached before the failure: `MMU_LMR 0x0000020a -> 0x0000020b`; `FBPA_CFG1` stock
-    `0x22779000`, with one variant clearing bit 29 to give `0x02779000` and another leaving
-    `0x22779000`; `SS0 0x53540175` and `SS1 0x00000000` deliberately unchanged; WPR2
-    `07f68000/07fefe00 -> 1ffffe00/0`; PLMs `ffffff8f/0004cb8f -> opened`. WPR2 is left in the
-    failed-init state because GSP never finishes initialising.
-
-    **Nobody could say what `0x54` means.** It has been observed only on A100D / PG199 hardware,
-    never on a 170HX. The register writes demonstrably land, so the question is narrow: find the
-    Booter status enum. Note that the branch named `PG199` contains no A100D support, so this work
-    lives outside the repository.
+> [!NOTE]
+> **Open problem**
+>
+> **Symptom (PG199 / A100D, `10DE:20BB`, 32768 MiB stock):**
+>
+> ```text
+> kgspBootstrap_TU102: kflcnResetIntoRiscv 0x0
+> s_executeBooterUcode_TU102: Booter failed 0x54
+> ```
+>
+> State reached before the failure: `MMU_LMR 0x0000020a -> 0x0000020b`; `FBPA_CFG1` stock
+> `0x22779000`, with one variant clearing bit 29 to give `0x02779000` and another leaving
+> `0x22779000`; `SS0 0x53540175` and `SS1 0x00000000` deliberately unchanged; WPR2
+> `07f68000/07fefe00 -> 1ffffe00/0`; PLMs `ffffff8f/0004cb8f -> opened`. WPR2 is left in the
+> failed-init state because GSP never finishes initialising.
+>
+> **Nobody could say what `0x54` means.** It has been observed only on A100D / PG199 hardware,
+> never on a 170HX. The register writes demonstrably land, so the question is narrow: find the
+> Booter status enum. Note that the branch named `PG199` contains no A100D support, so this work
+> lives outside the repository.
 
 ### 4.7 `RmInitAdapter failed! (0x62:0x40:2674)` { #rminit-2674 }
 
@@ -628,13 +614,6 @@ box reaches Xid 119.
 **Cause.** Not established. It is a real, reproducible signature. Observed on an OEM BTC B250
 mining board, kernel 6.8.0-134-generic, driver 580.159.03, Intel SPT PCH root ports with the ACS
 workaround enabled.
-
-!!! note "Superseded"
-    One attempt to attribute this to a six-register devinit-strap diff (`0xbadf1201 -> 0x00000005`,
-    `0xbadf1201 -> 0x60000600`, `0xbadf1201 -> 0x3ffffffc`, `0x0003f6ef -> 0x00000000`,
-    `0x00000f0e -> 0x00000712`, `0x00000052 -> 0x00000048`) was **retracted** hours later: the
-    capture script was itself bringing the driver up, and the differences vanished once that was
-    removed. The `0x62:0x40:2674` failure is still real; only the register attribution was wrong.
 
 ### 4.8 `RmInitAdapter failed! (0x62:0xffff:2119)`, dirty SEC2 exit { #rminit-2119 }
 
@@ -683,23 +662,20 @@ they remain documented and untried.
 A driverless exploit run produces the same `0x72` mapping: it leaves the GPU's BAR2/L2/MMU
 (POST/DEVINIT) state ACR-configured, so CPU-RM's memory self-test fails.
 
-!!! note "Superseded"
-    The original reading of `0x24:0x72` as a "cryptographic dead end" was explicitly reversed the
-    same day: `0x72` decodes to `kbusVerifyBar2`, not SCP crypto, proven by the code path and by
-    the error appearing even post-FLR.
-
 ### 4.10 RM init stalls with `rpc_result = 0xFFFF` { #rpc-ffff }
 
-!!! warning "Experimental"
-    Historical, cleanroom-era, single-load rejoin path. A partially successful rejoin can reach
-    GSP-RM init and still stall with `RPC_HDR->rpc_result = 0xFFFF` (`NV_ERR_GENERIC`) and a NULL
-    `GSP-LOG[RM]` buffer, meaning RM init fails very early. In that state the Booter had completed
-    (WPR2 set up, `BOOTVEC = 0xfd00`, `finalize_1180f8` observed `0x17100000` against a known-good
-    `0x11000000`), the driver re-asserted GSP boot-args because MBOX0 was clobbered to `0x31`,
-    restored `WprMeta.sizeOfSignature = 0x1000`, and bypassed `kflcnIsRiscvActive` because the
-    HS-locked register gives a false negative. Documented as "the current wall" on 2026-07-07; the
-    RM-side root cause was never identified, and the whole approach was superseded by the
-    in-driver patch. *(Confidence: medium.)*
+> [!WARNING]
+> **Experimental**
+>
+> Historical, cleanroom-era, single-load rejoin path. A partially successful rejoin can reach
+> GSP-RM init and still stall with `RPC_HDR->rpc_result = 0xFFFF` (`NV_ERR_GENERIC`) and a NULL
+> `GSP-LOG[RM]` buffer, meaning RM init fails very early. In that state the Booter had completed
+> (WPR2 set up, `BOOTVEC = 0xfd00`, `finalize_1180f8` observed `0x17100000` against a known-good
+> `0x11000000`), the driver re-asserted GSP boot-args because MBOX0 was clobbered to `0x31`,
+> restored `WprMeta.sizeOfSignature = 0x1000`, and bypassed `kflcnIsRiscvActive` because the
+> HS-locked register gives a false negative. Documented as "the current wall" on 2026-07-07; the
+> RM-side root cause was never identified, and the whole approach was superseded by the
+> in-driver patch. *(Confidence: medium.)*
 
 A related state: a failed GSP handoff presenting as Xid 119 / `GSP_INIT_DONE` timeout with
 mailbox0 = `0x31`, `finalize_1180f8 = 0x11000000` and `BOOTVEC = 0xfd00`. There the Booter
@@ -807,16 +783,18 @@ unbacked region after a geometry change; that is not settled.
 
 **Mailbox addresses.** SEC2 MAILBOX0 is BAR0 `0x00840040`; the GSP mailbox is `0x00110040`.
 
-!!! question "Open problem"
-    **What mailbox `0x31` means was never settled.** Three incompatible readings exist:
-    (a) "initial value / no writes yet", **explicitly withdrawn**, because `0x31` turned out to be
-    a written value (the driver's boot-args physical address, clobbered) and because a healthy GSP
-    boot resets `0x110040` to 0; (b) "the ACR mutex is held", the reading that stuck early;
-    (c) "the SEC2 Booter's own success signature", with the driver's `0x65` then being only a 60 s
-    completion-wait timeout caused by SEC2 sitting in the `0x8f` torn-down state. A fourth usage
-    reads `GSP_FALCON_MAILBOX0 = 0x31` as "GSP-RM alive" in the good-landing state.
-    **Treat `0x31` as an observation, not a diagnosis.** What would settle it: the SEC2 Booter's
-    own status enum, or a controlled experiment producing `0x31` with the ACR mutex provably free.
+> [!NOTE]
+> **Open problem**
+>
+> **What mailbox `0x31` means was never settled.** Three incompatible readings exist:
+> (a) "initial value / no writes yet", **explicitly withdrawn**, because `0x31` turned out to be
+> a written value (the driver's boot-args physical address, clobbered) and because a healthy GSP
+> boot resets `0x110040` to 0; (b) "the ACR mutex is held", the reading that stuck early;
+> (c) "the SEC2 Booter's own success signature", with the driver's `0x65` then being only a 60 s
+> completion-wait timeout caused by SEC2 sitting in the `0x8f` torn-down state. A fourth usage
+> reads `GSP_FALCON_MAILBOX0 = 0x31` as "GSP-RM alive" in the good-landing state.
+> **Treat `0x31` as an observation, not a diagnosis.** What would settle it: the SEC2 Booter's
+> own status enum, or a controlled experiment producing `0x31` with the ACR mutex provably free.
 
 ### 5.2 `RmInitAdapter` triplets { #codes-rminit }
 
@@ -889,11 +867,13 @@ IMEM: the FLR removed it.
 
 ### 6.1 Bus mastering cleared by `rmmod nvidia` { #bus-master }
 
-!!! danger "The single most operationally important gotcha in the corpus"
-    **`rmmod nvidia` clears PCI `COMMAND.BusMaster`.** The SEC2 Booter fetches the ROP payload from
-    system memory by DMA, so with bus mastering off it fetches nothing, runs with an empty payload,
-    executes no ROP and faults out. **Nothing in the log mentions DMA.** Every write simply
-    bounces, and the only visible artifact is `resetPLM` going `0xff -> 0x8f`.
+> [!CAUTION]
+> **The single most operationally important gotcha in the corpus**
+>
+> **`rmmod nvidia` clears PCI `COMMAND.BusMaster`.** The SEC2 Booter fetches the ROP payload from
+> system memory by DMA, so with bus mastering off it fetches nothing, runs with an empty payload,
+> executes no ROP and faults out. **Nothing in the log mentions DMA.** Every write simply
+> bounces, and the only visible artifact is `resetPLM` going `0xff -> 0x8f`.
 
 **Diagnostic:**
 
@@ -911,12 +891,6 @@ sudo setpci -s <bdf> COMMAND=0x0546
 
 An `ensure_bus_master()` call was added to `prepare()` in the refire tool so it self-heals. After
 the fix, `resetPLM` stayed `0xff` on every single fire.
-
-!!! note "Superseded"
-    On the morning of 2026-07-25 the `resetPLM 0xff -> 0x8f` regression was blamed on a wrong
-    `f100` restore value: the bits `[6:4]` transition `0x7 -> 0x0` looks exactly like a bad
-    `secure_teardown` restore. It was disproved the same day: the payload, including the `0x7` at
-    DMEM `0x1900`, never reached the Falcon at all.
 
 This gotcha applies to the standalone / driverless tooling. The shipping in-driver patch runs
 inside a live driver, where bus mastering is on by definition.
@@ -1119,12 +1093,14 @@ not a hard law: at least two other testers installed on top successfully. Remova
 
 ## 8. PCIe Gen2 problems { #gen2 }
 
-!!! warning "Experimental"
-    **No PCIe Gen2 patch ships on `master`.** Patches `0007-pcie-gen2.patch` and
-    `0008-pcie-gen2-probe-retrain.patch`, plus `tools/retrain.sh`, exist only on branches `Gen2`,
-    `far`, `debug-gen2` (0007 and `tools/retrain.sh` only) and `deced`. `verify.sh` is a separate
-    tool and ships on `Gen2`, `far`, `deced` and `multiple-cards`, see [11.2](#verify-sh).
-    Everything in this section applies to experimental branches.
+> [!WARNING]
+> **Experimental**
+>
+> **No PCIe Gen2 patch ships on `master`.** Patches `0007-pcie-gen2.patch` and
+> `0008-pcie-gen2-probe-retrain.patch`, plus `tools/retrain.sh`, exist only on branches `Gen2`,
+> `far`, `debug-gen2` (0007 and `tools/retrain.sh` only) and `deced`. `verify.sh` is a separate
+> tool and ships on `Gen2`, `far`, `deced` and `multiple-cards`, see [11.2](#verify-sh).
+> Everything in this section applies to experimental branches.
 
 Remember that **speed and width are separate achievements**. Gen1 to Gen2 is a driver and firmware
 unlock. Going beyond x4 width requires physically soldering 24 0402 X7R capacitors onto lanes 4 to
@@ -1143,11 +1119,6 @@ Branch `deced` (commit message: "Stupid mistake - it appears to be hardcoded") r
 up to 120 s for `resource0` and `nvidia-smi -L`, and derives the upstream bridge with
 `readlink -f`. **Branches `Gen2` and `far` still contain the hardcode.**
 
-!!! note "Superseded"
-    Gen2 failures were blamed on kernel version, then on IOMMU / motherboard / distribution, before
-    being root-caused to the hardcoded BDF. The "only kernel 5.15 unlocks Gen2" rumour was refuted
-    on 2026-07-26 by successes on 5.15, 6.12, 6.18.38 (NixOS) and 7.1.3.
-
 ### 8.2 PCIe still at Gen1 after install { #gen2-still-gen1 }
 
 **First check: IOMMU passthrough.** The `Gen2`, `far` and `deced` installers all append
@@ -1157,8 +1128,9 @@ up to 120 s for `resource0` and `nvidia-smi -L`, and derives the upstream bridge
 `--no-iommu` opts out. Master touches none of this, so uninstall with the same branch you installed
 from. IOMMU must also be enabled in BIOS/UEFI (VT-d / AMD-Vi / SVM).
 
-**Second check: are you on the right branch?** Users repeatedly failed because they were on
-`master` rather than a Gen2 branch.
+**Second check: is your checkout current?** Before 2026-07-29 the Gen2 patches were branch-only,
+and users repeatedly failed because they were on `master`. Gen2 is in `master` now, so a checkout
+predating that merge is the thing to rule out.
 
 **Third: the retrain may have bailed out.** The standalone `retrain.sh` bails early with a printed
 reason in four cases:
@@ -1188,14 +1160,16 @@ plus the false negative described in [2.7](#benign-retrain-false-negative).
 
 ### 8.3 Root port will not change speed { #gen2-root-port }
 
-!!! warning "Experimental"
-    Documented but not independently confirmed. If `sudo dmesg | grep "SEC2_DEBUG.*Root port"`
-    says "upstream port not valid", the chipset driver did not enumerate the upstream port;
-    the suggested workaround is `setpci -s <root_port> <offset>.w=0002` followed by a link
-    retrain. If "Root port LnkCtl2" shows the write but speed stays 1, the root port may not
-    support directed speed change; the suggested fix is a root-port-initiated retrain via
-    `setpci -s <root_port> <link_ctrl>.w` with bit 5 set. **No measurement of either workaround
-    succeeding appears anywhere in the corpus.**
+> [!WARNING]
+> **Experimental**
+>
+> Documented but not independently confirmed. If `sudo dmesg | grep "SEC2_DEBUG.*Root port"`
+> says "upstream port not valid", the chipset driver did not enumerate the upstream port;
+> the suggested workaround is `setpci -s <root_port> <offset>.w=0002` followed by a link
+> retrain. If "Root port LnkCtl2" shows the write but speed stays 1, the root port may not
+> support directed speed change; the suggested fix is a root-port-initiated retrain via
+> `setpci -s <root_port> <link_ctrl>.w` with bit 5 set. **No measurement of either workaround
+> succeeding appears anywhere in the corpus.**
 
 ### 8.4 Gen2 in a virtual machine { #gen2-vm }
 
@@ -1204,50 +1178,40 @@ cards and all unlocked). **The PCIe Gen2 link-speed change does not work in a VM
 2026-07-24, acknowledged by the maintainer. Whether the retrain sequence needs config-space or
 link-layer access that the hypervisor intercepts is not established.
 
-!!! question "Open problem"
-    One host (ASUS X99-A, LGA2011) reported Gen2 x1 in one slot only and Gen1 x4 in the others,
-    after trying IOMMU/virtualization settings and all four slots. It was reported on 2026-07-27,
-    the same day the hardcoded-BDF discovery landed. Slot dependence is exactly what a hardcoded
-    BDF produces, so this is likely already fixed on branch `deced`, but it was never confirmed.
+> [!NOTE]
+> **Open problem**
+>
+> One host (ASUS X99-A, LGA2011) reported Gen2 x1 in one slot only and Gen1 x4 in the others,
+> after trying IOMMU/virtualization settings and all four slots. It was reported on 2026-07-27,
+> the same day the hardcoded-BDF discovery landed. Slot dependence is exactly what a hardcoded
+> BDF produces, so this is likely already fixed on branch `deced`, but it was never confirmed.
 
 ### 8.5 The `RMPcieLinkSpeed` split { #gen2-linkspeed }
 
-!!! question "Open problem"
-    Two branch families ship different registry values and each author believed theirs was right:
-    `debug-gen2` and `Gen2` write
-    `NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"`, while `far` and `deced` write
-    `…=0x2` (introduced by a commit titled "Remove clamp link to Gen1"). The `Gen2` branch, whose
-    README claims Gen2 works, ships `0x1`. **No A/B boot test exists.** Neither value should be
-    presented as canonical. One three-way boot comparison on one card would settle it.
+> [!NOTE]
+> **Open problem**
+>
+> Two branch families ship different registry values and each author believed theirs was right:
+> `debug-gen2` and `Gen2` write
+> `NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"`, while `far` and `deced` write
+> `…=0x2` (introduced by a commit titled "Remove clamp link to Gen1"). The `Gen2` branch, whose
+> README claims Gen2 works, ships `0x1`. **No A/B boot test exists.** Neither value should be
+> presented as canonical. One three-way boot comparison on one card would settle it.
 
 ---
 
 ## 9. Black screens { #black-screen }
 
-### 9.1 Black screen with `cmpretrain.service` failing { #black-screen-cmpretrain }
+### 9.1 Black screen when running the unlock script { #black-screen-script }
 
-!!! note "Superseded"
-    **Symptom.** Black screen with only a text console, and
-    `Failed to start cmpretrain.service. HX PCIe Gen2 upstream soft retrain.` at boot.
+> [!NOTE]
+> **Open problem**
+>
+> A tester reported a black screen when running the unlock script on 2026-07-20. Their own
+> unverified hypothesis was a wrong-driver installation, and they declined to debug further.
+> Both testers in that thread were on hosts limited to PCIe Gen3. Nothing was established.
 
-    **Cause.** The standalone `cmpretrain.service` systemd unit (`Type=oneshot`,
-    `ExecStartPre=/bin/sleep 15`) firing against a wedged PCIe slot.
-
-    **Fix.** Blacklist the nvidia module from the GRUB command line, boot in, then either disable
-    the retrain service or reinstall.
-
-    **Status.** Superseded: `deced`'s `install.sh` actively removes the legacy units
-    (`cmpretrain.service`, `cmp-gen2-retrain.service`, `/usr/local/sbin/retrain.sh`,
-    `/usr/local/sbin/cmp-gen2-retrain.sh`) and does the retrain from inside the driver instead.
-
-### 9.2 Black screen when running the unlock script { #black-screen-script }
-
-!!! question "Open problem"
-    A tester reported a black screen when running the unlock script on 2026-07-20. Their own
-    unverified hypothesis was a wrong-driver installation, and they declined to debug further.
-    Both testers in that thread were on hosts limited to PCIe Gen3. Nothing was established.
-
-### 9.3 Headless boot in general { #headless }
+### 9.2 Headless boot in general { #headless }
 
 The CMP 170HX has no video output, so some boards will not POST with it as the only card (an
 ASRock X370-I was reported to refuse). Plan for a third display-capable card, or confirm the board
@@ -1273,13 +1237,15 @@ ENGINE CE2      HUBCLIENT_HSCE2 faulted @ 0xf_f7400000 ... ACCESS_TYPE_PHYS_WRIT
 **Fix.** Offload one fewer LLM layer to that GPU. Recovery requires a full reboot. *(The suggested
 fix was not confirmed applied.)*
 
-!!! note "Xid 31 is not, on its own, the 80 GB signature"
-    At 80 GB, kernels touching more than roughly 40 GB cause fatal GPU loss, independent of power
-    limit. Reported Xid codes include Xid 31 (described as harmless) and Xid 154 after CUDA memory
-    tests; the dominant reported symptom is hangs. Xid 31 alone was suggested by a bystander and
-    was not corroborated as *the* signature by the operator with the failing card. The rest of the
-    adjudicated 80 GB picture: reports ~81920 MiB / 85,545,582,592 bytes, and `cudaMalloc` of
-    77 GiB succeeds. See [80 GB](../frontier/80gb.md).
+> [!NOTE]
+> **Xid 31 is not, on its own, the 80 GB signature**
+>
+> At 80 GB, kernels touching more than roughly 40 GB cause fatal GPU loss, independent of power
+> limit. Reported Xid codes include Xid 31 (described as harmless) and Xid 154 after CUDA memory
+> tests; the dominant reported symptom is hangs. Xid 31 alone was suggested by a bystander and
+> was not corroborated as *the* signature by the operator with the failing card. The rest of the
+> adjudicated 80 GB picture: reports ~81920 MiB / 85,545,582,592 bytes, and `cudaMalloc` of
+> 77 GiB succeeds. See [80 GB](../frontier/80gb.md).
 
 ### 10.2 Xid 45 after killing a CUDA job { #xid45 }
 
@@ -1298,14 +1264,16 @@ reload the driver. Both agreed the memory is physically reachable by CUDA: the o
 retention and stability, not addressability. Independently reproduced by two testers on different
 hardware.
 
-!!! question "Open problem"
-    The 4 GB/channel decode re-enable and the CUDA `719` → Xid 45 → Xid 154 chain are two outcomes
-    of the same atomic fault and could not be separated. An atomic to a page above 40 GB (held on
-    the host by UVM, since the device only decodes 40 GB) faults; CPU-RM migrates the page up and
-    re-enables 4 GB/channel, but the same fault poisons the CUDA context, surfacing as
-    `719 unspecified launch failure`, then Xid 45, then Xid 154. Attempts at a clean handoff (flip
-    the decode with a small managed "keeper", free it, then allocate non-managed 77 GiB) kept
-    erroring. A related knob noted but untested: `PDB_PROP_GPU_RECOVERY_SQUASH_XID154`.
+> [!NOTE]
+> **Open problem**
+>
+> The 4 GB/channel decode re-enable and the CUDA `719` → Xid 45 → Xid 154 chain are two outcomes
+> of the same atomic fault and could not be separated. An atomic to a page above 40 GB (held on
+> the host by UVM, since the device only decodes 40 GB) faults; CPU-RM migrates the page up and
+> re-enables 4 GB/channel, but the same fault poisons the CUDA context, surfacing as
+> `719 unspecified launch failure`, then Xid 45, then Xid 154. Attempts at a clean handoff (flip
+> the decode with a small managed "keeper", free it, then allocate non-managed 77 GiB) kept
+> erroring. A related knob noted but untested: `PDB_PROP_GPU_RECOVERY_SQUASH_XID154`.
 
 ### 10.4 vLLM crashes at high memory utilization { #vllm }
 
@@ -1353,33 +1321,39 @@ Errors appear in the first couple of minutes. The 12153 Gflop/s figure shows the
 active. **The stable 10 GB → 40 GB configuration passes a 5-minute gpu-burn cleanly**, and the
 8 GB → 64 GB configuration is stable and in production.
 
-!!! question "Open problem"
-    Whether those 85 °C gpu-burn errors were thermal or a memory overclock was never settled. One
-    position: "too hot, dial it back". The other: "85 °C is within spec", with core and memory
-    temperatures within a few degrees of each other; a third observer called it an HBM hardware
-    error. Others reported zero errors on two cards staying below 73 °C. The branch author's actual
-    resolution was to lower the memory multiplier, not to demand better cooling. The failing card
-    was a Samsung-memory part. What would settle it: the same card at the same multiplier with
-    forced cooling holding below 70 °C. See [Thermals](../hardware/thermals.md).
+> [!NOTE]
+> **Open problem**
+>
+> Whether those 85 °C gpu-burn errors were thermal or a memory overclock was never settled. One
+> position: "too hot, dial it back". The other: "85 °C is within spec", with core and memory
+> temperatures within a few degrees of each other; a third observer called it an HBM hardware
+> error. Others reported zero errors on two cards staying below 73 °C. The branch author's actual
+> resolution was to lower the memory multiplier, not to demand better cooling. The failing card
+> was a Samsung-memory part. What would settle it: the same card at the same multiplier with
+> forced cooling holding below 70 °C. See [Thermals](../hardware/thermals.md).
 
-!!! warning "Experimental"
-    A related claim, advanced with low confidence and hedged by its own author, is that "normal
-    stress tests don't load an unlocked card because the fuses rely on the math being thrown at
-    them." Never tested against a known-good workload. It matters because it determines whether
-    gpu-burn is an adequate stability test. Context: one tester could not push a card above 68 W
-    with a standard stress test before patching.
+> [!WARNING]
+> **Experimental**
+>
+> A related claim, advanced with low confidence and hedged by its own author, is that "normal
+> stress tests don't load an unlocked card because the fuses rely on the math being thrown at
+> them." Never tested against a known-good workload. It matters because it determines whether
+> gpu-burn is an adequate stability test. Context: one tester could not push a card above 68 W
+> with a standard stress test before patching.
 
 ### 10.8 `nvidia-smi --gpu-reset` refuses { #gpu-reset-busy }
 
-!!! question "Open problem"
-    `nvidia-smi --gpu-reset` fails with "GPU is being used by another process" when no process
-    holds it. **Unresolved.** Next step: enumerate holders with `fuser -v /dev/nvidia*` and
-    `lsof /dev/nvidia*`, and check for a leaked `nvidia-persistenced` or a zombie CUDA process of
-    the kind that produces `cuInit=999`.
-
-    Related recovery friction reported in the same window: after a cold boot the card sometimes
-    needed its PCIe power cable physically unplugged and re-seated, and a CUDA alias test leaks its
-    allocation, so an SBR-recover plus driver reload is required between runs.
+> [!NOTE]
+> **Open problem**
+>
+> `nvidia-smi --gpu-reset` fails with "GPU is being used by another process" when no process
+> holds it. **Unresolved.** Next step: enumerate holders with `fuser -v /dev/nvidia*` and
+> `lsof /dev/nvidia*`, and check for a leaked `nvidia-persistenced` or a zombie CUDA process of
+> the kind that produces `cuInit=999`.
+>
+> Related recovery friction reported in the same window: after a cold boot the card sometimes
+> needed its PCIe power cable physically unplugged and re-seated, and a CUDA alias test leaks its
+> allocation, so an SBR-recover plus driver reload is required between runs.
 
 ### 10.9 Unlock works but CUDA does not { #cuda-clean-host }
 
@@ -1424,27 +1398,31 @@ multi-GPU failure with the same outward appearance.
 
 ### 11.2 Reading `verify.sh` output { #verify-sh }
 
-!!! warning "Experimental"
-    `verify.sh` exists only on branches `deced`, `multiple-cards`, `Gen2` and `far`. Three
-    diagnostic strings are worth recognising:
-
-    * `<bdf>: not found in nvidia-smi` with status `MISSING`
-    * `No SEC2_DEBUG lines in dmesg (logs may have rotated; unlock can still be OK if memory is unlocked)`
-    * the fatal `<N> GPU(s) failed unlock verification. Cold reboot if modules were just installed.`
-
-    It maps device IDs to profiles (`20c2 -> 8gb -> 65536 MiB`, `2082 -> 10gb -> 40960 MiB`) and
-    reads an inventory from `/lib/modules/$(uname -r)/updates/cmpunlocker/gpu_inventory`.
+> [!WARNING]
+> **Experimental**
+>
+> `verify.sh` exists only on branches `deced`, `multiple-cards`, `Gen2` and `far`. Three
+> diagnostic strings are worth recognising:
+>
+> * `<bdf>: not found in nvidia-smi` with status `MISSING`
+> * `No SEC2_DEBUG lines in dmesg (logs may have rotated; unlock can still be OK if memory is unlocked)`
+> * the fatal `<N> GPU(s) failed unlock verification. Cold reboot if modules were just installed.`
+>
+> It maps device IDs to profiles (`20c2 -> 8gb -> 65536 MiB`, `2082 -> 10gb -> 40960 MiB`) and
+> reads an inventory from `/lib/modules/$(uname -r)/updates/cmpunlocker/gpu_inventory`.
 
 ### 11.3 The HiveOS ten-card case { #hiveos }
 
-!!! question "Open problem"
-    HiveOS beta 24.04 with ten CMP 170HX and nvidia 610.43.03: `install.sh` finishes cleanly but
-    the patched module is not loaded after a cold reboot. Nothing beyond re-running the install was
-    tried, and no fix was posted. Most promising next step: run the three-step triage
-    ([3.5](#triage-three-step)), specifically comparing `/sys/module/nvidia/srcversion` with the
-    cmpunlocker `.ko`, and check whether HiveOS's own driver package reinstalls over the patched
-    module, or whether the initramfs / DKMS ordering puts stock first. Both candidates are named
-    but unconfirmed.
+> [!NOTE]
+> **Open problem**
+>
+> HiveOS beta 24.04 with ten CMP 170HX and nvidia 610.43.03: `install.sh` finishes cleanly but
+> the patched module is not loaded after a cold reboot. Nothing beyond re-running the install was
+> tried, and no fix was posted. Most promising next step: run the three-step triage
+> ([3.5](#triage-three-step)), specifically comparing `/sys/module/nvidia/srcversion` with the
+> cmpunlocker `.ko`, and check whether HiveOS's own driver package reinstalls over the patched
+> module, or whether the initramfs / DKMS ordering puts stock first. Both candidates are named
+> but unconfirmed.
 
 See [Multi-GPU](multi-gpu.md).
 
@@ -1508,22 +1486,16 @@ returned, switching resumed, NVVDD 1.0 V and PEXVDD returned, and the GA100 was 
 PCIe. `PS_5V_PGOOD` feeds the SN74LV1T08 AND gates that sequence PEXVDD, NVVDD, 1V35 and 1V8, and
 enables the LDO producing 3V3_SEQ.
 
-!!! danger "Bench-test a freshly soldered GS7155NVTD before trusting it"
-    Swap the 7.68 kilohm feedback resistor for 20 kilohm to reprogram the output from 3.3 V to
-    1.8 V, inject 3.3 V on the 5 V rail, confirm a regulated 1.8 V, then restore the 7.68 kilohm
-    part. The hazard defended against is an **open feedback pin** (a likely cold-joint failure on
-    QFN), which makes the LDO see permanent undervoltage and drive its output to maximum, putting
-    the full 5 V onto the 3.3 V rail and destroying almost all 3.3 V logic. Rework datum for this
-    8 to 12 layer board: hot air at 420 °C for 2 minutes before any chip can be removed. The
-    GS7155NVTD is a GSTEK QFN part whose full datasheet is under NDA.
-
-!!! note "Superseded"
-    R1200 was proposed as an isolation point for the 3.3 V LDO enable: removing the 0402 0-ohm
-    jumper appeared to clear the short. Disproved by microscope inspection. A copper trace bridges
-    the pads directly, so the resistor is electrically irrelevant; the designers evidently deleted
-    the jumper but kept the part placed to avoid reprogramming the pick-and-place and AOI machines.
-    The apparent isolation was caused by accidentally damaging a via or trace during rework. A
-    genuine trap for anyone repairing these boards.
+> [!CAUTION]
+> **Bench-test a freshly soldered GS7155NVTD before trusting it**
+>
+> Swap the 7.68 kilohm feedback resistor for 20 kilohm to reprogram the output from 3.3 V to
+> 1.8 V, inject 3.3 V on the 5 V rail, confirm a regulated 1.8 V, then restore the 7.68 kilohm
+> part. The hazard defended against is an **open feedback pin** (a likely cold-joint failure on
+> QFN), which makes the LDO see permanent undervoltage and drive its output to maximum, putting
+> the full 5 V onto the 3.3 V rail and destroying almost all 3.3 V logic. Rework datum for this
+> 8 to 12 layer board: hot air at 420 °C for 2 minutes before any chip can be removed. The
+> GS7155NVTD is a GSTEK QFN part whose full datasheet is under NDA.
 
 ### 12.4 Card condition on arrival { #dirty-cards }
 
@@ -1534,12 +1506,14 @@ unlocked to 64 GB cleanly on the first try. *(Confidence: high for the condition
 multiple independent unboxings; medium for the "not a predictor" conclusion, which rests on one
 sample. No batch-level unlock yield was ever published.)*
 
-!!! warning "Experimental"
-    An unchallenged but undata-backed position holds that chronically under-cooled HBM "should be
-    dead by now unless it's had a very low operating time", and that HBM degrades fast once past
-    the safe temperature. Many cards may be near-zero-hours because the CMP 170HX launched in
-    September and the market was unprofitable by November. No failure-rate or temperature data
-    supports or refutes this.
+> [!WARNING]
+> **Experimental**
+>
+> An unchallenged but undata-backed position holds that chronically under-cooled HBM "should be
+> dead by now unless it's had a very low operating time", and that HBM degrades fast once past
+> the safe temperature. Many cards may be near-zero-hours because the CMP 170HX launched in
+> September and the market was unprofitable by November. No failure-rate or temperature data
+> supports or refutes this.
 
 "Defective batch" language from sellers during the late-July 2026 price spike is **not** evidence
 of a real hardware defect population: it was used as a cancellation excuse against listings that
@@ -1582,37 +1556,39 @@ a first reply (opened 06:21, replied 16:59).
 
 ## 14. Symptoms with no known fix { #unsolved }
 
-!!! question "Open problem"
-    These are recorded so they are not rediscovered as new. None has a published resolution.
-
-    * **`NVRM initialization error` after cold reboot** on Ubuntu 24.04, kernel 6.8.0-111-generic,
-      driver 610.43.03. Cold reboots (which had previously cleared a srcversion mismatch for the
-      same tester) did not help. `SEC2_DEBUG` lines were present and registers were being written,
-      which points at a post-register-write initialization failure rather than a failed unlock
-      chain, but nobody pursued it. Next step: capture the full dmesg **after** the `SEC2_DEBUG`
-      block, including the `normal BooterLoad status` line and any `RmInitAdapter` triplet, to
-      place the failure in the sequence.
-    * **Kernel panic plus reboot on the first `insmod` of a normal driver immediately after running
-      the exploit.** Asked once on 2026-07-01, never answered. Next step: capture the panic (serial
-      console or `pstore`); the fault path in the comparable QEMU capture ran through
-      `nvidia_drm`/`nvidia_modeset`, so unloading those before the fire is a cheap first test.
-    * **Does the absence of an iGPU or BMC display device upset the GSP?** One observation, no
-      confirmation, no contradiction, no error string. An A/B on one machine with the BMC display
-      device disabled in BIOS would answer it.
-    * **80 GB instability: `cuda_memtest` passes over all 80 GB once immediately after a reboot and
-      fails on every subsequent retry.** Power limiting to 100 W and the power-delivery hypothesis
-      have both been eliminated. The reboot dependence points at memory training or refresh state.
-      This is the most concrete remaining lead on the 80 GB profile. See
-      [80 GB](../frontier/80gb.md).
-    * **The Ubuntu-versus-Arch memory unlock failure.** One reading: a memory-address conflict
-      between two PCIe devices, where a non-170HX, non-2080 device (presumably an M.2 SSD) tried to
-      read at an address the IOMMU rejected. The affected tester's own reading: the Ubuntu install
-      was simply misconfigured. Only the workaround (a different OS install on a different M.2 SSD)
-      is verified. Recommended first diagnostic at the time: `lspci -s 06:00.0`.
-    * **The expected number of PLMs.** Standalone tooling reports "9/9 open" and a reviewer expected
-      "0 or 26, not 1". The shipping in-driver path opens exactly 4. These are different PLM
-      inventories, but nothing in the record maps the 9-entry or 26-entry lists onto the shipping
-      4-entry `plmTable`.
+> [!NOTE]
+> **Open problem**
+>
+> These are recorded so they are not rediscovered as new. None has a published resolution.
+>
+> * **`NVRM initialization error` after cold reboot** on Ubuntu 24.04, kernel 6.8.0-111-generic,
+>   driver 610.43.03. Cold reboots (which had previously cleared a srcversion mismatch for the
+>   same tester) did not help. `SEC2_DEBUG` lines were present and registers were being written,
+>   which points at a post-register-write initialization failure rather than a failed unlock
+>   chain, but nobody pursued it. Next step: capture the full dmesg **after** the `SEC2_DEBUG`
+>   block, including the `normal BooterLoad status` line and any `RmInitAdapter` triplet, to
+>   place the failure in the sequence.
+> * **Kernel panic plus reboot on the first `insmod` of a normal driver immediately after running
+>   the exploit.** Asked once on 2026-07-01, never answered. Next step: capture the panic (serial
+>   console or `pstore`); the fault path in the comparable QEMU capture ran through
+>   `nvidia_drm`/`nvidia_modeset`, so unloading those before the fire is a cheap first test.
+> * **Does the absence of an iGPU or BMC display device upset the GSP?** One observation, no
+>   confirmation, no contradiction, no error string. An A/B on one machine with the BMC display
+>   device disabled in BIOS would answer it.
+> * **80 GB instability: `cuda_memtest` passes over all 80 GB once immediately after a reboot and
+>   fails on every subsequent retry.** Power limiting to 100 W and the power-delivery hypothesis
+>   have both been eliminated. The reboot dependence points at memory training or refresh state.
+>   This is the most concrete remaining lead on the 80 GB profile. See
+>   [80 GB](../frontier/80gb.md).
+> * **The Ubuntu-versus-Arch memory unlock failure.** One reading: a memory-address conflict
+>   between two PCIe devices, where a non-170HX, non-2080 device (presumably an M.2 SSD) tried to
+>   read at an address the IOMMU rejected. The affected tester's own reading: the Ubuntu install
+>   was simply misconfigured. Only the workaround (a different OS install on a different M.2 SSD)
+>   is verified. Recommended first diagnostic at the time: `lspci -s 06:00.0`.
+> * **The expected number of PLMs.** Standalone tooling reports "9/9 open" and a reviewer expected
+>   "0 or 26, not 1". The shipping in-driver path opens exactly 4. These are different PLM
+>   inventories, but nothing in the record maps the 9-entry or 26-entry lists onto the shipping
+>   4-entry `plmTable`.
 
 For the full list of unresolved items across the whole project, see
 [Open questions](../frontier/open-questions.md) and the [status board](../frontier/status-board.md).

@@ -10,24 +10,26 @@ cold boot, check `nvidia-smi`. On an 8 GB card you end at **65536 MiB**; on a 10
 **40960 MiB**. Full SM compute throughput is unlocked at the same time. The change is
 register-only: no flash is written, and `sudo ./remove.sh --yes` puts the card back to stock.
 
-!!! warning "What quick start does NOT get you"
-    - **No PCIe Gen2.** Shipping `master` contains patches `0001` through `0006` only. The Gen2
-      patches (`0007-pcie-gen2.patch`, `0008-pcie-gen2-probe-retrain.patch`) live on unreleased
-      branches. You will stay at Gen1, 2.5 GT/s. See [PCIe Gen2](../unlock/pcie-gen2.md).
-    - **No x16 link width.** The card ships with the AC-coupling capacitors for lanes 4-15
-      depopulated, so it trains at x4. Restoring x16 needs 24 hand-soldered 0402 220 nF X7R
-      capacitors. That is a physically separate achievement from link speed and it never changes
-      the PCIe generation. See [physical mods](../operations/physical-mods.md).
-    - **No 80 GB on a 10 GB card.** That configuration was built, tested and abandoned as
-      unstable. See [the 80 GB tier](../frontier/80gb.md).
-    - **No ECC, no NVLink, no peer-to-peer.** ECC and NVLink are OTP-fuse disabled with no known
-      lever. Peer-to-peer is absent as well, but whether that is a fuse or a driver gate has never
-      been determined. See [peer-to-peer](../frontier/p2p.md).
-    - **Linux only.** The unlock rides the Linux GSP boot path. Windows has a completely different
-      driver model.
-
-    Expect roughly **0.85 GB/s** of host-to-device bandwidth at Gen1 x4 (measured, clpeak). That is
-    the main practical cost of skipping the two hardware/branch projects above.
+> [!WARNING]
+> **What quick start does NOT get you**
+>
+> - **No PCIe Gen2.** Shipping `master` contains patches `0001` through `0006` only. The Gen2
+>   patches (`0007-pcie-gen2.patch`, `0008-pcie-gen2-probe-retrain.patch`) live on unreleased
+>   branches. You will stay at Gen1, 2.5 GT/s. See [PCIe Gen2](../unlock/pcie-gen2.md).
+> - **No x16 link width.** The card ships with the AC-coupling capacitors for lanes 4-15
+>   depopulated, so it trains at x4. Restoring x16 needs 24 hand-soldered 0402 220 nF X7R
+>   capacitors. That is a physically separate achievement from link speed and it never changes
+>   the PCIe generation. See [physical mods](../operations/physical-mods.md).
+> - **No 80 GB on a 10 GB card.** That configuration was built, tested and abandoned as
+>   unstable. See [the 80 GB tier](../frontier/80gb.md).
+> - **No ECC, no NVLink, no peer-to-peer.** ECC and NVLink are OTP-fuse disabled with no known
+>   lever. Peer-to-peer is absent as well, but whether that is a fuse or a driver gate has never
+>   been determined. See [peer-to-peer](../frontier/p2p.md).
+> - **Linux only.** The unlock rides the Linux GSP boot path. Windows has a completely different
+>   driver model.
+>
+> Expect roughly **0.85 GB/s** of host-to-device bandwidth at Gen1 x4 (measured, clpeak). That is
+> the main practical cost of skipping the two hardware/branch projects above.
 
 ---
 
@@ -47,12 +49,14 @@ register-only: no flash is written, and `sudo ./remove.sh --yes` puts the card b
 | Cooling: forced air | passive heatsink, no fan on the card | See [cooling](../operations/cooling.md) |
 | A display-capable GPU, or a board that POSTs headless | the 170HX has no video output | At least one board was reported refusing to POST with only a 170HX fitted |
 
-!!! note "The card works without any unlock"
-    A stock 170HX drives fine on ordinary distro drivers (`nvidia-driver-570` plus CUDA 12.8 on
-    Ubuntu 24.04 was confirmed). `nvidia-smi` names it `NVIDIA Graphics Device`, compute capability
-    8.0, because the driver PCI ID table has no marketing name for `0x20C2`. Use that as a
-    pre-flight sanity check before you touch anything. Being driveable and being unlocked are
-    separate matters.
+> [!NOTE]
+> **The card works without any unlock**
+>
+> A stock 170HX drives fine on ordinary distro drivers (`nvidia-driver-570` plus CUDA 12.8 on
+> Ubuntu 24.04 was confirmed). `nvidia-smi` names it `NVIDIA Graphics Device`, compute capability
+> 8.0, because the driver PCI ID table has no marketing name for `0x20C2`. Use that as a
+> pre-flight sanity check before you touch anything. Being driveable and being unlocked are
+> separate matters.
 
 ---
 
@@ -89,9 +93,11 @@ nvidia-smi
 
 `610.43.03` is the default build target (first line of `driver/VERSION`).
 
-!!! question "Open problem"
-    Whether `610.43.02` or `610.43.03` is more reliable was asked repeatedly and never answered.
-    Successful unlocks exist on both. `610.43.03` is merely first in the list.
+> [!NOTE]
+> **Open problem**
+>
+> Whether `610.43.02` or `610.43.03` is more reliable was asked repeatedly and never answered.
+> Successful unlocks exist on both. `610.43.03` is merely first in the list.
 
 Consider pinning the driver package at 610 so a distribution upgrade cannot silently move you off a
 supported version. See [driver versions](../procedures/driver-versions.md).
@@ -188,16 +194,18 @@ Expected readbacks:
 | `POST-WRITE CFG1` | `0x009a0204` | `0x02779000` (8 GB) / `0x02669000` (10 GB) |
 | `POST-WRITE LMR` | `0x00100ce0` | `0x0000020B` (8 GB) / `0x0000028A` (10 GB) |
 
-!!! note "Ignore three scary-looking lines"
-    - `status=0xffff` on every PLM line is **normal**. The payload Booter run is supposed to be
-      rejected; success is judged by the register readback, never by the status. `0x31` from
-      `s_executeBooterUcode_TU102` is the same story.
-    - `SEC2_DEBUG: /lib/firmware/nvidia/ga100/gsp/dmem.bin not found (0x59), using built-in payload`
-      is the normal path. That file is a development override hook.
-    - Third-party docs claiming "all PLMs must show `0xffffffff`" are wrong. `WPR_CFG` is
-      `0xfffff0ff` by design.
-
-    The one line that **must** read zero is `SEC2_DEBUG: normal BooterLoad status=0x0`.
+> [!NOTE]
+> **Ignore three scary-looking lines**
+>
+> - `status=0xffff` on every PLM line is **normal**. The payload Booter run is supposed to be
+>   rejected; success is judged by the register readback, never by the status. `0x31` from
+>   `s_executeBooterUcode_TU102` is the same story.
+> - `SEC2_DEBUG: /lib/firmware/nvidia/ga100/gsp/dmem.bin not found (0x59), using built-in payload`
+>   is the normal path. That file is a development override hook.
+> - Third-party docs claiming "all PLMs must show `0xffffffff`" are wrong. `WPR_CFG` is
+>   `0xfffff0ff` by design.
+>
+> The one line that **must** read zero is `SEC2_DEBUG: normal BooterLoad status=0x0`.
 
 Compute unlock is confirmed by throughput, not by a clock field. Sustained SM clock on an unlocked
 card is 1410 MHz (1470 MHz at `nvidia-smi -pl 300`). `nvidia-smi --query-gpu=clocks.max.sm` reports

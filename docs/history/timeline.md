@@ -40,12 +40,6 @@ different dates. See [the PCIe subsystem](../hardware/pcie-subsystem.md) and
 | **2023-10-27** | **The FMA-disable discovery.** Posted to the FluidX3D issue tracker, issue #8 (comments 1779728815, 1782734954, 1782763214) and implemented immediately: compiling with FMA contraction off recovers roughly 16x FP32, reaching about 6.25 TFLOPS |
 | **2023-12-06** | The FMA result is brought to the NVIDIA-patcher issue tracker, issue #73, two months later. That issue is what ultimately led to the register-level crack |
 
-!!! note "Superseded"
-    The 2023 review's conclusion that the Tensor Cores were not working was drawn from `gpu_burn -d
-    -tc` returning 6236 GFLOP/s, identical to the plain non-FMA FP32 rate. The cores were present and
-    functional but throttled; `CUBLAS_TENSOR_OP_MATH` was routing around the FP32 FMA lockdown rather
-    than engaging tensor hardware. Unlock-era measurements put FP16/BF16 tensor at 150 to 195 TFLOPS.
-
 ---
 
 ## Origins of the modern effort: 2026-03 to 2026-06-21
@@ -100,10 +94,12 @@ This is the fortnight in which the Falcon secure co-processor stopped being a bl
 | **2026-07-10T13:40:14Z** | **The Register Gadget Atlas**, auto-generated from the disassembly, tabulating each gadget's register effect, canary condition and `mpopaddret` epilogue |
 | **2026-07-11** | An LMR encoding attempt of `0x40A` on a 10 GB card fails. Separately, the claim that the CMP 100 series is Pascal is walked back to Volta by its own author |
 
-!!! question "Open problem"
-    A clean-room message dated **2026-07-05** treats PCIe Gen2 as already unlocked, three weeks
-    before the reproduced result. Either an earlier independent result that never propagated, or a
-    mis-attributed timestamp. Only the original message metadata can settle it.
+> [!NOTE]
+> **Open problem**
+>
+> A clean-room message dated **2026-07-05** treats PCIe Gen2 as already unlocked, three weeks
+> before the reproduced result. Either an earlier independent result that never propagated, or a
+> mis-attributed timestamp. Only the original message metadata can settle it.
 
 ---
 
@@ -151,15 +147,17 @@ the person who did the work later put it: "I just couldn't have known that in ad
 | **2026-07-16** | **No PLM confers always-on status on FB geometry.** With all six FB-geometry PLMs plus `FUSE_SS_PLM` open, CFG1, CSTATUS and LMR still revert on FLR and are never cold-boot persistent (`geo_flr_survival_map_20260716.sh`). This is the structural reason the shipping design re-applies geometry inside the GSP boot path on every module load. A catalog of **26 distinct PLM registers** is completed the same day |
 | **2026-07-17** | **NVIDIA issues a DMCA takedown against at least one fork**, taking that repository offline. Host PL0 writes to CFG1 are reproduced as silently dropped until the FB-geometry PLMs are opened (`Write failed - wrote 0x2779000, read 0x2449000`, three times, no error signalled). The most-circulated architecture notes are published with a self-rating of about 10 percent proven |
 
-!!! warning "Which repository was first is unresolved"
-    Three independent first-hand retellings on 2026-07-22 place the clean-room compute unlocker's
-    release at "about 10 days ago", pointing to roughly 2026-07-12, and a 2026-07-13 statement says a
-    compute unlock "was released and it's basically available to the public at this point in time".
-    But the repository whose source is archived has its initial commit on 2026-07-14, and a
-    **differently-owned** repository of the same name was being shared and bricking testers on
-    2026-07-15. The most likely reconciliation is at least two same-named repositories under
-    different accounts, with "about 10 days ago" a rounded recollection. The archived tree cannot be
-    assumed to be the earliest clean-room release.
+> [!WARNING]
+> **Which repository was first is unresolved**
+>
+> Three independent first-hand retellings on 2026-07-22 place the clean-room compute unlocker's
+> release at "about 10 days ago", pointing to roughly 2026-07-12, and a 2026-07-13 statement says a
+> compute unlock "was released and it's basically available to the public at this point in time".
+> But the repository whose source is archived has its initial commit on 2026-07-14, and a
+> **differently-owned** repository of the same name was being shared and bricking testers on
+> 2026-07-15. The most likely reconciliation is at least two same-named repositories under
+> different accounts, with "about 10 days ago" a rounded recollection. The archived tree cannot be
+> assumed to be the earliest clean-room release.
 
 ---
 
@@ -206,11 +204,13 @@ Full detail: [memory geometry](../unlock/memory-geometry.md) and
 | **2026-07-23** | **The driverless Python unlocker returns.** A standalone memory unlocker script, run **before** driver load, needing no FLR, is documented: run the original compute-only unlock (which does perform an FLR), then run the memory script, then load a clean unmodified driver. Its authors state plainly that it is machine-generated and not fully understood: "It is so cryptic, it is almost like a black box." The `debug-gen2` branch tip is `746d9f7 "PCIe Gen 2 works!"`. `master` reaches its archived tip `cc872cb`, whose last two commits add `pull_request_template.md` and move it under `.github/`. The `docs/CONTRIBUTING.md` guide and the hard-gated template wording ("I WILL REJECT ANY PR THAT DOES NOT FOLLOW THIS TEMPLATE!") land four days later, on the `docs` branch on 2026-07-27 |
 | **2026-07-24** | **PCIe Gen2 is announced.** `refire_chain_v6.py` (27,769 B) is released with mode flags `--compute`, `--memory 40|80`, `--pcie-gen2`, `--pcie-retrain`, `--all`. `pcielink.sh` becomes the standard PCIe field-report collector. `check_fold.py`, the authoritative test for whether unlocked VRAM is real, is published. The unlock is restated as non-persistent software state, not a firmware modification: it must be re-applied on every GSP boot. The maintainer declines to support other Ampere CMP cards as a scoping decision |
 
-!!! warning "Experimental"
-    Gen2 is real, reproduced, and **not shipped**. `master` carries patches `0001` to `0006` only and
-    has no `pcie:` block in `constants.yaml`. `0007-pcie-gen2.patch` exists on `debug-gen2`, `Gen2`,
-    `far` and `deced`; `0008-pcie-gen2-probe-retrain.patch` on `Gen2`, `far` and `deced`. Installing
-    Gen2 means running an unreleased branch. See [PCIe Gen2](../unlock/pcie-gen2.md).
+> [!WARNING]
+> **Experimental**
+>
+> Gen2 is real, reproduced, and **not shipped**. `master` carries patches `0001` to `0006` only and
+> has no `pcie:` block in `constants.yaml`. `0007-pcie-gen2.patch` exists on `debug-gen2`, `Gen2`,
+> `far` and `deced`; `0008-pcie-gen2-probe-retrain.patch` on `Gen2`, `far` and `deced`. Installing
+> Gen2 means running an unreleased branch. See [PCIe Gen2](../unlock/pcie-gen2.md).
 
 ---
 
@@ -241,14 +241,16 @@ Full detail: [memory geometry](../unlock/memory-geometry.md) and
 | PCIe x16 (width, by soldering) | Hardware mod, any date | Permanent, physical | Not software |
 | Gen2 x16 combined | 2026-07-26, one observation | Unestablished | No |
 
-!!! danger "The 80 GB tier is not a milestone"
-    The `80` branch reports roughly 81920 MiB and 85,545,582,592 bytes, and `cudaMalloc` of 77 GiB
-    succeeds, but at 80 GB kernels touching more than roughly 40 GB cause fatal GPU loss,
-    independent of power limit. Reported Xid codes include Xid 31 (described as harmless) and
-    Xid 154 after CUDA memory tests; the dominant reported symptom is hangs. Xid 31 alone was
-    suggested by a bystander and was not corroborated as *the* signature by the operator with the
-    failing card. `cuda_memtest` hangs unless capped at 39 GB. 40 GB ships instead. See
-    [the 80 GB question](../frontier/80gb.md).
+> [!CAUTION]
+> **The 80 GB tier is not a milestone**
+>
+> The `80` branch reports roughly 81920 MiB and 85,545,582,592 bytes, and `cudaMalloc` of 77 GiB
+> succeeds, but at 80 GB kernels touching more than roughly 40 GB cause fatal GPU loss,
+> independent of power limit. Reported Xid codes include Xid 31 (described as harmless) and
+> Xid 154 after CUDA memory tests; the dominant reported symptom is hangs. Xid 31 alone was
+> suggested by a bystander and was not corroborated as *the* signature by the operator with the
+> failing card. `cuda_memtest` hangs unless capped at 39 GB. 40 GB ships instead. See
+> [the 80 GB question](../frontier/80gb.md).
 
 ---
 

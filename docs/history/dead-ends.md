@@ -76,14 +76,6 @@ on that card reads 0. The shipping tree contains **zero** references to `0x50420
 
 **Abandoned** 2026-05-31, re-confirmed dead 2026-07-27.
 
-!!! note "Superseded"
-    The real throttle control is the `FEATURE_OVERRIDE` block. See
-    [compute throttle](../unlock/compute-throttle.md). Note that the same discussion thread that
-    recorded `SM_ISSUE_RATE_MODIFIER` as dead also produced the correct prediction: on 2026-05-14 a
-    researcher argued that *zeroing* was the wrong operation and that the modifier table "should be
-    something like `0x88888888` ... for maximum performance". Two months later the shipping patch
-    writes exactly `0x88888888` to `0x0082381c`.
-
 ### The `RMOverrideSmSpeedSelect` registry key
 
 **Hypothesis.** A genuine NVIDIA registry key inside the GSP firmware sets the SM speed select
@@ -168,14 +160,6 @@ design exists to solve.
 **Abandoned** 2026-06-30. Superseded by opening the mask from inside the SEC2 Booter window and
 writing the registers in the same driver load. See
 [how the unlock works](../unlock/how-it-works.md).
-
-!!! note "Superseded"
-    A 2026-05-31 fuse-reference table concluded in bold that the host-level register-write approach
-    was **CONFIRMED DEAD** for compute unlock. That conclusion was correct for what it tested, which
-    was a bare `devmem`-style write from the CPU at privilege level 0 against a level-3-only mask.
-    It was overturned six to eight weeks later not by finding a host write path but by using the
-    SEC2 Booter to change the mask first. The shipping code's writes are literally `GPU_REG_WR32`
-    host writes; they succeed only because `0x00823804` has already been opened.
 
 ### Opening `FUSE_SS_PLM` at `0x008200FC`
 
@@ -263,11 +247,13 @@ anyone tuning a card. See [tuning](../operations/tuning.md).
 | Efficiency can be interpolated between measured clock and offset pairs | Response is non-monotonic once the clock stretcher engages. 1590/+400 hangs while 1650/+400 runs, and the arbiter silently fails to reach requested clocks at low offsets (1650/+250 gives 1067 GFLOPS/W against 1149 GFLOPS/W at +350). Every pair must be measured |
 | Two clean sweeps qualify an overclock profile | The `eff` profile shipped at +400/1350 on two clean sweeps; a later sweep returned `mem_errors=1`. Backed down to +250/1350 for the same roughly 132 W with about 150 MHz more margin, which then passed a four-sweep gate |
 
-!!! warning "Experimental"
-    `nvidia-smi` reports `clocks.max.sm = 1935 MHz` on an unlocked card. This is a **reported field,
-    not an achievable clock**, and it rests on a single unre-checked report. The VBIOS table maximum
-    graphics clock is 1695 MHz and the practical silicon ceiling is about 1604 to 1614 MHz at +350
-    offset. Sustained SM clock is **1410 MHz**, or 1470 MHz at `-pl 300`. Do not plan around 1935 MHz.
+> [!WARNING]
+> **Experimental**
+>
+> `nvidia-smi` reports `clocks.max.sm = 1935 MHz` on an unlocked card. This is a **reported field,
+> not an achievable clock**, and it rests on a single unre-checked report. The VBIOS table maximum
+> graphics clock is 1695 MHz and the practical silicon ceiling is about 1604 to 1614 MHz at +350
+> offset. Sustained SM clock is **1410 MHz**, or 1470 MHz at `-pl 300`. Do not plan around 1935 MHz.
 
 ---
 
@@ -330,21 +316,23 @@ while the same card ran cleanly at 40 GB.
 **Abandoned** 2026-07-19 to 2026-07-20. Master ships 40 GB for the 10 GB card:
 CFG1 `0x02669000`, LMR `0x0000028A`, `fb_bytes 0x0000000A00000000`.
 
-!!! danger "The `80` branch is internally incoherent as built"
-    The branch's `common/constants.yaml` says `lmr: "0x0000028B"`, and `0x28B` is arithmetically the
-    correct LMR for 81920 MiB. But `build.sh` never reads `constants.yaml`. On that branch,
-    `driver/build.sh` line 93 sets `LMR="0x0000028A"`, `install.sh` line 138 prints
-    `Unlock geometry: 80GB (CFG1=0x02779000 LMR=0x0000028A)`, and
-    `driver/patches/0001-sec2-postbl-plm-ss-cfg.patch` line 144 bakes `lmrValue = 0x0000028AU`. The
-    build-time Python rewrite is short-circuited because the dual-device guard finds all seven
-    markers it looks for and exits early. **Commit `3c53aca` "Correct LMR for 80GB" changed only
-    inert metadata.** Every tester who ran the `80` branch programmed CFG1 `0x02779000` (4096 MiB
-    per FBPA, 81920 MiB of FBPA geometry) alongside an LMR declaring 40960 MiB to the MMU and a
-    `targetFbBytes` of 80 GiB to GSP: a three-way disagreement that exactly predicts the reported
-    behaviour, namely that `nvidia-smi` reports 80 GB, the hardware decodes 40 GiB, and the alias
-    test folds at precisely 40 GiB. No *build* of the branch has ever carried a coherent `0x28B`
-    triple. The coherent register set was reached separately, by a clean-room refire script, and
-    the fold did not appear there: see [The 80 GB problem](../frontier/80gb.md).
+> [!CAUTION]
+> **The `80` branch is internally incoherent as built**
+>
+> The branch's `common/constants.yaml` says `lmr: "0x0000028B"`, and `0x28B` is arithmetically the
+> correct LMR for 81920 MiB. But `build.sh` never reads `constants.yaml`. On that branch,
+> `driver/build.sh` line 93 sets `LMR="0x0000028A"`, `install.sh` line 138 prints
+> `Unlock geometry: 80GB (CFG1=0x02779000 LMR=0x0000028A)`, and
+> `driver/patches/0001-sec2-postbl-plm-ss-cfg.patch` line 144 bakes `lmrValue = 0x0000028AU`. The
+> build-time Python rewrite is short-circuited because the dual-device guard finds all seven
+> markers it looks for and exits early. **Commit `3c53aca` "Correct LMR for 80GB" changed only
+> inert metadata.** Every tester who ran the `80` branch programmed CFG1 `0x02779000` (4096 MiB
+> per FBPA, 81920 MiB of FBPA geometry) alongside an LMR declaring 40960 MiB to the MMU and a
+> `targetFbBytes` of 80 GiB to GSP: a three-way disagreement that exactly predicts the reported
+> behaviour, namely that `nvidia-smi` reports 80 GB, the hardware decodes 40 GiB, and the alias
+> test folds at precisely 40 GiB. No *build* of the branch has ever carried a coherent `0x28B`
+> triple. The coherent register set was reached separately, by a clean-room refire script, and
+> the fold did not appear there: see [The 80 GB problem](../frontier/80gb.md).
 
 Two further corrections to the record around this branch:
 
@@ -888,13 +876,15 @@ all.
 
 ## PCIe: speed, width, Gen3 and Gen4
 
-!!! danger "Keep speed and width separate"
-    PCIe link **speed** (Gen1 to Gen2) is a software and firmware unlock, shipped only on unreleased
-    branches. PCIe link **width** (x4 to x16) is caused by 12 of 16 lanes shipping with their AC
-    coupling capacitors depopulated, and is fixable only by hand-soldering 24 0402 parts. Several
-    dead ends below exist purely because someone conflated the two. See
-    [the PCIe subsystem](../hardware/pcie-subsystem.md) and
-    [physical mods](../operations/physical-mods.md).
+> [!CAUTION]
+> **Keep speed and width separate**
+>
+> PCIe link **speed** (Gen1 to Gen2) is a software and firmware unlock, shipped only on unreleased
+> branches. PCIe link **width** (x4 to x16) is caused by 12 of 16 lanes shipping with their AC
+> coupling capacitors depopulated, and is fixable only by hand-soldering 24 0402 parts. Several
+> dead ends below exist purely because someone conflated the two. See
+> [the PCIe subsystem](../hardware/pcie-subsystem.md) and
+> [physical mods](../operations/physical-mods.md).
 
 ### The four-layer wall
 
@@ -947,15 +937,17 @@ pattern `78 8f 11 14`). The differing bytes versus A100 SXM4 are hit #8 `0xBB` t
 Davies-Meyer `csecret(2)` MAC range `0x2200` to `0x43C00`, so a keyless forge is a 2^128
 second-preimage. Status: closed, 2026-05-31.
 
-!!! warning "The intuitive direction is exactly wrong"
-    The community `pcie_set_speed` direction is backwards. The strap field is
-    **monotonic-restrictive**: 0 means all generations enabled, 3 is the 170HX setting (clearing
-    Gen2, Gen3 and Gen4), and `0xF` is out of range with all disabled. **Raising the ceiling
-    requires a lower strap value, not a higher one**, and no write port exists. The devinit
-    read-modify-write in the signed FWSEC is `mov r9 0x14118f78; ld; and 0x3ff / or 0x400; st` at
-    VBIOS offset `0xE88C`, with 26 references in every ROM; the 170HX-versus-A100 delta is the
-    **value written**, not the code. Refuted 2026-07-24. This is one of the most valuable
-    corrections in the corpus.
+> [!WARNING]
+> **The intuitive direction is exactly wrong**
+>
+> The community `pcie_set_speed` direction is backwards. The strap field is
+> **monotonic-restrictive**: 0 means all generations enabled, 3 is the 170HX setting (clearing
+> Gen2, Gen3 and Gen4), and `0xF` is out of range with all disabled. **Raising the ceiling
+> requires a lower strap value, not a higher one**, and no write port exists. The devinit
+> read-modify-write in the signed FWSEC is `mov r9 0x14118f78; ld; and 0x3ff / or 0x400; st` at
+> VBIOS offset `0xE88C`, with 26 references in every ROM; the 170HX-versus-A100 delta is the
+> **value written**, not the code. Refuted 2026-07-24. This is one of the most valuable
+> corrections in the corpus.
 
 A related address-space error was retracted late: a 2026-07-24 field manual described the devinit
 Gen strap as living on a "Falcon PRIV bus, >16MB, not host BAR0" at roughly 321 MB and built a "no
@@ -1027,12 +1019,14 @@ blocked testers for days:
   pinning the link to Gen1 while simultaneously trying to enable Gen2. Corrected on `far` to `0x2`
   under the commit message "Remove clamp link to Gen1".
 
-!!! question "Open problem"
-    Whether `RMPcieLinkSpeed` should be `0x1` or `0x2` is **genuinely unresolved**. Both spellings
-    ship, on branches whose authors each believed theirs was right: `Gen2` and `debug-gen2` write
-    `0x1`, `far` and `deced` write `0x2`. The `Gen2` branch, the one whose README claims Gen2
-    working, ships `0x1`. No A/B boot test exists. One three-way boot comparison on one card would
-    settle it.
+> [!NOTE]
+> **Open problem**
+>
+> Whether `RMPcieLinkSpeed` should be `0x1` or `0x2` is **genuinely unresolved**. Both spellings
+> ship, on branches whose authors each believed theirs was right: `Gen2` and `debug-gen2` write
+> `0x1`, `far` and `deced` write `0x2`. The `Gen2` branch, the one whose README claims Gen2
+> working, ships `0x1`. No A/B boot test exists. One three-way boot comparison on one card would
+> settle it.
 
 ---
 
@@ -1111,11 +1105,13 @@ Two further ECC dead ends:
   `FUSE_PCIE_GEN3_DIS = 0x1`) plus a five-byte devinit change, so a firmware-only patch is
   insufficient. Date 2026-07-24.
 
-!!! question "Open problem"
-    Whether the HBM stacks carry ECC provisioning at all is only partly answered. The A100
-    per-FBPA `CSTATUS_RAMAMOUNT` differential (`0x07ff` / `0x0fff` against a consumer `0x0800` /
-    `0x1000`) reads as ECC being reserved capacity inside the same stacks, but that is an
-    inference from register values, not a datasheet. See [ECC](../frontier/ecc.md).
+> [!NOTE]
+> **Open problem**
+>
+> Whether the HBM stacks carry ECC provisioning at all is only partly answered. The A100
+> per-FBPA `CSTATUS_RAMAMOUNT` differential (`0x07ff` / `0x0fff` against a consumer `0x0800` /
+> `0x1000`) reads as ECC being reserved capacity inside the same stacks, but that is an
+> inference from register values, not a datasheet. See [ECC](../frontier/ecc.md).
 
 ---
 
@@ -1277,13 +1273,15 @@ auditing the tree should know:
   `// Bypass WPR2 check (for CMP 90HX compute unlock)`. The GA100 shipping patch only weakens it to
   a warning. The GA100 behaviour is the canonical one for the 170HX.
 
-!!! question "Open problem"
-    Whether the 595, 590 and 580 ports in `clanker/driver-port` actually boot is unknown. The
-    patches apply cleanly and the sizes are plausible, but no boot has been reported on any of them,
-    and the branch's `VERSION` and `constants.yaml` disagree about which versions are even claimed
-    (12 against 5). Boot-tested versions remain exactly `610.43.02` and `610.43.03`. Note also that
-    the `610` port directory is a **byte-for-byte copy of master** at 37,415 bytes across six
-    patches (19741 / 3988 / 10580 / 861 / 1642 / 603).
+> [!NOTE]
+> **Open problem**
+>
+> Whether the 595, 590 and 580 ports in `clanker/driver-port` actually boot is unknown. The
+> patches apply cleanly and the sizes are plausible, but no boot has been reported on any of them,
+> and the branch's `VERSION` and `constants.yaml` disagree about which versions are even claimed
+> (12 against 5). Boot-tested versions remain exactly `610.43.02` and `610.43.03`. Note also that
+> the `610` port directory is a **byte-for-byte copy of master** at 37,415 bytes across six
+> patches (19741 / 3988 / 10580 / 861 / 1642 / 603).
 
 ---
 
@@ -1468,18 +1466,14 @@ Follow-on strap dead ends:
   the only route and works reliably. The accurate statement is that hardware modification cannot
   move fused boundaries but **can restore depopulated PCB features**.
 
-!!! note "Superseded"
-    "Strap resistors matter for capacity" is refuted. Whether they still matter for **memory timing
-    selection** is unresolved.
-
 Two further capacitor-modification notes. The dielectric is **X7R**, not "XR7", a transposition that
-propagated widely: the canonical part is 24 x 0402, 220 nF (0.22 uF), X7R, rated 16 V or higher, in
-the C1100 to C1350 designator range, with Samsung `CL05B224KO5NNNC` as the confirmed manufacturer
-part. And the claim that the shipped unlock README documents the x4 limitation is **false**: a grep
-across the entire working tree, the full history and all twelve branch checkouts finds zero
-occurrences of "capacitor", "AC coupling", "solder" or any lane-width register or wording. The
-technical claim about the capacitors is true and well evidenced; only the attribution to the shipped
-README is wrong.
+propagated widely: the canonical part is 24 x 0402, 220 nF (0.22 uF), X7R, rated 6.3 V or higher, in
+the C1100 to C1350 designator range, with Taiyo Yuden `MAASJ105SB7224KFCA01` as the confirmed
+manufacturer part. And the claim that the shipped unlock README documents the x4 limitation is
+**false**: a grep across the entire working tree, the full history and all twelve branch checkouts
+finds zero occurrences of "capacitor", "AC coupling", "solder" or any lane-width register or
+wording. The technical claim about the capacitors is true and well evidenced; only the
+attribution to the shipped README is wrong.
 
 ---
 
@@ -1720,8 +1714,5 @@ with 507 dead ends still shipped a working 64 GB unlock in about five weeks.
 - [Troubleshooting](../procedures/troubleshooting.md) for the error codes referenced throughout.
 - [Register reference](../unlock/register-reference.md) for the canonical value of every address on
   this page.
-
-
-
 
 

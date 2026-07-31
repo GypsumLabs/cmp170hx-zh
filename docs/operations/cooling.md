@@ -9,14 +9,16 @@ temperature reference tables live on [Thermals](../hardware/thermals.md).
 
 The headline, because it is the most expensive mistake people make:
 
-!!! danger "The 3.24 W snail fan sold as an \"A100 cooler\" does not do 300 W"
-    The widely sold 3D-printed "A100 cooling" adapter bundled with a **3.24 W, 12 V snail
-    fan** is advertised as blowing off 300 W. First-hand measurement by a purchaser puts it
-    at **150-180 W maximum**, at maximum duty cycle, powered directly from the PSU rather
-    than throttled by a header. That is well short of the card's 250 W nominal envelope and
-    nowhere near the 300 W OC-VBIOS envelope. Nobody contradicted the measurement. A second
-    participant separately queried whether a radial fan can do this job at 3 W at all,
-    noting that most radial fans of the required class draw at least 3 A (about 30 W).
+> [!CAUTION]
+> **The 3.24 W snail fan sold as an \"A100 cooler\" does not do 300 W**
+>
+> The widely sold 3D-printed "A100 cooling" adapter bundled with a **3.24 W, 12 V snail
+> fan** is advertised as blowing off 300 W. First-hand measurement by a purchaser puts it
+> at **150-180 W maximum**, at maximum duty cycle, powered directly from the PSU rather
+> than throttled by a header. That is well short of the card's 250 W nominal envelope and
+> nowhere near the 300 W OC-VBIOS envelope. Nobody contradicted the measurement. A second
+> participant separately queried whether a radial fan can do this job at 3 W at all,
+> noting that most radial fans of the required class draw at least 3 A (about 30 W).
 
 The card is **fully passive**, reports `Fan Speed : N/A`, and will not protect itself with a
 fan it does not have. Sizing rule: pick your cooler for the power limit you intend to run,
@@ -54,14 +56,16 @@ using the measured column below and not the marketing column.
 | **AC Infinity S2-class blower, no shroud** | **200 W** stress test passed | **on an MI100** | medium |
 | Cheap 40/60 mm blower taped on with **aluminium tape** | no temperature posted | reported surprisingly sturdy, and loud | low |
 
-!!! question "Open problem: two nominally identical 3.24 W blowers, two different outcomes"
-    The printed adapter with a 3.24 W snail fan tops out at 150-180 W. An EFB0251S3, also
-    stated at 3.24 W, holds a card at 73 C at a 200 W limit under sustained full load. Same
-    nominal fan power, materially different result. Duct sealing and the static-pressure
-    path are the obvious explanation, and the tester who measured the unshrouded case
-    reported "There are huge spots for leaks", but **nobody has run the two side by side on
-    the same card at the same power limit**. Until someone does, treat the 3.24 W class as
-    a 150-200 W class and assume duct quality is doing most of the work.
+> [!NOTE]
+> **Open problem: two nominally identical 3.24 W blowers, two different outcomes**
+>
+> The printed adapter with a 3.24 W snail fan tops out at 150-180 W. An EFB0251S3, also
+> stated at 3.24 W, holds a card at 73 C at a 200 W limit under sustained full load. Same
+> nominal fan power, materially different result. Duct sealing and the static-pressure
+> path are the obvious explanation, and the tester who measured the unshrouded case
+> reported "There are huge spots for leaks", but **nobody has run the two side by side on
+> the same card at the same power limit**. Until someone does, treat the 3.24 W class as
+> a 150-200 W class and assume duct quality is doing most of the work.
 
 Treat **250 W as the proven figure for the B97 and 350 W as an unverified claim.** The 350 W
 number is confidently asserted and supported by the same blower cooling a 350 W FPGA for a
@@ -115,11 +119,13 @@ plug**, so test-fit with the cable in place; third-party print quality is unreli
 part described as 120 mm arrived as 140 mm); and use **aluminium tape, not duct tape**, if
 you are taping a blower on.
 
-!!! question "Open problem: print material"
-    PLA is reported as fine in practice by a multi-card user ("pla has been fine for all
-    mine"), on the argument that the duct sits in cool intake air away from the heat source.
-    Others recommend PETG or ASA as safer near GPU heat. Mildly disputed, no failure
-    reported on either side.
+> [!NOTE]
+> **Open problem: print material**
+>
+> PLA is reported as fine in practice by a multi-card user ("pla has been fine for all
+> mine"), on the argument that the duct sits in cool intake air away from the heat source.
+> Others recommend PETG or ASA as safer near GPU heat. Mildly disputed, no failure
+> reported on either side.
 
 ---
 
@@ -135,39 +141,45 @@ Water is the only route that has produced sub-50 C load temperatures on this car
 | **Chinese V100 SXM2 flat-plate block** | untested | Plain flat plate with no conforming surfaces; the MOSFET and inductor gaps would have to be filled by hand. |
 | **Arctic Liquid Freezer II 420 AIO + copper adapter plate** | **FAILED** before a game finished loading | Photographed **pump-out**: cracked paste with bare copper across much of the die contact area. Attributed to poor mounting pressure or an incompatible adapter. |
 
-!!! danger "Fitment traps that destroy cards or waste money"
-    - **`N-TESLA-A100-80G-X-V2` does not fit.** The A100 80 GB is a different, incompatible
-      PCB. Only the 40 GB-family block is correct.
-    - **The V2 (all-metal) revision is required.** The earlier non-V2 uses transparent
-      acrylic.
-    - **SXM waterblocks do not fit PCIe cards at all.** At least a third of A100s sold were
-      SXM. There are also two different PCIe A100 block designs, because the A100 80 GB has
-      no integrated heat spreader while other variants do: "if that waterblock is made for
-      the variant without IHS it wont work properly."
-    - The correct V2 block ships with **no manual and a hex wrench of the wrong size**. Have
-      a metric hex set ready.
+> [!CAUTION]
+> **Fitment traps that destroy cards or waste money**
+>
+> - **`N-TESLA-A100-80G-X-V2` does not fit.** The A100 80 GB is a different, incompatible
+>   PCB. Only the 40 GB-family block is correct.
+> - **The V2 (all-metal) revision is required.** The earlier non-V2 uses transparent
+>   acrylic.
+> - **SXM waterblocks do not fit PCIe cards at all.** At least a third of A100s sold were
+>   SXM. There are also two different PCIe A100 block designs, because the A100 80 GB has
+>   no integrated heat spreader while other variants do: "if that waterblock is made for
+>   the variant without IHS it wont work properly."
+> - The correct V2 block ships with **no manual and a hex wrench of the wrong size**. Have
+>   a metric hex set ready.
 
-!!! danger "The single most damaging waterblock installation mistake"
-    **Cover every unpopulated IC footprint within reach of the block's contact pillars with
-    thermal pad before lowering the block.** Because the 170HX is a depopulated A100 board
-    it has far more bare footprints than a real A100, and the block's metal pillars can
-    short across exposed copper pads and permanently kill the card. Pad the DrMOS MOSFETs
-    left and right of the ASIC, the areas bottom-left and bottom-right of the ASIC, the PMIC
-    to the right of the die between an inductor and a capacitor, and the two PMICs to the
-    left of the die below the 3.3 µH inductor. Thermal paste (pea-sized) goes only on the
-    GPU/HBM copper spreader. The author of this procedure lost a card about an hour after
-    installation and this is their leading suspicion, competing with a pre-existing
-    mining-wear fault; it was never definitively isolated.
+> [!CAUTION]
+> **The single most damaging waterblock installation mistake**
+>
+> **Cover every unpopulated IC footprint within reach of the block's contact pillars with
+> thermal pad before lowering the block.** Because the 170HX is a depopulated A100 board
+> it has far more bare footprints than a real A100, and the block's metal pillars can
+> short across exposed copper pads and permanently kill the card. Pad the DrMOS MOSFETs
+> left and right of the ASIC, the areas bottom-left and bottom-right of the ASIC, the PMIC
+> to the right of the die between an inductor and a capacitor, and the two PMICs to the
+> left of the die below the 3.3 µH inductor. Thermal paste (pea-sized) goes only on the
+> GPU/HBM copper spreader. The author of this procedure lost a card about an hour after
+> installation and this is their leading suspicion, competing with a pre-existing
+> mining-wear fault; it was never definitively isolated.
 
 Full teardown order, washer and bracket reuse, and the 15-minute pressurised leak test are
 on [Physical mods](physical-mods.md).
 
-!!! question "Open problem: HBM temperature on water"
-    The one sweep that tried to lower HBM temperature on air concluded "getting lower hbm
-    temps on air seems impossible". A request for equivalent waterblock memory-temperature
-    data went unanswered, so nobody knows whether the HBM floor is a cooling limit or
-    intrinsic to the package. The budget-block owner who measured 58 C memory already has
-    the hardware to answer it.
+> [!NOTE]
+> **Open problem: HBM temperature on water**
+>
+> The one sweep that tried to lower HBM temperature on air concluded "getting lower hbm
+> temps on air seems impossible". A request for equivalent waterblock memory-temperature
+> data went unanswered, so nobody knows whether the HBM floor is a cooling limit or
+> intrinsic to the package. The budget-block owner who measured 58 C memory already has
+> the hardware to answer it.
 
 ---
 

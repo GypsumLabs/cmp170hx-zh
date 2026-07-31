@@ -45,35 +45,31 @@ not been reproduced.
 
 Four box types carry specific meanings. They are used sparingly and consistently.
 
-!!! warning "Experimental"
+> [!WARNING]
+> **Experimental**
+>
+>
+> The material inside is on an unreleased branch, or rests on a single report, or both.
+> It is not part of the shipping unlocker. PCIe Gen2, the 80 GB memory profile, the MIG
+> enable and the multi-card handling all lived here at various times. Expect it to work
+> on some hosts and not others, and expect the details to change.
 
-    The material inside is on an unreleased branch, or rests on a single report, or both.
-    It is not part of the shipping unlocker. PCIe Gen2, the 80 GB memory profile, the MIG
-    enable and the multi-card handling all lived here at various times. Expect it to work
-    on some hosts and not others, and expect the details to change.
+> [!CAUTION]
+>
+> Following the instructions inside can destroy hardware or lose data. This box is
+> reserved for physical and irreversible risk: connector mis-mating, VBIOS flashing,
+> thermal runaway, soldering, and allocations that fault the card. It is not used for
+> "this might not work".
 
-!!! danger
-
-    Following the instructions inside can destroy hardware or lose data. This box is
-    reserved for physical and irreversible risk: connector mis-mating, VBIOS flashing,
-    thermal runaway, soldering, and allocations that fault the card. It is not used for
-    "this might not work".
-
-!!! question "Open problem"
-
-    Nobody knows. The box states what is known, what has been tried, why the investigation
-    stalled, and what one experiment would settle it. Every open item is collected and ranked
-    by tractability on [Open questions](../frontier/open-questions.md) and tracked on the
-    [Status board](../frontier/status-board.md). Thirteen of them can be settled by neither
-    the documents nor the source trees.
-
-!!! note "Superseded"
-
-    The approach described was real, worked (or nearly worked), and has since been replaced.
-    Every superseded box points at what replaced it. These are kept because the reasoning is
-    reusable and because abandoned approaches get rediscovered otherwise. The on-disk GSP
-    firmware patching route, the two-load clear-WPR2 architecture, the standalone
-    `cmpretrain.service` and FLR-based recovery are all here.
+> [!NOTE]
+> **Open problem**
+>
+>
+> Nobody knows. The box states what is known, what has been tried, why the investigation
+> stalled, and what one experiment would settle it. Every open item is collected and ranked
+> by tractability on [Open questions](../frontier/open-questions.md) and tracked on the
+> [Status board](../frontier/status-board.md). Thirteen of them can be settled by neither
+> the documents nor the source trees.
 
 ### What "unknown" means
 

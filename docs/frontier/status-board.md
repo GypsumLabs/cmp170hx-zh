@@ -1,12 +1,14 @@
 # Capability status board
 
-!!! warning "Status as of the corpus freeze, 2026-07-28"
-    Everything below describes the state of things at the moment the sources were captured: the
-    chat archive ends 2026-07-28 at 00:01 and the repository snapshot was taken shortly after
-    midnight UTC the same day. **Nothing on this page has been re-verified since.** Drift has
-    already been observed: the remote `ecc` branch was force-updated within a day of the snapshot,
-    so the description of it below is a snapshot description, not a live one. See
-    [methodology](../appendix/methodology.md).
+> [!WARNING]
+> **Status as of the corpus freeze, 2026-07-28**
+>
+> Everything below describes the state of things at the moment the sources were captured: the
+> chat archive ends 2026-07-28 at 00:01 and the repository snapshot was taken shortly after
+> midnight UTC the same day. **Nothing on this page has been re-verified since.** Drift has
+> already been observed: the remote `ecc` branch was force-updated within a day of the snapshot,
+> so the description of it below is a snapshot description, not a live one. See
+> [methodology](../appendix/methodology.md).
 
 **What this page covers.** One table for every capability anyone has tried to unlock on the
 NVIDIA CMP 170HX, with its current status, the mechanism that achieves it, and where to read the
@@ -15,7 +17,7 @@ detail. If you link one page from this wiki, link this one.
 The short version: **compute and memory are solved and shipping.** An 8 GB card
 (`10de:20c2`) becomes a 64 GB card and a 10 GB card (`10de:2082`) becomes a 40 GB card, with full
 SM throughput restored, using a patched build of the NVIDIA open kernel modules. **PCIe link speed
-(Gen1 to Gen2) is solved but unreleased**, living only on experimental branches. **PCIe link width
+(Gen1 to Gen2) is solved and shipping**, merged to `master` on 2026-07-29. **PCIe link width
 (x4 to x16) is solved but requires soldering 24 capacitors**, and is a completely separate
 achievement from link speed. **Everything else** (80 GB on a 10 GB card, Gen3, Gen4, NVLink, ECC,
 P2P) is either unstable, blocked by a fuse with no known lever, unresolved, or untried. The 80 GB
@@ -27,8 +29,10 @@ but nothing installable does, and 40 GB remains the supported configuration for 
 | Label | Meaning |
 |---|---|
 | **Working (shipped)** | In cmpunlocker `master`. Reproduced by many independent testers. |
-| **Working (branch)** | Implemented and reproduced, but only on an unreleased branch. Not in the default install. |
 | **Working (hardware)** | Requires a physical board modification. No software component. |
+| **Working (shipped, partially)** | In `master`, but only part of the capability is delivered. |
+| **Working (with caveats)** | Works, with a documented limitation you must plan around. |
+| **Working (hardware + shipped)** | Needs the board modification plus shipped software. Both halves are settled. |
 | **Experimental** | Reproduced once or twice. No burn-in, no second rig, or a known defect in the reporting. |
 | **Attempted and failed** | A serious attempt exists; the result is negative, unstable, or unusable. |
 | **No known lever** | The blocking mechanism is identified and nobody has produced a path past it. |
@@ -42,9 +46,9 @@ but nothing installable does, and 40 GB remains the supported configuration for 
 | Memory: 8 GB card to **64 GB** | **Working (shipped)** | `CFG1 0x009a0204 = 0x02779000`, `LMR 0x00100ce0 = 0x0000020B`, `targetFbBytes = 0x0000001000000000` | [Memory geometry](../unlock/memory-geometry.md) |
 | Memory: 10 GB card to **40 GB** | **Working (shipped)** | `CFG1 = 0x02669000`, `LMR = 0x0000028A`, `targetFbBytes = 0x0000000A00000000` | [Memory geometry](../unlock/memory-geometry.md) |
 | Memory: 10 GB card to **80 GB** | **Experimental** (the `80` branch itself: attempted and failed) | The `80` branch reports 81920 MiB then dies above ~40 GB. Separately, a driverless refire chain firing the coherent `CFG1 = 0x02779000` + `LMR = 0x0000028B` (decode `0x10000300`) verified real distinct memory with **no fold** to 77.5 GiB, and 72 GiB at stock boot timings. Limits: roughly one CUDA context per fire before Xid 154, ~79 % of peak bandwidth above the boundary. Not shipped, not installable | [The 80 GB problem](80gb.md) |
-| PCIe **Gen2** (2.5 to 5 GT/s) | **Working (branch)** | `0007-pcie-gen2.patch` (+ `0008` retrain): 25 Booter-routed register writes plus host BAR0 writes to the XVE / XP3G block | [PCIe Gen2](../unlock/pcie-gen2.md) |
+| PCIe **Gen2** (2.5 to 5 GT/s) | **Working (shipped)** | `0007-pcie-gen2.patch` (+ `0008` retrain): 25 Booter-routed register writes plus host BAR0 writes to the XVE / XP3G block. Merged to `master` 2026-07-29 in commit `2e0a2c02`; master's README now carries a `PCIe Gen 2 speeds | Working` row | [PCIe Gen2](../unlock/pcie-gen2.md) |
 | PCIe **x16 width** | **Working (hardware)** | Solder 24 × 0402 220 nF X7R AC-coupling capacitors onto lanes 4-15 (designators C1100-C1350) | [Physical mods](../operations/physical-mods.md) |
-| PCIe **Gen2 at x16 together** | **Experimental** | Both of the above on one card. Observed once, 2026-07-26, 6.63-6.67 GB/s | [PCIe Gen2](../unlock/pcie-gen2.md) |
+| PCIe **Gen2 at x16 together** | **Working (hardware + shipped)** | Both of the above on one card; no extra step. Published captures: 6.63-6.67 GB/s on one card, 5.97 GB/s on each of four with zero AER errors | [Physical mods](../operations/physical-mods.md) |
 | PCIe **Gen3 / Gen4** | **Attempted and failed** | No mechanism. `FUSE_PCIE_GEN3_DIS 0x00820580 = 0x1`; the supported-speeds vector clips at `0x00000006` | [Gen3 and Gen4](pcie-gen3-gen4.md) |
 | **NVLink** | **No known lever** | Fuse-disabled (`0x00820684 = 0x7`). No FEAT_OVR entry exists for it, no code in any branch, no bridge ever seated | [NVLink](nvlink.md) |
 | **ECC** | **No known lever** | Fused off (`OPT_ECC_EN 0x00820228 = 0x00000000`); `FBPA_ECC_CTRL` MASTER_EN is read-only | [ECC](ecc.md) |
@@ -69,11 +73,13 @@ Shipped, stable, and the only part of the unlock that survives a Function Level 
 | Practical success test | `FEATURE_READOUT_1 0x00823818 == 0x00000000` |
 | Survives FLR | Yes |
 
-!!! warning "Experimental"
-    A MIG enable via bit 0 of `0x820840` was demonstrated with three corroborating `nvidia-smi`
-    outputs and reported persistent, but it is not in the shipping tree and only the `1g.64gb`
-    profile exists. INT8/IMMA throughput remains gated after the unlock for reasons nobody has
-    explained.
+> [!WARNING]
+> **Experimental**
+>
+> A MIG enable via bit 0 of `0x820840` was demonstrated with three corroborating `nvidia-smi`
+> outputs and reported persistent, but it is not in the shipping tree and only the `1g.64gb`
+> profile exists. INT8/IMMA throughput remains gated after the unlock for reasons nobody has
+> explained.
 
 ### Memory geometry
 
@@ -94,35 +100,41 @@ GSP boot, which is why the fix is a driver patch and not a one-shot tool.
 A third device ID, `10de:20b0`, is detected by `install.sh` but is **not** unlocked: the in-driver
 gate `_kgspSec2PostblTimingEnabled()` accepts only `0x20C2` and `0x2082`.
 
-!!! danger "80 GB on a 10 GB card is not a usable configuration"
-    The `80` branch reports 81920 MiB (85,545,582,592 bytes) and a 77 GiB `cudaMalloc` succeeds,
-    but at 80 GB, kernels touching more than roughly 40 GB cause fatal GPU loss, independent of
-    power limit. Reported Xid codes include Xid 31 (described as harmless) and Xid 154 after CUDA
-    memory tests; the dominant reported symptom is hangs. Xid 31 alone was suggested by a
-    bystander and was not corroborated as *the* signature by the operator with the failing card.
-    As actually built the branch programs CFG1 `0x02779000`, LMR `0x0000028A` and
-    `fb_length 0x0000001400000000`, which is a three-way disagreement and is itself a candidate
-    cause. The `0x0000028B` in that branch's `constants.yaml` is inert metadata: `build.sh` never
-    reads the file. See [The 80 GB problem](80gb.md).
+> [!CAUTION]
+> **80 GB on a 10 GB card is not a usable configuration**
+>
+> The `80` branch reports 81920 MiB (85,545,582,592 bytes) and a 77 GiB `cudaMalloc` succeeds,
+> but at 80 GB, kernels touching more than roughly 40 GB cause fatal GPU loss, independent of
+> power limit. Reported Xid codes include Xid 31 (described as harmless) and Xid 154 after CUDA
+> memory tests; the dominant reported symptom is hangs. Xid 31 alone was suggested by a
+> bystander and was not corroborated as *the* signature by the operator with the failing card.
+> As actually built the branch programs CFG1 `0x02779000`, LMR `0x0000028A` and
+> `fb_length 0x0000001400000000`, which is a three-way disagreement and is itself a candidate
+> cause. The `0x0000028B` in that branch's `constants.yaml` is inert metadata: `build.sh` never
+> reads the file. See [The 80 GB problem](80gb.md).
 
-!!! warning "Experimental: the coherent 80 GB set exists, but not as an install path"
-    Separately from the branch, a clean-room refire script fired the *coherent* set
-    (CFG1 `0x02779000` + LMR `0x0000028B`, L2 decode `0x10000300`) on 10 GB cards between
-    2026-07-23 and 2026-07-27, including at least one unmodded card. Dense tagged write/readback
-    found **no fold** at 77.5 GiB, and 72 GiB passed at stock boot timings. The limits are real:
-    roughly one CUDA context per fire before Xid 154, and about 79 % of peak bandwidth above the
-    boundary. Two operators, no burn-in. Shipping master gives a 10 GB card **40 GB** and that
-    remains the supported configuration.
+> [!WARNING]
+> **Experimental: the coherent 80 GB set exists, but not as an install path**
+>
+> Separately from the branch, a clean-room refire script fired the *coherent* set
+> (CFG1 `0x02779000` + LMR `0x0000028B`, L2 decode `0x10000300`) on 10 GB cards between
+> 2026-07-23 and 2026-07-27, including at least one unmodded card. Dense tagged write/readback
+> found **no fold** at 77.5 GiB, and 72 GiB passed at stock boot timings. The limits are real:
+> roughly one CUDA context per fire before Xid 154, and about 79 % of peak bandwidth above the
+> boundary. Two operators, no burn-in. Shipping master gives a 10 GB card **40 GB** and that
+> remains the supported configuration.
 
 ### PCIe: speed and width are two different problems
 
-!!! note "Do not conflate these"
-    Gen1 to Gen2 is a **software** change to link speed. x4 to x16 is a **hardware** change to
-    link width, caused by NVIDIA depopulating AC-coupling capacitors on 12 of the 16 lanes.
-    Neither one affects the other. A capacitor mod alone gives Gen1 x16; the Gen2 patch alone
-    gives Gen2 x4.
+> [!NOTE]
+> **Do not conflate these**
+>
+> Gen1 to Gen2 is a **software** change to link speed. x4 to x16 is a **hardware** change to
+> link width, caused by NVIDIA depopulating AC-coupling capacitors on 12 of the 16 lanes.
+> Neither one affects the other. A capacitor mod alone gives Gen1 x16; the Gen2 patch alone
+> gives Gen2 x4.
 
-| Aspect | Stock | After Gen2 branch | After capacitor mod |
+| Aspect | Stock, no unlock | With the unlocker | After capacitor mod |
 |---|---|---|---|
 | `LnkCap` | `0x00456101` | `0x00456102` | unchanged |
 | `LnkCap2` | `0x00000002` | `0x00000006` | unchanged |
@@ -131,8 +143,8 @@ gate `_kgspSec2PostblTimingEnabled()` accepts only `0x20C2` and `0x2082`.
 | Measured bandwidth | ~0.85 GB/s (Gen1 x4) | ~1.71 GB/s (Gen2 x4) | 2.88 GB/s (Gen1 x16) |
 
 Capacitor mod specification: **24 parts** (2 per differential pair × 12 depopulated lanes),
-**0402, 220 nF (0.22 µF), X7R, ≥16 V**, designators in the **C1100-C1350** range. Confirmed part:
-Samsung `CL05B224KO5NNNC`. The value comes from the NVIDIA A100 GA100-883 reference schematic
+**0402, 220 nF (0.22 µF), X7R, ≥6.3 V**, designators in the **C1100-C1350** range. Confirmed part:
+Taiyo Yuden `MAASJ105SB7224KFCA01`. The value comes from the NVIDIA A100 GA100-883 reference schematic
 P1001-B02 page 3 ("IO: PCIe CONNECTOR"). Populating only 12 of the 24 yields x8, because PCIe
 width negotiation falls back to the next legal width (16 to 8 to 4 to 1). An x8 result after a mod
 means incomplete or bridged solder work, not a distinct hardware limit.
@@ -141,25 +153,31 @@ Gen2 is **absent from shipping master**: master carries patches `0001` through `
 no `pcie:` block in `constants.yaml`. `0007-pcie-gen2.patch` exists on branches `debug-gen2`,
 `Gen2`, `far` and `deced`; `0008-pcie-gen2-probe-retrain.patch` on `Gen2`, `far` and `deced`.
 
-!!! warning "Experimental"
-    Gen2 does not train on every host. One Intel platform (ASUS W890 SAGE, Ubuntu 24.04) never
-    reached Gen2 across two branches, an external fork, two slots, and both modded and unmodded
-    cards, while an AMD HiveOS host reached it with no kernel command line changes at all. Gen2
-    also does not train inside a VM under VFIO passthrough, and Thunderbolt 3 enclosures fail the
-    *unlock itself*, not merely the link (`Booter Load 0x15 / 0xffff`,
-    `RmInitAdapter failed! (0x62:0xffff:2119)`). Oculink works because it is essentially a riser.
+> [!WARNING]
+> **Experimental**
+>
+> Gen2 does not train on every host. One Intel platform (ASUS W890 SAGE, Ubuntu 24.04) never
+> reached Gen2 across two branches, an external fork, two slots, and both modded and unmodded
+> cards, while an AMD HiveOS host reached it with no kernel command line changes at all. Gen2
+> also does not train inside a VM under VFIO passthrough, and Thunderbolt 3 enclosures fail the
+> *unlock itself*, not merely the link (`Booter Load 0x15 / 0xffff`,
+> `RmInitAdapter failed! (0x62:0xffff:2119)`). Oculink works because it is essentially a riser.
+>
+> **This may already be fixed.** On 2026-07-27, the last Gen2 status change in the record, the
+> maintainer published branch `deced` and stated the hardcoded `0a:00.0` PCI address was "the big
+> bug that I think was causing all the issues", with VM passthrough named as the only known
+> remaining case. No tester report came back before the corpus froze, and the wiki's own analysis
+> holds that the file `deced` changed (`tools/retrain.sh`) is dead code on that lineage, which is
+> an unresolved conflict. See [dead ends](../history/dead-ends.md).
 
-    **This may already be fixed.** On 2026-07-27, the last Gen2 status change in the record, the
-    maintainer published branch `deced` and stated the hardcoded `0a:00.0` PCI address was "the big
-    bug that I think was causing all the issues", with VM passthrough named as the only known
-    remaining case. No tester report came back before the corpus froze, and the wiki's own analysis
-    holds that the file `deced` changed (`tools/retrain.sh`) is dead code on that lineage, which is
-    an unresolved conflict. See [dead ends](../history/dead-ends.md).
-
-!!! warning "Experimental"
-    **Gen2 at x16 has been observed once**, on 2026-07-26, on a capacitor-modded card also running
-    the `Gen2` branch: `PCIe GEN 2@16x`, `ocl_pcie_bw` 6.63-6.67 GB/s, nvtop TX 7.061 GiB/s.
-    One rig, one day, one screenshot. Stability at Gen2 x16 is unestablished.
+> [!NOTE]
+> **Gen2 at x16 needs no extra step**
+>
+> It is the capacitor mod plus the shipped Gen2 code, with nothing additional to do. First
+> captured 2026-07-26: `PCIe GEN 2@16x`, `ocl_pcie_bw` 6.63-6.67 GB/s, nvtop TX 7.061 GiB/s.
+> A second builder posted four cards across two board revisions with `lspci` captures and zero
+> AER correctable or fatal errors over 90 minutes of continuous load. Long burn-in figures
+> have not been published by anyone.
 
 ### Gen3 and Gen4
 
@@ -239,10 +257,12 @@ per-major-version patch directories: `580` (37,034 B), `590` (37,118 B), `595` (
 `610` (37,415 B, **byte-identical to master**). The branch's own `VERSION` and `constants.yaml`
 disagree about which versions are even claimed, which is an acknowledged internal inconsistency.
 
-!!! warning "Experimental"
-    No boot has been reported on any 595, 590 or 580 build. The patches apply cleanly and the
-    sizes are plausible; that is the entire basis. One tester per branch reporting
-    `dmesg | grep SEC2_DEBUG` and the `POST-BooterLoad verify` line would settle it.
+> [!WARNING]
+> **Experimental**
+>
+> No boot has been reported on any 595, 590 or 580 build. The patches apply cleanly and the
+> sizes are plausible; that is the entire basis. One tester per branch reporting
+> `dmesg | grep SEC2_DEBUG` and the `POST-BooterLoad verify` line would settle it.
 
 ## Secondary capabilities
 

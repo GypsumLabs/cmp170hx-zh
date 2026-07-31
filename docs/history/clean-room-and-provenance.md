@@ -96,10 +96,6 @@ stack exploration. Confidence in this characterisation is **medium**: the intent
 in the archive and the channel structure is directly observable, but the two-team protocol is not
 evidenced as ever having been staffed.
 
-!!! note "Superseded"
-    Any description of the project as having run a staffed dirty-room team is not supported. The
-    admissibility rule, not team isolation, was the actual mechanism.
-
 ---
 
 ## The clean input corpus
@@ -168,11 +164,13 @@ The concern was raised on 2026-07-02 and disproved two ways in the same period:
 - The debug and production binaries are **exactly the same size**.
 - A ROP chain built purely from the debug disassembly **executed correctly on production silicon**.
 
-!!! question "Open problem"
-    "Same size plus one successful chain" is a proof by instance, not by construction. No document in
-    the source set records an actual byte-level comparison of the `IMAGE_DBG` and `IMAGE_PROD` blobs,
-    which the bindata archive makes trivially possible. Settled by: hashing the two entries in
-    `g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c`. Nobody has published that hash.
+> [!NOTE]
+> **Open problem**
+>
+> "Same size plus one successful chain" is a proof by instance, not by construction. No document in
+> the source set records an actual byte-level comparison of the `IMAGE_DBG` and `IMAGE_PROD` blobs,
+> which the bindata archive makes trivially possible. Settled by: hashing the two entries in
+> `g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c`. Nobody has published that hash.
 
 A related debate was whether touching the GSP signature at all breaks cleanliness. One camp held that
 tampering with a signature makes the result unclean by definition. The counter-position went
@@ -252,13 +250,15 @@ These are recorded as arguments, not as facts.
    `SEC2_DEBUG_PRI_FBPA_CFG1 0x009a0204` and `SEC2_DEBUG_PRI_MMU_LMR 0x00100ce0` in
    `0002-booter-verify.patch`.
 
-!!! danger "The `gpuValidateRegOps` bypass is not in the shipping tool"
-    The unconditional bypass is real and serious: any process with `NV_GPU_REG_OP` access could read
-    or write arbitrary GPU registers on any NVIDIA GPU in the machine. It exists **only in the leaked
-    `patch.diff`**. The shipping `cmpunlocker` patch set does not touch
-    `subdevice_ctrl_gpu_regops.c` at all, and the string `gpuValidateRegOps` appears nowhere in
-    `master` or in any of the twelve unreleased branches. Any text attributing this hole to
-    `cmpunlocker` is wrong.
+> [!CAUTION]
+> **The `gpuValidateRegOps` bypass is not in the shipping tool**
+>
+> The unconditional bypass is real and serious: any process with `NV_GPU_REG_OP` access could read
+> or write arbitrary GPU registers on any NVIDIA GPU in the machine. It exists **only in the leaked
+> `patch.diff`**. The shipping `cmpunlocker` patch set does not touch
+> `subdevice_ctrl_gpu_regops.c` at all, and the string `gpuValidateRegOps` appears nowhere in
+> `master` or in any of the twelve unreleased branches. Any text attributing this hole to
+> `cmpunlocker` is wrong.
 
 ### The single residual concern
 
@@ -336,11 +336,6 @@ the frame grid; and `0x00008e18` at `D[0xFF90]` lies beyond the booter's code im
 ends at `0x86ff`) and points into the register-descriptor table region `0x8e04`/`0x8e08` documented
 in the annotated listing at instruction lines `0x0d39`, `0x0da1` and `0x0e1b`.
 
-!!! note "Superseded"
-    The assessment's own gap-closing suggestion, reproducing the analysis with the paper's Falcon
-    emulator, turned out to be unnecessary. It is also unavailable: a request for the emulator on
-    2026-07-25 was answered with a flat "No, they did not [release it]".
-
 ### The clean room's own chain was related but not a copy
 
 The clean-room Python unlocker and the shipping C chain share the buffer base `0x800`, the size
@@ -414,11 +409,13 @@ showed a screenshot of the team's `booter_load` code with entirely different fun
 comments. Different names are consistent with either an independent disassembly-plus-annotation pass
 (exactly how the clean room's own names were produced) or with re-annotation of copied material.
 
-!!! question "Open problem"
-    Whether that screenshot was independently decrypted using the public hints was never settled.
-    Next step: compare the screenshot's instruction addresses against
-    `booter_load_ga100_dbg_seccode.fuc5.asm`. If they match a debug build, the author would have had
-    to decrypt it with the public Jetson test key, which is the clean path.
+> [!NOTE]
+> **Open problem**
+>
+> Whether that screenshot was independently decrypted using the public hints was never settled.
+> Next step: compare the screenshot's instruction addresses against
+> `booter_load_ga100_dbg_seccode.fuc5.asm`. If they match a debug build, the author would have had
+> to decrypt it with the public Jetson test key, which is the clean path.
 
 ---
 
@@ -505,13 +502,15 @@ Guides would establish whether `patch.diff` is genuinely the private group's cod
 from the adopting maintainer would establish whether the code was copied or convergently written.
 Neither exists in the source set.
 
-!!! question "Open problem"
-    A narrower, tractable version of the same question: are patches `0004` (BAR0 PRAMIN clamp) and
-    `0005` (CE scrub workarounds) original to `cmpunlocker`, or were they in the private Guides too?
-    Their content is byte-identical between `patch.diff` and `cmpunlocker`, so they came in together,
-    but the community summaries of `patch.diff` describe only the signature hijack, PLM opens,
-    register pokes, signature rebuild, `fb_length` spoof and the late-PMA extension. They do not
-    mention the PRAMIN clamp or the CE scrub workarounds. Only the Guides would settle it.
+> [!NOTE]
+> **Open problem**
+>
+> A narrower, tractable version of the same question: are patches `0004` (BAR0 PRAMIN clamp) and
+> `0005` (CE scrub workarounds) original to `cmpunlocker`, or were they in the private Guides too?
+> Their content is byte-identical between `patch.diff` and `cmpunlocker`, so they came in together,
+> but the community summaries of `patch.diff` describe only the signature hijack, PLM opens,
+> register pokes, signature rebuild, `fb_length` spoof and the late-PMA extension. They do not
+> mention the PRAMIN clamp or the CE scrub workarounds. Only the Guides would settle it.
 
 ---
 
@@ -564,37 +563,31 @@ set. Nothing here is legal advice, and this wiki takes no position on the merits
 
 Three cautions that follow directly from the record above.
 
-!!! danger "Do not cite the project's `docs` branch"
-    `docs/ARCHITECTURE.md` states that `cmpunlocker` writes `0xffffffff` to both SS0 and SS1. The
-    shipping patch writes `0x0082381c = 0x88888888` and `0x00823820 = 0x00000008`. The same branch
-    invents acronym expansions found nowhere in the code or the transcripts (SS as "Suspension
-    State", PLM as "Program Logic Modules", PMM as "Permute Mask Model", LMR as "LM (Local Memory)
-    Request register", PMA as "Power Management Array"), asserts a nonexistent
-    `SEC2_DEBUG: Executing unlock sequence...` log line, and instructs users to run
-    `sudo ./uninstall.sh --yes` when the shipping script is `remove.sh`. It is seven commits and it
-    is not authoritative.
+> [!CAUTION]
+> **Do not cite the project's `docs` branch**
+>
+> `docs/ARCHITECTURE.md` states that `cmpunlocker` writes `0xffffffff` to both SS0 and SS1. The
+> shipping patch writes `0x0082381c = 0x88888888` and `0x00823820 = 0x00000008`. The same branch
+> invents acronym expansions found nowhere in the code or the transcripts (SS as "Suspension
+> State", PLM as "Program Logic Modules", PMM as "Permute Mask Model", LMR as "LM (Local Memory)
+> Request register", PMA as "Power Management Array"), asserts a nonexistent
+> `SEC2_DEBUG: Executing unlock sequence...` log line, and instructs users to run
+> `sudo ./uninstall.sh --yes` when the shipping script is `remove.sh`. It is seven commits and it
+> is not authoritative.
 
-!!! warning "The most-circulated architecture notes are self-rated at about 10 percent proven"
-    Their author posted them with the caveat: "I do hold some notes. I try to double-check each
-    statement, but this work can not be given to LLMs, so it is goes REALLY slow. This is what I have
-    now. I do not state that this information is accurate, I would say, just ~10% has reliable
-    proofs/sources." A parallel warning was given to anyone attempting a consolidated writeup: "most
-    of things known about throttling mechanism are based on hypotheses and some experiments that do
-    not contradict them... if you simply collect all points mentioned in chat you will likely get
-    many wrong conclusions and it will get your llm insane." The three sources named as reliable
-    priming material were the Zenodo paper, the public GA100 fuse reference table, and the annotated
-    `booter_load` assembly. Attach this caveat to the architecture notes specifically, not to the
-    register dumps or the disassembly, which are demonstrably better supported.
-
-!!! note "Superseded"
-    The widely circulated Booter Load overview document was LLM-generated from the disassembly, and
-    the poster said so at the time: "I fed asm to claude and asked to describe/comment what is
-    happening. Here is output, I have no idea what part of it is hallucinated." It was superseded by
-    hand verification: an annotated `.fuc5` listing with per-function banners, then a v2 with every
-    `lcall` carrying an inline comment naming the callee, then an immutable backup copy re-posted on
-    2026-07-18 so that search sessions could not accidentally edit it. Verify anything from the
-    overview against the annotated listing, which preserves the original instruction lines
-    byte-for-byte.
+> [!WARNING]
+> **The most-circulated architecture notes are self-rated at about 10 percent proven**
+>
+> Their author posted them with the caveat: "I do hold some notes. I try to double-check each
+> statement, but this work can not be given to LLMs, so it is goes REALLY slow. This is what I have
+> now. I do not state that this information is accurate, I would say, just ~10% has reliable
+> proofs/sources." A parallel warning was given to anyone attempting a consolidated writeup: "most
+> of things known about throttling mechanism are based on hypotheses and some experiments that do
+> not contradict them... if you simply collect all points mentioned in chat you will likely get
+> many wrong conclusions and it will get your llm insane." The three sources named as reliable
+> priming material were the Zenodo paper, the public GA100 fuse reference table, and the annotated
+> `booter_load` assembly. Attach this caveat to the architecture notes specifically, not to the
+> register dumps or the disassembly, which are demonstrably better supported.
 
 Function names used across the project are inferred from behaviour, not read from a symbol table: the
 binary has no symbols. One pair is named inconsistently between documents. `0xd66` and `0xccb` are

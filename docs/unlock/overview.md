@@ -22,12 +22,14 @@ which is spent opening four privilege level masks. After that, plain host regist
 actual unlocking. Nothing is decapped, no key is extracted, and the RSA boot ROM check is never
 broken. See [How it works](how-it-works.md) for the full narrative.
 
-!!! danger "This voids everything and can lose data"
-    Patched kernel modules are unsigned, so Secure Boot must be off and the kernel is tainted.
-    Overclocking an unlocked card can corrupt memory silently without crashing. The 80 GB
-    configuration on a 10 GB card reports capacity it cannot reliably deliver. Read
-    [Risks](../start/risks.md) and [Tuning](../operations/tuning.md) before running anything
-    beyond the stock profiles.
+> [!CAUTION]
+> **This voids everything and can lose data**
+>
+> Patched kernel modules are unsigned, so Secure Boot must be off and the kernel is tainted.
+> Overclocking an unlocked card can corrupt memory silently without crashing. The 80 GB
+> configuration on a 10 GB card reports capacity it cannot reliably deliver. Read
+> [Risks](../start/risks.md) and [Tuning](../operations/tuning.md) before running anything
+> beyond the stock profiles.
 
 ## Status table
 
@@ -53,11 +55,6 @@ Two things the unlock deliberately does not touch: **clock speeds** and **PCIe b
 canonical in-channel formulation was "compute limit yes, bus speed no", and it matches the shipping
 mechanism, which writes nothing in the clock tables or the PCIe config block.
 
-!!! note "Superseded"
-    `SM_ISSUE_RATE_MODIFIER` at `0x00504204`, the `RMOverrideSmSpeedSelect` registry key, GSP
-    firmware patching and VBIOS flashing were all pursued at length and all failed. The shipping
-    tree contains zero references to `0x00504204`. See [Dead ends](../history/dead-ends.md).
-
 ## The two SKU profiles
 
 Geometry is selected at **runtime by PCI device ID**, not at build time. Both profiles are compiled
@@ -79,10 +76,12 @@ into the same module, and `driver/build.sh` on `master` performs no source rewri
 | SM count | 70 (CC 8.0, 4480 CUDA cores) | 70 (identical) |
 | GPC clock offset headroom | VBIOS `0x47177` / `0x47179` hold `freqDelta = ±1000` | both read 0 |
 
-!!! warning "Never mix the profiles up"
-    8 GB goes to 64 GB. 10 GB goes to 40 GB. Applying the 8 GB geometry to a 10 GB card is a
-    documented failure mode, and the 80 GB configuration for 10 GB cards was tried and found
-    unstable. See [Memory geometry](memory-geometry.md).
+> [!WARNING]
+> **Never mix the profiles up**
+>
+> 8 GB goes to 64 GB. 10 GB goes to 40 GB. Applying the 8 GB geometry to a 10 GB card is a
+> documented failure mode, and the 80 GB configuration for 10 GB cards was tried and found
+> unstable. See [Memory geometry](memory-geometry.md).
 
 A **third** device ID, `10de:20b0`, is matched by `install.sh`'s `lspci` scan but is **not**
 unlocked: the in-driver gate `_kgspSec2PostblTimingEnabled()` accepts only `0x20C2` and `0x2082`.
@@ -111,34 +110,31 @@ off. See [Driver versions](../procedures/driver-versions.md) and [Install](../pr
 `PG199`, `clanker_driver-port`, `debug-gen2`, `deced`, `docs`, `ecc`, `far`, `housekeeping`,
 `memory`, `multiple-cards`.
 
-!!! warning "Experimental"
-    **PCIe Gen2** ships only on the `Gen2` family. Patch `0007-pcie-gen2.patch` exists on
-    `debug-gen2`, `Gen2`, `far` and `deced`; `0008-pcie-gen2-probe-retrain.patch` on `Gen2`, `far`
-    and `deced`. The Gen2-family PLM table grows from four entries to nine. Gen2 is not
-    deterministic, does not work under VM passthrough, and two of the four branches (`Gen2`
-    and `debug-gen2`) set `RMPcieLinkSpeed` to the Gen1 enum `0x1`, while `far` and `deced`
-    set `0x2`; no A/B boot test has ever settled which value is right. See [PCIe Gen2](pcie-gen2.md).
+> [!WARNING]
+> **Experimental**
+>
+> **PCIe Gen2** ships only on the `Gen2` family. Patch `0007-pcie-gen2.patch` exists on
+> `debug-gen2`, `Gen2`, `far` and `deced`; `0008-pcie-gen2-probe-retrain.patch` on `Gen2`, `far`
+> and `deced`. The Gen2-family PLM table grows from four entries to nine. Gen2 is not
+> deterministic, does not work under VM passthrough, and two of the four branches (`Gen2`
+> and `debug-gen2`) set `RMPcieLinkSpeed` to the Gen1 enum `0x1`, while `far` and `deced`
+> set `0x2`; no A/B boot test has ever settled which value is right. See [PCIe Gen2](pcie-gen2.md).
 
-!!! warning "Experimental"
-    The **`clanker_driver-port`** branch adds `580/`, `590/`, `595/` and `610/` patch directories.
-    Every register value and payload offset is character-for-character identical to `master`, and
-    the `610` directory is a byte-for-byte copy of it. The 595 / 590 / 580 ports are
-    **source-verified only**: the patches apply cleanly and nobody has reported a boot.
+> [!WARNING]
+> **Experimental**
+>
+> The **`clanker_driver-port`** branch adds `580/`, `590/`, `595/` and `610/` patch directories.
+> Every register value and payload offset is character-for-character identical to `master`, and
+> the `610` directory is a byte-for-byte copy of it. The 595 / 590 / 580 ports are
+> **source-verified only**: the patches apply cleanly and nobody has reported a boot.
 
-!!! note "Superseded"
-    The `80` branch changes exactly one patch file (two lines) plus `build.sh`, `install.sh` and
-    `constants.yaml`. Its `constants.yaml` declares `lmr: "0x0000028B"` and `unlocked_mib: 81920`,
-    but that file is never read by the build. What an 80-branch build actually programs is
-    `CFG1 0x02779000` + `LMR 0x0000028A` + `fb_length 0x0000001400000000`, a three-way
-    disagreement that is the best explanation for the branch's fold at exactly 40 GiB. Firing the
-    coherent `LMR 0x0000028B` from a clean-room script does remove the fold, but not the crashes.
-    See [The 80 GB question](../frontier/80gb.md).
-
-!!! warning "The `memory` branch is single-device and hard-codes the 8 GB profile"
-    `memory` predates dual-geometry support. Its patch `0001` hard-codes
-    `SEC2_POSTBL_TIMING_CMP_170HX_PCI_DEVICE_ID 0x20C2`, `cfg1Value = 0x02779000U` and
-    `lmrValue = 0x0000020BU` with no device-ID branch and no 10 GB path: a `0x2082` card is not
-    unlocked at all on that branch. Do not build from it expecting runtime profile selection.
+> [!WARNING]
+> **The `memory` branch is single-device and hard-codes the 8 GB profile**
+>
+> `memory` predates dual-geometry support. Its patch `0001` hard-codes
+> `SEC2_POSTBL_TIMING_CMP_170HX_PCI_DEVICE_ID 0x20C2`, `cfg1Value = 0x02779000U` and
+> `lmrValue = 0x0000020BU` with no device-ID branch and no 10 GB path: a `0x2082` card is not
+> unlocked at all on that branch. Do not build from it expecting runtime profile selection.
 
 The `ecc` branch contains no ECC implementation whatsoever: all six driver patches are byte-identical
 to `master`. The `docs` branch's `ARCHITECTURE.md` is a documentation defect and should not be
@@ -167,11 +163,13 @@ Rows dated 2026-07-06 come from a single rendered image posted with the first pr
 The success signal is `FEAT_READOUT_1` at `0x00823818` reading `0x00000000`. A stock 170HX reads
 `0x016db6ed`. That single register is the cleanest available "is this card unlocked" test.
 
-!!! question "Open problem"
-    INT8 / IMMA remains gated after the unlock even though the IMLA override nibbles are set
-    identically to the FMLA and FFMA ones. On an A100, INT8 runs roughly 2x faster than FP16; on an
-    unlocked 170HX it runs 3.7x slower. Practical consequence for inference: use W4A16 (AWQ, GPTQ)
-    and avoid W8A8 entirely. See [LLM inference](../operations/llm-inference.md).
+> [!NOTE]
+> **Open problem**
+>
+> INT8 / IMMA remains gated after the unlock even though the IMLA override nibbles are set
+> identically to the FMLA and FFMA ones. On an A100, INT8 runs roughly 2x faster than FP16; on an
+> unlocked 170HX it runs 3.7x slower. Practical consequence for inference: use W4A16 (AWQ, GPTQ)
+> and avoid W8A8 entirely. See [LLM inference](../operations/llm-inference.md).
 
 ## Why it works at all
 

@@ -12,11 +12,13 @@ software. Not one line of code in cmpunlocker (shipping `master` or any of the 1
 branch snapshots) touches NVLink. The entire presence of NVLink in the branch set is a single
 word, `Planned`, in two README feature tables.
 
-!!! question "Open problem"
-    This is the highest-value unknown in the domain and there is nothing tractable on the table.
-    Both override paths are closed: `CTRL_OPT` by `FUSE_EN_SW_OVERRIDE` = `0x0`, and the
-    `FEAT_OVR` route by the absence of any NVLink register in that block. As one summary from
-    2026-07-20 put it: "Still unsolved rn, a bit harder as there's no fuse mask."
+> [!NOTE]
+> **Open problem**
+>
+> This is the highest-value unknown in the domain and there is nothing tractable on the table.
+> Both override paths are closed: `CTRL_OPT` by `FUSE_EN_SW_OVERRIDE` = `0x0`, and the
+> `FEAT_OVR` route by the absence of any NVLink register in that block. As one summary from
+> 2026-07-20 put it: "Still unsolved rn, a bit harder as there's no fuse mask."
 
 **What the capability would be.** NVLink behaves like MMIO: remote memory at the far end of a link
 can be mapped into the local GPU's address space and driven by CUDA kernels or the copy engine.
@@ -71,22 +73,6 @@ punishment has to explain the Drive part.
 `OPT_SECURE_NVLINK_MASK_WR_SECURE` at `0x00820704` reads `0x00000005` on **every** GA100 part
 (both 170HX units, all three A100 SKUs, the Drive A100) and `0x00000085` on every GA10x part.
 The 170HX is not specially locked relative to a normal A100.
-
-!!! note "Superseded: `FUSE_NVLINK_PHYS_DMG = 0x1` means nothing here"
-    `OPT_SECURE_NVLINKS_PHYSICAL_DAMAGE_WR_SECURE` at `0x00820BD4` reads `0x00000001` uniformly
-    on all fourteen probed Ampere cards, including healthy A100s with fully working NVLink.
-    Several write-ups flagged it as "notable because it may make the disable non-recoverable";
-    that inference does not survive the cross-card comparison. It is a **write-security bit on
-    the physical-damage flag register**, set architecture-wide. The register that would actually
-    record damage is `FUSE_NVLINK_DEFECTIVE`, and it reads zero.
-
-!!! note "Superseded: 'the 3090 reads 0 for `PTOP_SCAL_NUM_NVLINK`'"
-    This string propagated into at least four write-ups from an inline comment in the project's
-    own `probe.sh` line 171: `("PTOP_SCAL_NUM_NVLINK", 0x0002246C, "max NVLink count; A100=12,
-    3090=0")`. The project's own measured table contradicts it: RTX 3090, 3090 Ti, 3080, 3080
-    Ti, A10, A5000 and A6000 all read `0x00000004`. Only the A16 reads `0x00000000`. The
-    measured `0x4` matches NVIDIA's documented "four x4 links" for third-generation NVLink on
-    GA102 exactly, which confirms the measurement over the comment.
 
 ---
 
@@ -228,36 +214,38 @@ Independent of the fuse, there is a mechanical and a population question.
   A100 part. A market survey across two Chinese marketplaces found only official 2-slot and
   3-slot bridges at uniform prices, implying very low trading volume.
 
-!!! question "Open problem: is the NVLink area of the PCB populated?"
-    This is the most consequential open question in the domain, because it decides whether a fuse
-    bypass would even be useful. The evidence leans **depopulated**: the only direct A100-versus-CMP
-    board comparison in the corpus reports parts missing, and the counter-claim is a schematic
-    inference rather than an observation.
-
-    **Depopulated:** the 2023 teardown states "the gold fingers of the NV-Link interface exist,
-    but the feature is unsupported with all components unpopulated on the PCB" and, separately,
-    "ICs related to the NV-Link interface are also missing". A researcher working from A100
-    schematics identified five specific depopulated resistors above the GPU (`R234` 000, `R237`
-    NP, `R236` 1k, `R1024` 000, `R238` 000, all page 17) plus `R976`, `R1029`, `R1030` and three
-    GPU-to-ground termination resistors. Another participant recalled "absent parts of power
-    supply to nvlink".
-
-    That resistor list came from comparing the two boards directly: "they are populated on a
-    genuine A100, but missing on CMP". It is the only such side-by-side in the corpus.
-
-    **Populated:** the project's own VBIOS comparison table states "NVLink bridge, external
-    bridge absent (PCB fully populated)", which is a project document row rather than an
-    inspection. Two hours *before* the resistor list was posted, another researcher said "I do
-    not believe there are any missing NVlink components. According to the schematics, the GPU die
-    is connected directly to the edge connectors", attributing the confusion to the bridge
-    containing active components "including a ROM chip". That last premise is itself refuted:
-    dead end #10 below records direct inspection finding no EEPROM on an A100 bridge.
-
-    **The complicating detail:** `R237` is marked **NP** (not populated) in the A100 schematic
-    itself, so at least one of the five is expected absent on a genuine A100 too. This shows how
-    easily a by-eye comparison misleads, and it is why the conclusion is "leans depopulated, one
-    direct comparison, unrebutted" rather than settled. Nobody has photographed the area on both
-    boards for the record.
+> [!NOTE]
+> **Open problem: is the NVLink area of the PCB populated?**
+>
+> This is the most consequential open question in the domain, because it decides whether a fuse
+> bypass would even be useful. The evidence leans **depopulated**: the only direct A100-versus-CMP
+> board comparison in the corpus reports parts missing, and the counter-claim is a schematic
+> inference rather than an observation.
+>
+> **Depopulated:** the 2023 teardown states "the gold fingers of the NV-Link interface exist,
+> but the feature is unsupported with all components unpopulated on the PCB" and, separately,
+> "ICs related to the NV-Link interface are also missing". A researcher working from A100
+> schematics identified five specific depopulated resistors above the GPU (`R234` 000, `R237`
+> NP, `R236` 1k, `R1024` 000, `R238` 000, all page 17) plus `R976`, `R1029`, `R1030` and three
+> GPU-to-ground termination resistors. Another participant recalled "absent parts of power
+> supply to nvlink".
+>
+> That resistor list came from comparing the two boards directly: "they are populated on a
+> genuine A100, but missing on CMP". It is the only such side-by-side in the corpus.
+>
+> **Populated:** the project's own VBIOS comparison table states "NVLink bridge, external
+> bridge absent (PCB fully populated)", which is a project document row rather than an
+> inspection. Two hours *before* the resistor list was posted, another researcher said "I do
+> not believe there are any missing NVlink components. According to the schematics, the GPU die
+> is connected directly to the edge connectors", attributing the confusion to the bridge
+> containing active components "including a ROM chip". That last premise is itself refuted:
+> dead end #10 below records direct inspection finding no EEPROM on an A100 bridge.
+>
+> **The complicating detail:** `R237` is marked **NP** (not populated) in the A100 schematic
+> itself, so at least one of the five is expected absent on a genuine A100 too. This shows how
+> easily a by-eye comparison misleads, and it is why the conclusion is "leans depopulated, one
+> direct comparison, unrebutted" rather than settled. Nobody has photographed the area on both
+> boards for the record.
 
 ---
 
@@ -283,19 +271,23 @@ wrong convention. Both readings agree that the earlier "A100 has 6x the NVLink b
 3090" claim is wrong. What would settle it: an explicit statement of whether the A100 600 GB/s
 number is unidirectional-summed or total-aggregate.
 
-!!! question "Open problem: 2-way or 4-way passive?"
-    Three connectors is exactly the node degree needed for a fully connected four-node mesh, and
-    200 GB/s per edge across 3 edges is 600 GB/s aggregate per card, arithmetically identical to
-    the pairwise figure. So 4-way is geometrically coherent. What is **not** established is that
-    NVIDIA's driver or firmware will train links to three different peers on a PCIe GA100. No
-    documentation says so and nobody demonstrated it. The two claims are about different things
-    (geometry versus supported configuration) and both may be true.
+> [!NOTE]
+> **Open problem: 2-way or 4-way passive?**
+>
+> Three connectors is exactly the node degree needed for a fully connected four-node mesh, and
+> 200 GB/s per edge across 3 edges is 600 GB/s aggregate per card, arithmetically identical to
+> the pairwise figure. So 4-way is geometrically coherent. What is **not** established is that
+> NVIDIA's driver or firmware will train links to three different peers on a PCIe GA100. No
+> documentation says so and nobody demonstrated it. The two claims are about different things
+> (geometry versus supported configuration) and both may be true.
 
-!!! warning "Do not size a build on the 320 GB figure"
-    A 4-card NVLink discussion quoted 320 GB of pooled memory for four 10 GB cards. That assumes
-    80 GB per card. The shipping unlock gives the 10 GB card **40 GB**, so four of them pool
-    **160 GB**. Four unlocked 8 GB cards pool **256 GB**. The 80 GB configuration was attempted
-    and found unstable: see [the 80 GB attempt](80gb.md).
+> [!WARNING]
+> **Do not size a build on the 320 GB figure**
+>
+> A 4-card NVLink discussion quoted 320 GB of pooled memory for four 10 GB cards. That assumes
+> 80 GB per card. The shipping unlock gives the 10 GB card **40 GB**, so four of them pool
+> **160 GB**. Four unlocked 8 GB cards pool **256 GB**. The 80 GB configuration was attempted
+> and found unstable: see [the 80 GB attempt](80gb.md).
 
 ---
 
@@ -326,18 +318,22 @@ The P2P commit touches `install.sh` (+7), `kernel-open/nvidia-uvm/uvm_gpu.h` (+7
 and falls back to NVLink where present; for PCIe pairs, transfers write directly to the other
 GPU's physical address over DMA.
 
-!!! warning "Experimental: GA100 is not on the supported list"
-    The branch lists RTX 3090 (pairwise NVLink where available, PCIe BAR1 otherwise), RTX 4090
-    and RTX 5090. **GA100 is not on that list and the patch has never been tested on a 170HX.**
-    The P2P path touches `kern_bus_gp100.c`, `io_vaspace.c` and `nv_gpu_ops.c`, so a GA100 code
-    path may simply not exist.
+> [!WARNING]
+> **Experimental: GA100 is not on the supported list**
+>
+> The branch lists RTX 3090 (pairwise NVLink where available, PCIe BAR1 otherwise), RTX 4090
+> and RTX 5090. **GA100 is not on that list and the patch has never been tested on a 170HX.**
+> The P2P path touches `kern_bus_gp100.c`, `io_vaspace.c` and `nv_gpu_ops.c`, so a GA100 code
+> path may simply not exist.
 
-!!! danger "Take only the P2P commit, not the hugepage commit"
-    `52670f7fd6a7` accelerates `cudaHostRegister` by a claimed ~5000x for 1G-hugepage-backed
-    buffers and shrinks device page tables for such mappings. Its author states it is enabled
-    automatically and that "this path skips some of the per-4K-page bookkeeping the stock driver
-    performs, so it may misbehave in edge cases the stock driver handles correctly". Treat it as
-    an instability source independent of the unlock patches.
+> [!CAUTION]
+> **Take only the P2P commit, not the hugepage commit**
+>
+> `52670f7fd6a7` accelerates `cudaHostRegister` by a claimed ~5000x for 1G-hugepage-backed
+> buffers and shrinks device page tables for such mappings. Its author states it is enabled
+> automatically and that "this path skips some of the per-4K-page bookkeeping the stock driver
+> performs, so it may misbehave in edge cases the stock driver handles correctly". Treat it as
+> an instability source independent of the unlock patches.
 
 Setup requirements as documented by that branch: `amd_iommu=on iommu=pt` or
 `intel_iommu=on iommu=pt` in `GRUB_CMDLINE_LINUX_DEFAULT`, `update-grub`, install the 610.43.03
@@ -363,11 +359,13 @@ read-write-read probe of `CTRL_OPT_NVLINK` (`0x008209B8`) and `CTRL_OPT_PERLINK`
 on an expendable card, followed by re-reading `STATUS_OPT_NVLINK` (`0x00820DB8`), costs one
 session.
 
-!!! danger "Write only to an expendable card"
-    These are secure fuse-shadow registers. General caution about writing them is the stated
-    reason nobody has. Expected result: the write is dropped and status stays `0x00000007`.
-    That negative is still worth having on record, because right now the corpus cannot even say
-    it was tried.
+> [!CAUTION]
+> **Write only to an expendable card**
+>
+> These are secure fuse-shadow registers. General caution about writing them is the stated
+> reason nobody has. Expected result: the write is dropped and status stays `0x00000007`.
+> That negative is still worth having on record, because right now the corpus cannot even say
+> it was tried.
 
 ### 2. Photograph the NVLink component area
 
@@ -463,11 +461,13 @@ someone else figures it out."
 | 2x RTX 3090 vLLM TP, 27B model | roughly 10 % throughput improvement with NVLink | first-hand, single tester | medium |
 | 2x RTX 3090 vLLM, published third-party | 715 versus 483 t/s output; 6,790 versus 4,583 t/s throughput | model, quantisation and batch settings unstated, so not comparable with the above | medium |
 
-!!! note "Cohort caveat"
-    In the reference table the A16 column reads the placeholder `BAR0` for every NVLink fuse row.
-    Statements of the form "on all cards" above should be read as excluding the A16 for the fuse
-    rows. The A16 is the only Ampere part reporting zero NVLink scalability, but its actual
-    disable-fuse state was never captured.
+> [!NOTE]
+> **Cohort caveat**
+>
+> In the reference table the A16 column reads the placeholder `BAR0` for every NVLink fuse row.
+> Statements of the form "on all cards" above should be read as excluding the A16 for the fuse
+> rows. The A16 is the only Ampere part reporting zero NVLink scalability, but its actual
+> disable-fuse state was never captured.
 
 ---
 

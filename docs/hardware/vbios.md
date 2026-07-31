@@ -40,14 +40,16 @@ restriction-related.
 
 ## Dumping the VBIOS
 
-!!! danger "Always dump before you touch anything"
-    A failed flash or a bad image is recoverable in the large majority of cases **only if a
-    stock ROM was saved first**. Standing advice from the people who have bricked and recovered
-    these cards: keep the stock dump, and have an external SPI programmer on hand *before*
-    touching the NVGI region. One researcher stated "if I corrupt NVGI there is no recovery
-    path at all" and self-corrected within one minute: a hardware SPI programmer makes it
-    recoverable. An `NV_PROM` MMIO dump is considered an adequate fallback image.
-    See [recovery](../procedures/recovery.md).
+> [!CAUTION]
+> **Always dump before you touch anything**
+>
+> A failed flash or a bad image is recoverable in the large majority of cases **only if a
+> stock ROM was saved first**. Standing advice from the people who have bricked and recovered
+> these cards: keep the stock dump, and have an external SPI programmer on hand *before*
+> touching the NVGI region. One researcher stated "if I corrupt NVGI there is no recovery
+> path at all" and self-corrected within one minute: a hardware SPI programmer makes it
+> recoverable. An `NV_PROM` MMIO dump is considered an adequate fallback image.
+> See [recovery](../procedures/recovery.md).
 
 There are three dump paths. They produce different byte ranges and have different failure modes.
 
@@ -101,11 +103,13 @@ open("vbios_prom.rom", "wb").write(rom)
 print(f"wrote {len(rom)} bytes")
 ```
 
-!!! warning "MMIO readback is not always identical to an SPI dump"
-    On a Drive A100 the NV_PROM readback showed all `0xFF` at both `0xFE000` and `0xFF000`.
-    Whether that region is genuinely empty on that part or whether the TOC structure simply does
-    not survive the NV_PROM path is unresolved. Anyone surveying license regions by MMIO should
-    confirm with an SPI dump before concluding a region is blank.
+> [!WARNING]
+> **MMIO readback is not always identical to an SPI dump**
+>
+> On a Drive A100 the NV_PROM readback showed all `0xFF` at both `0xFE000` and `0xFF000`.
+> Whether that region is genuinely empty on that part or whether the TOC structure simply does
+> not survive the NV_PROM path is unresolved. Anyone surveying license regions by MMIO should
+> confirm with an SPI dump before concluding a region is blank.
 
 ### CH341A dump, and verifying it
 
@@ -120,11 +124,13 @@ On stock cards the SPI flash is hardware write-protected: the dumped status regi
 `00000000 (0x00)`, `01000000 (0x40)`, `11111111 (0xFF)`. One tester defeated the protection and
 completed a flash within ten minutes of hitting it, so this is an obstacle rather than a wall.
 
-!!! danger "Write-protect before powering back on"
-    Flashing failure `0xBADF3000`, with the board unable to read flash, is caused by **not**
-    re-enabling SPI write protection before power-on. Recovery is to reflash the SOIC directly
-    with a chip clip and then set write protection. The related symptom is an RM init adapter
-    failure. There is no OS-level flash path for this board.
+> [!CAUTION]
+> **Write-protect before powering back on**
+>
+> Flashing failure `0xBADF3000`, with the board unable to read flash, is caused by **not**
+> re-enabling SPI write protection before power-on. Recovery is to reflash the SOIC directly
+> with a chip clip and then set write protection. The related symptom is an RM init adapter
+> failure. There is no OS-level flash path for this board.
 
 ### SKU and integrity fingerprint
 
@@ -179,10 +185,12 @@ means inside the `0x2200`-`0x43A00` MAC-verified range.
 The `+0x60000` mirror explains every duplicate-table address in the comparison work: if a table
 appears at both `0x41D41` and `0xA1D41`, that is one table and its backup copy, not two tables.
 
-!!! note "Two different meanings of 'NVGI region'"
-    The region map above uses NVGI for `0x00000`-`0x02200`. The 8 GB versus 10 GB diff analysis
-    uses NVGI for `0x00000`-`0x05E00`, which is why the four MAC blocks at `0x2CBF`, `0x38BA`,
-    `0x595C` and `0x5AF8` are described as being "in NVGI" despite sitting above `0x2200`.
+> [!NOTE]
+> **Two different meanings of 'NVGI region'**
+>
+> The region map above uses NVGI for `0x00000`-`0x02200`. The 8 GB versus 10 GB diff analysis
+> uses NVGI for `0x00000`-`0x05E00`, which is why the four MAC blocks at `0x2CBF`, `0x38BA`,
+> `0x595C` and `0x5AF8` are described as being "in NVGI" despite sitting above `0x2200`.
 
 ### NPDS body composition
 
@@ -223,14 +231,6 @@ Signed content always begins at `0x2200`. Per image:
 | A100 PCIe 40 GB | `0x00042200` | `0x2200`-`0x44400` |
 | Drive A100 32 GB | `0x00058A00` | `0x2200`-`0x5AC00` |
 
-!!! note "Superseded"
-    `0x2000` was originally read as a power table, with `0x200D` and `0x2025` taken for
-    power-limit bytes. That reading was replaced on 2026-05-31 by the layout-descriptor reading
-    above. The `z2_parse_vbios_table.py` parser in the widely circulated analysis gist still carries
-    the stale naming (`extract_rfrd` docstring "Extract RFRD power table fields", output label
-    "RFRD power:"), so **tool output from that script is misleading even though the underlying
-    document is correct**.
-
 ### The range was bounded empirically, not just read
 
 Four physical CH341A flash cycles on 2026-05-08 settled it. Writing `0xFF` padding *outside* the
@@ -256,12 +256,6 @@ Two different keys, two different mechanisms, frequently conflated.
 | Symmetric MAC, Davies-Meyer hash + AES-KDF | The `0x2200`-end-of-range content | csecret(2), held in SCP hardware | Forgery requires the key; stated to be extractable only by a DFA hardware attack |
 | AES-128-ECB | The two FwSec firmware regions | csecret(6) | Same key across every GA100 variant |
 | RSA | Boot ROM authenticating Booter code | NVIDIA production | Separate mechanism, often mistaken for an image signature |
-
-!!! note "Superseded"
-    Four ~384-byte blocks in the NVGI/PciAt area (`0x2CBF`-`0x2E3F`, `0x38BA`-`0x3A3A`,
-    `0x595C`-`0x5ADC` exactly 384 B, and `0x5AF8`-`0x5C78`) were labelled "RSA-3072 signatures"
-    because 3072/8 = 384. The label was retracted on 2026-05-31 once the symmetric MAC was
-    established. The offsets are confirmed; the semantic role of the blocks is undetermined.
 
 ### AES-128-ECB, proven three ways
 
@@ -297,10 +291,12 @@ DEVINIT/FWSEC is: pull a VBIOS from a public collection, search for that padding
 decrypt those IMEM sections with the simple key, then annotate the disassembly. That recipe is a
 consistent expert recommendation with no in-channel result posted yet.
 
-!!! question "Open problem"
-    A separate claim, that "the key is on NVIDIA's own website, I think it's debug #37", was
-    never substantiated. Neither the key nor a decrypted production image was ever posted. Treat
-    the `01234567...` debug-IMEM recipe as actionable and the "debug #37" claim as unverified.
+> [!NOTE]
+> **Open problem**
+>
+> A separate claim, that "the key is on NVIDIA's own website, I think it's debug #37", was
+> never substantiated. Neither the key nor a decrypted production image was ever posted. Treat
+> the `01234567...` debug-IMEM recipe as actionable and the "debug #37" claim as unverified.
 
 ---
 
@@ -338,15 +334,17 @@ nerfed to `44`; in the 8 GB VBIOS straps 5 and 7 are also nerfed. Strap 4 is the
 for 10 GB cards, strap 7 for 8 GB cards. This is the same tier encoding the runtime unlock writes
 into CFG1 at `0x009a0204`; see [memory geometry](../unlock/memory-geometry.md).
 
-!!! question "Open problem"
-    Two incompatible decodes of the per-strap HBM part fields were posted hours apart on
-    2026-07-25. The **vendor and revision fields agree** (Micron/Samsung/Hynix, rev1/rev2/rev3/
-    rev6/rev10); the **per-die capacity and stack-height fields do not** (for example strap 5 as
-    `Hynix_rev6_16Gb_org0x4` versus `Hynix_rev6_8Gb_4H_org0x4`). The author of the second decode
-    noted the publicly circulating forum decoder script "was not fully correct for HBM memory
-    configs". The `44`/`66`/`77` capacity mapping is not in dispute. Settling it needs an
-    authoritative field-width definition, or one decoded entry matched against a physically
-    identified HBM stack part number.
+> [!NOTE]
+> **Open problem**
+>
+> Two incompatible decodes of the per-strap HBM part fields were posted hours apart on
+> 2026-07-25. The **vendor and revision fields agree** (Micron/Samsung/Hynix, rev1/rev2/rev3/
+> rev6/rev10); the **per-die capacity and stack-height fields do not** (for example strap 5 as
+> `Hynix_rev6_16Gb_org0x4` versus `Hynix_rev6_8Gb_4H_org0x4`). The author of the second decode
+> noted the publicly circulating forum decoder script "was not fully correct for HBM memory
+> configs". The `44`/`66`/`77` capacity mapping is not in dispute. Settling it needs an
+> authoritative field-width definition, or one decoded entry matched against a physically
+> identified HBM stack part number.
 
 ### Outside the signed range (actually editable)
 
@@ -373,11 +371,13 @@ July 2026 (`freqDelta`, M0205, CTRL_OPT) sits above `0x43C00` and is therefore o
 the boundary and is inside. **That is the clean dividing line: memory timings and clock offsets
 are editable in the image; memory capacity straps are not.**
 
-!!! question "Open problem"
-    Do unsigned-tail memory edits actually take effect? The natural experiment is to write
-    `±1000` into `freqDelta` on a 10 GB image (where it is `0`) and see whether core offsetting
-    appears. One CH341A cycle on a card with a saved stock dump would answer it. Nobody has
-    reported trying.
+> [!NOTE]
+> **Open problem**
+>
+> Do unsigned-tail memory edits actually take effect? The natural experiment is to write
+> `±1000` into `freqDelta` on a 10 GB image (where it is `0`) and see whether core offsetting
+> appears. One CH341A cycle on a card with a saved stock dump would answer it. Nobody has
+> reported trying.
 
 ### Per-strap timing bytes
 
@@ -390,11 +390,6 @@ researcher the following day):
 | idx7 (80 GB) | `76 67 aa 00 00 00 00 15 ff ff 02 00 ff ff` |
 | idx8 (80 GB) | `86 18 a3 04 00 00 00 87 ff ff 01 00 ff ff` |
 | idx10 (80 GB) | `a6 fa a0 00 00 00 00 01 ff ff 03 00 ff ff` |
-
-!!! note "Superseded"
-    An LLM-assisted analysis concluded on 2026-07-24 that "timing data is shared across all strap
-    indexes". Corrected the next day by the same researcher after re-reading the dump: the data
-    is shared **between the 8 GB and 10 GB SKUs**, but individual straps carry different timings.
 
 ### License region and the HULK slot
 
@@ -420,14 +415,16 @@ on every boot, since NVIDIA would not ship a fully formed slot table plus a 1120
 slot if nothing read it. The corollary is that a forged or production-signed HULK cert at
 `0xFE504` would be an unlock path. This has never been demonstrated by instrumenting FWSECLIC.
 
-!!! question "Open problem"
-    Injecting a HULK cert at `0xFE504`. The slot exists, is 1113 bytes, is all-zero on stock, and
-    sits inside the window `nvflash` writes, so no CH341A is needed in principle. Two blockers:
-    the same analysis states `nvflash` is blocked by FwSecLic write-time verification even for
-    unsigned-tail changes, and whether the license region is exempt has never been tested; and
-    nobody has a signed cert. Cheapest next step: flash an arbitrary non-zero pattern into the
-    HLK payload and see whether the write is accepted at all, which separates "the region is
-    writable" from "we need a valid cert".
+> [!NOTE]
+> **Open problem**
+>
+> Injecting a HULK cert at `0xFE504`. The slot exists, is 1113 bytes, is all-zero on stock, and
+> sits inside the window `nvflash` writes, so no CH341A is needed in principle. Two blockers:
+> the same analysis states `nvflash` is blocked by FwSecLic write-time verification even for
+> unsigned-tail changes, and whether the license region is exempt has never been tested; and
+> nobody has a signed cert. Cheapest next step: flash an arbitrary non-zero pattern into the
+> HLK payload and see whether the write is accepted at all, which separates "the region is
+> writable" from "we need a valid cert".
 
 ### InfoROM
 
@@ -443,10 +440,12 @@ RRL v6, SEN v14, ULF v0. `nvidia-smi` on the same SKU reports Inforom Image Vers
 `1001.0105.01.02`, OEM Object 2.0, with ECC Object and Power Management Object both N/A,
 consistent with `ECC` being A100-only and `PPO` being empty.
 
-!!! warning "Do not fingerprint a card by total InfoROM object count"
-    Totals of 22, 23 and 28 have all been reported and **all are correct**: BBX and DEM are
-    telemetry records that accumulate with runtime. Only the 17 distinct types and the per-object
-    versions are structurally meaningful.
+> [!WARNING]
+> **Do not fingerprint a card by total InfoROM object count**
+>
+> Totals of 22, 23 and 28 have all been reported and **all are correct**: BBX and DEM are
+> telemetry records that accumulate with runtime. Only the 17 distinct types and the per-object
+> versions are structurally meaningful.
 
 ---
 
@@ -503,24 +502,28 @@ by writing PCIe registers from the patched driver, never touching the ROM, givin
 purely physical matter. See [PCIe Gen2](../unlock/pcie-gen2.md) and
 [the PCIe subsystem](pcie-subsystem.md).
 
-!!! question "Open problem"
-    Gen3 and Gen4 remain unreached. `FUSE_PCIE_GEN23_DIS` `0x0082057c` and `FUSE_PCIE_GEN3_DIS`
-    `0x00820580` both read `0x00000001` on every 170HX probed, alongside `FUSE_PCIE_MAGIC_D`
-    `0x00820520` = `0x16680000`, and the supported-speeds vector clips at `0x00000006` even after
-    the PHY rate is forced to a Gen3-capable `0x00340036`. Two unresolved questions: whether the
-    residual cap is the same DEVINIT bytes replayed or the fuse triple enforced independently
-    downstream, and whether the five-byte DEVINIT edit alone would restore Gen4 given a flash
-    that could be re-signed. See [Gen3 and Gen4](../frontier/pcie-gen3-gen4.md).
+> [!NOTE]
+> **Open problem**
+>
+> Gen3 and Gen4 remain unreached. `FUSE_PCIE_GEN23_DIS` `0x0082057c` and `FUSE_PCIE_GEN3_DIS`
+> `0x00820580` both read `0x00000001` on every 170HX probed, alongside `FUSE_PCIE_MAGIC_D`
+> `0x00820520` = `0x16680000`, and the supported-speeds vector clips at `0x00000006` even after
+> the PHY rate is forced to a Gen3-capable `0x00340036`. Two unresolved questions: whether the
+> residual cap is the same DEVINIT bytes replayed or the fuse triple enforced independently
+> downstream, and whether the five-byte DEVINIT edit alone would restore Gen4 given a flash
+> that could be re-signed. See [Gen3 and Gen4](../frontier/pcie-gen3-gen4.md).
 
 ### DEVINIT and ECC
 
-!!! note "The evidence points away from DEVINIT here"
-    **This VBIOS analysis provides no evidence that DEVINIT controls ECC.** The only ECC-related
-    datum in the entire ROM comparison is that the InfoROM `ECC` object is present on the A100 and
-    absent on the 170HX. No DEVINIT-side ECC bytes were found anywhere in the 54.5 KB config
-    table region. Chat-side theories blaming DEVINIT for the 170HX ECC behaviour are unsupported
-    by static analysis. This is a notable absence of evidence rather than a positive finding, so
-    confidence is medium.
+> [!NOTE]
+> **The evidence points away from DEVINIT here**
+>
+> **This VBIOS analysis provides no evidence that DEVINIT controls ECC.** The only ECC-related
+> datum in the entire ROM comparison is that the InfoROM `ECC` object is present on the A100 and
+> absent on the 170HX. No DEVINIT-side ECC bytes were found anywhere in the 54.5 KB config
+> table region. Chat-side theories blaming DEVINIT for the 170HX ECC behaviour are unsupported
+> by static analysis. This is a notable absence of evidence rather than a positive finding, so
+> confidence is medium.
 
 Corroborating from the silicon side: `FEAT_OVR_ECC_PLM` `0x00823800` reads `0xffffff8f` cold and
 gates `0x82380c`, `0x823810` and `0x82382C`. The HS ROP can open it, and **opening it is inert**,
@@ -533,9 +536,11 @@ one participant's inference rather than a datasheet. See [ECC](../frontier/ecc.m
 
 ### Re-executing DEVINIT at runtime
 
-!!! warning "Experimental"
-    Re-executing DEVINIT at runtime via the PMU **did** change hardware state, on one card, in
-    one session. It did not produce more usable memory.
+> [!WARNING]
+> **Experimental**
+>
+> Re-executing DEVINIT at runtime via the PMU **did** change hardware state, on one card, in
+> one session. It did not produce more usable memory.
 
 | Register | Before | After |
 |---|---|---|
@@ -607,10 +612,12 @@ three-way conflict between 432, 729 and 1458 MHz.
 
 The 1728 MHz figure was confirmed via `nvidia-smi` on a card running `0A`.
 
-!!! question "Open problem"
-    Whether `1728 MHz` on the `0A` image is a valid strap or a boost point. Asked directly, the
-    answer was an explicit guess: "I wanna say boost". Whether that VBIOS also changes voltage,
-    power or core clock was asked and never answered.
+> [!NOTE]
+> **Open problem**
+>
+> Whether `1728 MHz` on the `0A` image is a valid strap or a boost point. Asked directly, the
+> answer was an explicit guess: "I wanna say boost". Whether that VBIOS also changes voltage,
+> power or core clock was asked and never answered.
 
 ### Public TechPowerUp images
 
@@ -635,22 +642,26 @@ A tester who flashed 239457 over 268495 reported memory ~300 MHz lower, the powe
 to 250 W and no core offset available, consistent with moving from a 432 MHz field at 300 W to a
 364 MHz field at 250 W, a 272 MHz effective drop.
 
-!!! danger "TPU entry 283106 is not a CMP 170HX and must never be flashed to one"
-    283106 is an NVIDIA A100 / DRIVE-PG199-PROD image: version `92.00.A0.00.01`, build
-    2022-07-08, 976 KB, MD5 `ba22571080e412612964d130f0ce3880`, SHA1
-    `ccac3c86cb901c5bb6758d3423d00383e6355c13`, device `0x10DE 0x20BB`, subsystem `10DE 14A1`,
-    memory size 32751 MB, GPU clock 1260 MHz, boost 1260 MHz, memory clock 351 MHz, HBM2, no
-    board power limit block. It has circulated as a "170HX reference". Flashing it via SPI
-    programmer produced `NVRM: GPU 0000:0d:00.0: RmInitAdapter failed! (0x62:0x55:2674)` in
-    dmesg, and the reported DevID stayed `10DE:20C2`. A follow-up attempt with `omgvflash` on a
-    Windows laptop caused a BSOD.
+> [!CAUTION]
+> **TPU entry 283106 is not a CMP 170HX and must never be flashed to one**
+>
+> 283106 is an NVIDIA A100 / DRIVE-PG199-PROD image: version `92.00.A0.00.01`, build
+> 2022-07-08, 976 KB, MD5 `ba22571080e412612964d130f0ce3880`, SHA1
+> `ccac3c86cb901c5bb6758d3423d00383e6355c13`, device `0x10DE 0x20BB`, subsystem `10DE 14A1`,
+> memory size 32751 MB, GPU clock 1260 MHz, boost 1260 MHz, memory clock 351 MHz, HBM2, no
+> board power limit block. It has circulated as a "170HX reference". Flashing it via SPI
+> programmer produced `NVRM: GPU 0000:0d:00.0: RmInitAdapter failed! (0x62:0x55:2674)` in
+> dmesg, and the reported DevID stayed `10DE:20C2`. A follow-up attempt with `omgvflash` on a
+> Windows laptop caused a BSOD.
 
-!!! question "Open problem"
-    Whether a genuinely distinct "16 GB" 170HX ROM exists. The comparison collection lists
-    `cmp170hx_16gb_92.00.67.00.01.rom` as a separate file with the same version, build date,
-    device ID and subsystem as the 8 GB image and the note "no cards ever shipped"; independently,
-    TPU 239457 was found bit-for-bit identical to the 8 GB VBIOS. These may be the same file
-    counted twice. An MD5 or SHA of the collection file against 239457 and 257744 would settle it.
+> [!NOTE]
+> **Open problem**
+>
+> Whether a genuinely distinct "16 GB" 170HX ROM exists. The comparison collection lists
+> `cmp170hx_16gb_92.00.67.00.01.rom` as a separate file with the same version, build date,
+> device ID and subsystem as the 8 GB image and the note "no cards ever shipped"; independently,
+> TPU 239457 was found bit-for-bit identical to the 8 GB VBIOS. These may be the same file
+> counted twice. An MD5 or SHA of the collection file against 239457 and 257744 would settle it.
 
 ### Per-SKU and cross-product ROM diffs
 
@@ -717,12 +728,14 @@ of foreign 8 GB content into the real VBIOS block, reading it back, and restorin
 byte-identically. **A genuinely signed 80 GB A100 VBIOS would therefore flash. Modified images
 still die earlier, at `0x40` in VV.**
 
-!!! question "Open problem"
-    What is missing is a signed image that the 170HX's Board ID and fused device ID gates will
-    then accept at boot; every cross-flash to date failed at that gate, not at the write. The
-    cleanest next step is a VV+EWR of the *same-SKU* 300 W ROM onto a 250 W card, which is
-    signed, same device ID and same board, to establish whether the boot-side gate is Board ID or
-    something narrower.
+> [!NOTE]
+> **Open problem**
+>
+> What is missing is a signed image that the 170HX's Board ID and fused device ID gates will
+> then accept at boot; every cross-flash to date failed at that gate, not at the write. The
+> cleanest next step is a VV+EWR of the *same-SKU* 300 W ROM onto a 250 W card, which is
+> signed, same device ID and same board, to establish whether the boot-side gate is Board ID or
+> something narrower.
 
 ---
 
@@ -822,61 +835,39 @@ Ranked most tractable first. The cross-cutting list is on
    logic analyzer on the SPI bus during both a software and a hardware flash would be cheap and
    decisive.
 
-!!! question "Open problem"
-    Whether the strap table is MAC-verified *in practice*. One position holds that even if
-    `0x41D53` is inside the declared range, the Falcon may not actually check it. The counter is
-    the 2026-05-08 byte-flip test at that exact offset, which stalled the Booter. Weight strongly
-    favours "it is verified". The complication is that the *observed* in-channel failure
-    ("can't modify the straps or image check fails") is a **host-side nvflash check**, not a
-    boot-time Falcon check, so the two positions are partly talking past each other. A CH341A
-    flash of a strap-edited image, bypassing nvflash entirely, plus a `GFW_BOOT` read would
-    settle it. Nobody has reported doing this.
+> [!NOTE]
+> **Open problem**
+>
+> Whether the strap table is MAC-verified *in practice*. One position holds that even if
+> `0x41D53` is inside the declared range, the Falcon may not actually check it. The counter is
+> the 2026-05-08 byte-flip test at that exact offset, which stalled the Booter. Weight strongly
+> favours "it is verified". The complication is that the *observed* in-channel failure
+> ("can't modify the straps or image check fails") is a **host-side nvflash check**, not a
+> boot-time Falcon check, so the two positions are partly talking past each other. A CH341A
+> flash of a strap-edited image, bypassing nvflash entirely, plus a `GFW_BOOT` read would
+> settle it. Nobody has reported doing this.
 
-!!! question "Open problem"
-    Fuses versus VBIOS as the residence of the 170HX limits. The engineering-sample A/B flash
-    shows the VBIOS carries the memory cap, the PCIe cap and *part* of the compute penalty, but
-    not all of it: cross-flashing a 170HX VBIOS onto an engineering-sample GA100 that skips
-    signature checking imposed only **1/12 FP64 and 1/8 FP32**, versus **1/64 and 1/32** on a real
-    170HX, a residual factor of roughly 5 on FP64 and 4 on FP32 that must come from elsewhere. The shipping unlock recovers full
-    SM throughput by writing SS0/SS1 at runtime, which strongly suggests the remainder was the
-    `0x00823804`-gated feature override, but the engineering-sample experiment has never been
-    re-run with SS0/SS1 also written. That the shipping unlock is pure software does not settle
-    the question: it overrides state at runtime rather than proving where the default came from.
+> [!NOTE]
+> **Open problem**
+>
+> Fuses versus VBIOS as the residence of the 170HX limits. The engineering-sample A/B flash
+> shows the VBIOS carries the memory cap, the PCIe cap and *part* of the compute penalty, but
+> not all of it: cross-flashing a 170HX VBIOS onto an engineering-sample GA100 that skips
+> signature checking imposed only **1/12 FP64 and 1/8 FP32**, versus **1/64 and 1/32** on a real
+> 170HX, a residual factor of roughly 5 on FP64 and 4 on FP32 that must come from elsewhere. The shipping unlock recovers full
+> SM throughput by writing SS0/SS1 at runtime, which strongly suggests the remainder was the
+> `0x00823804`-gated feature override, but the engineering-sample experiment has never been
+> re-run with SS0/SS1 also written. That the shipping unlock is pure software does not settle
+> the question: it overrides state at runtime rather than proving where the default came from.
 
-!!! question "Open problem"
-    Batch-level VBIOS variation from suppliers. A single commercially interested source
-    identifying as a technical employee of a bulk holder stated "we have two kinds of VBIOS for
-    170hx here, one has higher bandwidth". No version strings and no bandwidth figures were given.
-    It is at least consistent with both `92.00.67.00.01` (364 MHz field) and `92.00.6D.00.0A`
-    (432 MHz field) being in the field. Unresolvable from the record.
-
----
-
-## Superseded conclusions worth knowing
-
-!!! note "Superseded"
-    **"VBIOS modding is impossible for the foreseeable future" (October 2023).** True as a
-    statement about Ampere VBIOS signature checks, and still true. But the broader conclusion
-    drawn at the time, that the 8 GB cap and the other restrictions are effectively permanent, was
-    superseded by the driver-side GSP signature-buffer plus Booter Load technique, which achieves
-    the unlock **without modifying the VBIOS at all**. The same review could not determine whether
-    the limits live in fuses or firmware; the answer turned out to be "both, in three layers":
-    VBIOS firmware, OTP fuses, and PCB-level physical omissions.
-
-!!! note "Superseded"
-    **"Flashing an 80 GB VBIOS will fail an internal check and the device will refuse to boot."**
-    Predicted 2026-07-27, refuted the same day by two people with hands-on results: it boots fully
-    and reports 80 GB. The predictor conceded. The real limitation is the stability of the
-    untrained upper HBM region, not a boot-time signature or capacity check. See
-    [the 80 GB question](../frontier/80gb.md).
-
-!!! note "Superseded"
-    **Cross-flash blocker attribution.** Initially attributed to a hardware fuse; corrected on
-    2026-07-19 to a **Board ID mismatch**. Both gates exist (the primary PCIe device ID is also
-    fused, `FUSE_DEVID_SW_OVR_DIS` `0x00820584` = 1 on every card probed), but the *observed*
-    nvflash-level rejection is the Board ID check. A VBIOS declaring an alternate device ID only
-    means it is *permitted to run* on a card with that ID; it cannot rebrand the card. See
-    [fuses and OTP](fuses-and-otp.md).
+> [!NOTE]
+> **Open problem**
+>
+> Batch-level VBIOS variation from suppliers. A single commercially interested source
+> identifying as a technical employee of a bulk holder stated "we have two kinds of VBIOS for
+> 170hx here, one has higher bandwidth". No version strings and no bandwidth figures were given.
+> It is at least consistent with both `92.00.67.00.01` (364 MHz field) and `92.00.6D.00.0A`
+> (432 MHz field) being in the field. Unresolvable from the record.
 
 ---
 

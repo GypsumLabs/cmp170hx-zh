@@ -3,7 +3,7 @@
 A comprehensive technical reference for the NVIDIA CMP 170HX (GA100): silicon, firmware, the
 community unlock, operating procedures, and the open frontier.
 
-55 pages, roughly 278,000 words. Current as of **2026-07-28**.
+55 pages, roughly 278,000 words. Current as of **2026-07-31**.
 
 ## Two ways to read this
 
@@ -12,13 +12,14 @@ community unlock, operating procedures, and the open frontier.
 - **`docs/` in this repository** is the source of truth. It is reviewable, takes pull
   requests, and builds the full themed site with search via MkDocs.
 
-Regenerate the wiki from the source with `to_github_wiki.py` rather than editing wiki pages
-directly, so the two never drift apart.
+Keep the two in step. `to_github_wiki.py` publishes `docs/` to the wiki; if edits are made on
+the wiki instead, sync them back before continuing so the trees never diverge.
 
 ## Reading it
 
-The pages are plain Markdown and read fine directly on GitHub or in any editor. To get search,
-navigation and the admonition styling the pages are written for:
+The pages are plain Markdown and read fine directly on GitHub or in any editor. Callouts are
+written as GitHub alert blockquotes (`> [!NOTE]`), which GitHub styles natively; MkDocs renders
+them as plain blockquotes unless a callout extension is enabled. To get search and navigation:
 
 ```bash
 pip install mkdocs mkdocs-material
@@ -45,14 +46,15 @@ mkdocs build          # static site into ../site
 **64 GB**. The 10 GB card (`10de:2082`) unlocks to **40 GB**. The 80 GB configuration for
 10 GB cards was built, tested, and rejected as unstable.
 
-**PCIe link speed and link width are separate problems.** Gen1 to Gen2 is a software unlock
-that currently exists only on unreleased branches. Going beyond x4 width requires hand
-soldering 24 AC coupling capacitors. Neither one achieves the other.
+**PCIe link speed and link width are separate problems.** Gen1 to Gen2 is a software unlock,
+shipped in cmpunlocker `master` since 2026-07-29, so any card with the unlock installed runs
+Gen2. Going beyond x4 width requires hand soldering 24 AC coupling capacitors. Neither one
+achieves the other.
 
 ## Conventions
 
-Plain prose is confirmed fact. Experimental, dangerous, unsolved and superseded material is
-marked with admonitions. Claims resting on a single observation say so in the sentence.
+Plain prose is confirmed fact. Experimental, dangerous and unsolved material is marked with
+alerts. Claims resting on a single observation say so in the sentence.
 Where evidence genuinely conflicts and nothing settles it, the wiki says so rather than
 choosing quietly.
 

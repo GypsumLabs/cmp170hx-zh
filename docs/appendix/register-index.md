@@ -293,11 +293,13 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 | `0x009a3cb4` / `0x009a3cb8` / `0x009a3cbc` | `I1500_INSTR` / `MODE` / `DATA` | FBPA | IEEE 1500 HBM test port; `0x0000000f` / `0x00000008` / `0x40000000` | [Memory subsystem](../hardware/memory-subsystem.md) |
 | `0x009a3cc0` / `0x009a3cc4` / `0x009a3cc8` | `I1500_SHADOW_WIR` / `WDR` / `STATUS` | FBPA | `0x000000f0` read-only / per-die / `0x00000000` idle. `WDR` reads `0x8000f000` on an 8 GB card and `0x8273ff83` on a 10 GB card | [Memory subsystem](../hardware/memory-subsystem.md) |
 
-!!! note "Registers that look adjacent but are not related"
-    `0x00823800` and `0x00823804` are four bytes apart and do different things:
-    `0x00823800` is `FEAT_OVR_ECC_PLM` and `0x00823804` is the `FEAT_OVR_PLM` that gates the
-    compute unlock. Likewise `0x00820c14` is FBIO status and `0x00820c18` is FBPA status. Both
-    pairs have been swapped in circulated notes.
+> [!NOTE]
+> **Registers that look adjacent but are not related**
+>
+> `0x00823800` and `0x00823804` are four bytes apart and do different things:
+> `0x00823800` is `FEAT_OVR_ECC_PLM` and `0x00823804` is the `FEAT_OVR_PLM` that gates the
+> compute unlock. Likewise `0x00820c14` is FBIO status and `0x00820c18` is FBPA status. Both
+> pairs have been swapped in circulated notes.
 
 ---
 
@@ -307,9 +309,11 @@ These are **not BAR0 addresses.** They are byte offsets into the `0x0000f800`-by
 (63,488-byte) fake signature buffer that the driver hands the Booter, which DMAs it to SEC2
 DMEM `0x0800`. Therefore:
 
-!!! note "The conversion rule"
-    **DMEM address = payload offset + `0x800`.** The buffer maps 1:1 onto DMEM
-    `0x0800`..`0xffff`, because `0x0800 + 0xf800 = 0x10000`, exactly the top of the 64 KB DMEM.
+> [!NOTE]
+> **The conversion rule**
+>
+> **DMEM address = payload offset + `0x800`.** The buffer maps 1:1 onto DMEM
+> `0x0800`..`0xffff`, because `0x0800 + 0xf800 = 0x10000`, exactly the top of the 64 KB DMEM.
 
 The whole buffer is first filled with the dword `0x000004a7`, then exactly 24 slots are
 overwritten. Every value below is read directly out of
@@ -349,13 +353,15 @@ is the ROP tail.
 The canary `0xc0deca7e` appears exactly five times per copy: at `0x5b40` and at payload offsets
 `0xf758`, `0xf794`, `0xf7a0`, `0xf7c4`.
 
-!!! question "Open problem: the unexplained payload constants"
-    Fifteen of the twenty-four slots have no confirmed role, carrying ten distinct constants
-    between them. The ROP write-ups name a
-    neighbouring gadget family (`0x1fb9`, `0x1fca`, `0x814e`, `0x8173`, `0x7f82`), so these are
-    plausibly the same tail translated, but nobody has walked the annotated disassembly to
-    confirm it. See [The ROP chain](../unlock/rop-chain.md) and
-    [Open questions](../frontier/open-questions.md).
+> [!NOTE]
+> **Open problem: the unexplained payload constants**
+>
+> Fifteen of the twenty-four slots have no confirmed role, carrying ten distinct constants
+> between them. The ROP write-ups name a
+> neighbouring gadget family (`0x1fb9`, `0x1fca`, `0x814e`, `0x8173`, `0x7f82`), so these are
+> plausibly the same tail translated, but nobody has walked the annotated disassembly to
+> confirm it. See [The ROP chain](../unlock/rop-chain.md) and
+> [Open questions](../frontier/open-questions.md).
 
 ### Load-bearing DMEM addresses referenced by the payload
 

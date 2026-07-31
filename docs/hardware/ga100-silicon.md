@@ -81,16 +81,6 @@ SKU. OpenCL-Benchmark on an unlocked card likewise reports 70 compute units at 1
 Note that 35 TPC is an odd number: the five active GPCs do not all carry 8 TPCs, which is normal
 for a harvested part.
 
-!!! note "Superseded"
-    Two widely repeated SM figures are wrong. `deviceQuery` prints
-    `Total SPs: 8960 (70 MPs x 128 SPs/MP)` and `Compute throughput: 25267.20 GFlops`; that is the
-    tool applying the compute-capability 8.6 figure of 128 FP32 lanes per SM instead of GA100's
-    (cc 8.0) 64. The arithmetic settles it: 4480 × 2 × 1410 MHz = 12.63 TFLOPS exactly, and every
-    measured unlocked FP32 result lands at 12.28 to 12.99 TFLOPS, not ~25. Separately, one
-    published specification page claims "8 GB variant: 56 SMs". The register accounting on an
-    8 GB card (`OPT_GPC_DISABLE` = `0x45`, `RING_ENUM_GPC` = 5, 35 active TPC) gives 70 SM, the
-    same as the 10 GB card.
-
 ---
 
 ## Floorsweeping and per-die binning
@@ -168,26 +158,30 @@ InfoROM dump) reads `PMC_BOOT_0`, `OPT_GPC_DISABLE`, `STATUS_OPT_GPC`, `OPT_GPC_
 RECONF_OVR set. At least four independent people have run it on both SKUs with self-agreeing
 output.
 
-!!! question "Open problem: the 38 missing SMs"
-    Going from 70 SM to the A100's 108, or the die's 128, would be the single largest gain
-    available on this card, and on cards where `OPT_GPC_DEFECTIVE` = 0 the disabled GPCs are known
-    good silicon. Every write path found so far is latched. `FUSE_CTRL_OPT_TPC_GPC` is
-    remove-only (an OR-test on an active TPC did not even drop the count); high-security writes to
-    `OPT_GPC_DISABLE`, `STATUS_OPT_GPC`, `OPT_TPC_GPC2` (`0x00820768`) and `DIS_SW_OVR`
-    (`0x00820084`) all read back unchanged, in an experiment that carried two positive controls
-    proving the write primitive was live; and forcing `gpcMask` three separate ways (RM struct,
-    host MMIO write to `0x00408970`, patching the GSP firmware's `andi` to `li a4,255`) made the
-    software stack report 8 GPC / 112 SM while `0x00408970` read back `0xdc` every time and
-    `cuInit` segfaulted. Untried candidates: a GSP-RPC path via the static floorsweeping-mask
-    queries (classes `0x2080122a` / `0x2080122b`), a GR-shadow write, or porting the write
-    primitive to PMU / GSP / FECS / GPCCS. See [dead ends](../history/dead-ends.md).
+> [!NOTE]
+> **Open problem: the 38 missing SMs**
+>
+> Going from 70 SM to the A100's 108, or the die's 128, would be the single largest gain
+> available on this card, and on cards where `OPT_GPC_DEFECTIVE` = 0 the disabled GPCs are known
+> good silicon. Every write path found so far is latched. `FUSE_CTRL_OPT_TPC_GPC` is
+> remove-only (an OR-test on an active TPC did not even drop the count); high-security writes to
+> `OPT_GPC_DISABLE`, `STATUS_OPT_GPC`, `OPT_TPC_GPC2` (`0x00820768`) and `DIS_SW_OVR`
+> (`0x00820084`) all read back unchanged, in an experiment that carried two positive controls
+> proving the write primitive was live; and forcing `gpcMask` three separate ways (RM struct,
+> host MMIO write to `0x00408970`, patching the GSP firmware's `andi` to `li a4,255`) made the
+> software stack report 8 GPC / 112 SM while `0x00408970` read back `0xdc` every time and
+> `cuInit` segfaulted. Untried candidates: a GSP-RPC path via the static floorsweeping-mask
+> queries (classes `0x2080122a` / `0x2080122b`), a GR-shadow write, or porting the write
+> primitive to PMU / GSP / FECS / GPCCS. See [dead ends](../history/dead-ends.md).
 
-!!! warning "Experimental"
-    One card in the wild was reported CTRL_OPT-swept to **56 SM** rather than the fuse floor of 70,
-    and 6 SM were clawed back to reach 62, with the remaining TPCs genuinely failing when enabled.
-    This is described as the first compute-swept card seen, and no before/after register dump was
-    published. Every other surveyed card is already at its fuse floor, where CTRL_OPT costs
-    nothing. Treat a below-70 SM count as rare, not normal.
+> [!WARNING]
+> **Experimental**
+>
+> One card in the wild was reported CTRL_OPT-swept to **56 SM** rather than the fuse floor of 70,
+> and 6 SM were clawed back to reach 62, with the remaining TPCs genuinely failing when enabled.
+> This is described as the first compute-swept card seen, and no before/after register dump was
+> published. Every other surveyed card is already at its fuse floor, where CTRL_OPT costs
+> nothing. Treat a below-70 SM count as rare, not normal.
 
 ---
 
@@ -224,12 +218,14 @@ on [memory subsystem](memory-subsystem.md) and [memory geometry](../unlock/memor
 | L2, full A100 | 40 MB | for comparison |
 | OpenCL global cache / local memory | 1960 KB / 48 KB | OpenCL-Benchmark on an unlocked card |
 
-!!! note "Disputed"
-    TechPowerUp lists the 170HX with 8 MB of L2. The runtime `deviceQuery` figure of 32768 KB and
-    an independent pointer-chase latency measurement both say 32 MB, and this wiki uses 32 MB. No
-    source in the corpus reconciles the two; a published latency/bandwidth curve showing where the
-    working set falls off a cliff would close it. Note also that the correct TechPowerUp entry is
-    `gpu-specs/cmp-170hx-8-gb.c3830`; the older `c3824` URL now redirects to an AMD card.
+> [!NOTE]
+> **Disputed**
+>
+> TechPowerUp lists the 170HX with 8 MB of L2. The runtime `deviceQuery` figure of 32768 KB and
+> an independent pointer-chase latency measurement both say 32 MB, and this wiki uses 32 MB. No
+> source in the corpus reconciles the two; a published latency/bandwidth curve showing where the
+> working set falls off a cliff would close it. Note also that the correct TechPowerUp entry is
+> `gpu-specs/cmp-170hx-8-gb.c3830`; the older `c3824` URL now redirects to an AMD card.
 
 HBM bandwidth is **not** restricted on this part and is unchanged by the unlock (a same-card A/B
 measured 1592 GB/s stock versus 1599 GB/s modded at a 256 MB working set, a ratio of 1.0x, in the
@@ -273,13 +269,15 @@ Compute capability 8.0 (`sm_80`) fixes what the die can and cannot do, independe
 | **Resizable BAR** | Present but limited to 64 MiB | `lspci` capability `[bb0]` |
 | **FLR** | Present (`FLReset+` in DevCap), and load-bearing for every unlock harness | `lspci -vvv` |
 
-!!! question "Open problem: is NVENC fused off or simply not built?"
-    The in-channel statement is "nvenc is disabled ... idr if it's fused off or if it's fuse gated
-    but it's not available by default if it has the hardware." Nobody has reported an NVENC
-    session working and no unlock path has been proposed. The obvious next step is the same
-    differential method that cracked the compute throttle: read the NVENC-related `OPT_*_DISABLE`
-    fuses in the `0x00820xxx` block on a 170HX and on an A100 or DRIVE A100 control and diff them.
-    Until that is done, assume the card has no hardware encoder.
+> [!NOTE]
+> **Open problem: is NVENC fused off or simply not built?**
+>
+> The in-channel statement is "nvenc is disabled ... idr if it's fused off or if it's fuse gated
+> but it's not available by default if it has the hardware." Nobody has reported an NVENC
+> session working and no unlock path has been proposed. The obvious next step is the same
+> differential method that cracked the compute throttle: read the NVENC-related `OPT_*_DISABLE`
+> fuses in the `0x00820xxx` block on a 170HX and on an A100 or DRIVE A100 control and diff them.
+> Until that is done, assume the card has no hardware encoder.
 
 ---
 

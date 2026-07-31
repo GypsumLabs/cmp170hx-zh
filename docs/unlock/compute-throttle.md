@@ -49,9 +49,11 @@ These readings come from at least five independent 170HX probes across both SKUs
 (PG199) boards. The values are a **product-line constant**: identical on every 170HX, which is why
 a fixed unlock recipe is safe. Contrast this with the override registers below, which are per-die.
 
-!!! note "A frequently repeated imprecision"
-    Summaries that say "all 9 speed select fuses at `0x5`" are loose. Eight fuses read `0x5`; the
-    ninth, `FUSE_SS_DP`, reads `0x1`, which is its own maximum because it is a one-bit field.
+> [!NOTE]
+> **A frequently repeated imprecision**
+>
+> Summaries that say "all 9 speed select fuses at `0x5`" are loose. Eight fuses read `0x5`; the
+> ninth, `FUSE_SS_DP`, reads `0x1`, which is its own maximum because it is a one-bit field.
 
 ### The product-tier signature
 
@@ -112,16 +114,18 @@ offset returned `0xbadf5040`.
 | `FEATURE_OVERRIDE_ECC_2` | `0x0082382c` | `0x0000000a` | LTC_CBC and SM_URF ECC |
 | `FEAT2 PLM` (ROW_REMAPPER PLM) | `0x00823b00` | `0xffffff8f` | opened only by the Gen2-family branches |
 
-!!! danger "SS0 and SS1 are per-die binning values. Never treat one card's reading as canonical."
-    Measured stock SS0 across the cohort: 170HX `0x51261070`, another 170HX `0x10206152`, a third
-    `0x71066125`, a fourth `0x12103060`; a `0x20bb` GA100 reference board (unthrottled, `FEAT_READOUT_1` = 0)
-    `0x53540175`; A100 SXM4 40G `0x10413004`;
-    A100 PCIe 40G `0x14604062`; A100 PCIe 80G `0x72020072`; A10 `0x11303071`; A5000 `0x63573073`;
-    A6000 `0x14170072`; RTX 3080 `0x03676064`; RTX 3080 Ti `0x10551033`; RTX 3090 `0x06740057`;
-    RTX 3090 Ti `0x30403100`; DRIVE A100 `0x25045144`. Two archived dumps of the *same* A100 80 GB
-    device ID disagree with each other (`0x00112011`/`0x00000002` versus
-    `0x00343015`/`0x00000004`), so these are runtime state, not stable fuse state. Use
-    `FEATURE_READOUT_1` (`0x00823818`), not SS0/SS1, as a reference target.
+> [!CAUTION]
+> **SS0 and SS1 are per-die binning values. Never treat one card's reading as canonical.**
+>
+> Measured stock SS0 across the cohort: 170HX `0x51261070`, another 170HX `0x10206152`, a third
+> `0x71066125`, a fourth `0x12103060`; a `0x20bb` GA100 reference board (unthrottled, `FEAT_READOUT_1` = 0)
+> `0x53540175`; A100 SXM4 40G `0x10413004`;
+> A100 PCIe 40G `0x14604062`; A100 PCIe 80G `0x72020072`; A10 `0x11303071`; A5000 `0x63573073`;
+> A6000 `0x14170072`; RTX 3080 `0x03676064`; RTX 3080 Ti `0x10551033`; RTX 3090 `0x06740057`;
+> RTX 3090 Ti `0x30403100`; DRIVE A100 `0x25045144`. Two archived dumps of the *same* A100 80 GB
+> device ID disagree with each other (`0x00112011`/`0x00000002` versus
+> `0x00343015`/`0x00000004`), so these are runtime state, not stable fuse state. Use
+> `FEATURE_READOUT_1` (`0x00823818`), not SS0/SS1, as a reference target.
 
 `FEATURE_READOUT_1` is the one value that is stable and meaningful: it reads `0x016db6ed`
 identically on both physical 170HX cards despite their SS0/SS1 differing, `0x00000000` on every
@@ -134,14 +138,16 @@ Each SS0 nibble is best read as `[enable | 3-bit speed]`. `0x8` sets bit 3 (over
 bits [2:0] = 0 (speed 0, full rate). So `0x88888888` means "override enabled, full rate" on all
 eight SS0 units, and `0x00000008` does the same for IMLA4 alone in SS1.
 
-!!! warning "Encoding is inferred, not documented"
-    No NVIDIA documentation for this field layout exists in the corpus. The reading is supported
-    by three observations: no stock dump anywhere in the archive has any nibble greater than or
-    equal to 8, i.e. on stock silicon the override-enable bits are clear and the field contents are
-    don't-care; the effective readout at `0x00823818` goes to zero after the write; and the
-    performance result matches. It has never been confirmed field by field. A single-nibble sweep
-    of SS0 on an unlocked card, watching which bits of `0x00823818` move, would settle both this
-    and the readout decode.
+> [!WARNING]
+> **Encoding is inferred, not documented**
+>
+> No NVIDIA documentation for this field layout exists in the corpus. The reading is supported
+> by three observations: no stock dump anywhere in the archive has any nibble greater than or
+> equal to 8, i.e. on stock silicon the override-enable bits are clear and the field contents are
+> don't-care; the effective readout at `0x00823818` goes to zero after the write; and the
+> performance result matches. It has never been confirmed field by field. A single-nibble sweep
+> of SS0 on an unlocked card, watching which bits of `0x00823818` move, would settle both this
+> and the readout decode.
 
 ### The gate chain
 
@@ -160,11 +166,13 @@ Two gating fuses were measured on the same card: `OPT_SECURE_FEATURE_OVERRIDE_QU
 
 And above all of it:
 
-!!! note "The one fuse that makes this possible"
-    `OPT_FEATURE_FUSES_OVERRIDE_DISABLE` (`FUSE_FEAT_OVR_DIS`) at `0x008203f0` reads
-    `0x00000000` on the CMP 170HX. The probe annotates it "MASTER KILL: if YES all overrides
-    permanently locked". Had NVIDIA blown that one fuse, every route on this page would be closed
-    permanently. It reads zero on every card probed, including the GA10x control.
+> [!NOTE]
+> **The one fuse that makes this possible**
+>
+> `OPT_FEATURE_FUSES_OVERRIDE_DISABLE` (`FUSE_FEAT_OVR_DIS`) at `0x008203f0` reads
+> `0x00000000` on the CMP 170HX. The probe annotates it "MASTER KILL: if YES all overrides
+> permanently locked". Had NVIDIA blown that one fuse, every route on this page would be closed
+> permanently. It reads zero on every card probed, including the GA10x control.
 
 Note that `FEAT_OVR_PLM 0x00823804` reads `0xffffff8f` (L3-only) on **all fifteen** probed Ampere
 parts, including every A100. The 170HX is not special here. The unlock's entire difficulty is
@@ -242,16 +250,6 @@ Points worth noting:
 - SS0/SS1 are byte-identical in all twelve unreleased branches. No branch ever experimented with
   different compute values; all compute experimentation predates the values being settled.
 
-!!! note "Superseded: the project `docs` branch is wrong about this"
-    `docs/docs/ARCHITECTURE.md` on the unreleased `docs` branch calls SS0 and SS1 "Suspension
-    State registers" that "artificially disable clusters of SMs", says stock firmware uses them to
-    disable about 50% of the SMs, and says the tool writes `0xffffffff` to both. All three claims
-    are false. The registers are `FEATURE_OVERRIDE_SM_SPEED_SELECT` and `..._SM_SPEED_SELECT_1`
-    (speed select, not suspension state); they control per-instruction-unit issue rate, not which
-    SMs are active; SM count is 70 before and after; and the shipping code writes `0x88888888` and
-    `0x00000008`. The same file also expands PLM as "Program Logic Modules" (it is the privilege
-    level mask) and PMA as "Power Management Array". Do not carry any of it forward.
-
 ---
 
 ## Verifying the unlock
@@ -291,15 +289,17 @@ That last row is the hard confirmation that this is an override and not a fuse e
 successful unlock the fuse shadows still read `5` (and DP still reads `1`), while the effective
 readout is zero.
 
-!!! warning "`clocks.max.sm` is not a good verification signal"
-    `install.sh` prints `nvidia-smi --query-gpu=clocks.max.sm --format=csv,noheader` as its
-    compute verification step, and one post-unlock report read `1935 MHz` from it. Every sustained
-    measurement contradicts reading that as an operating clock: the VBIOS table maximum graphics
-    clock is 1695 MHz and the practical silicon ceiling is about 1604 to 1614 MHz at a +350 offset.
-    Sustained SM clock is **1410 MHz** (1470 MHz at `-pl 300`). Treat 1935 MHz as a reported field,
-    single report, low confidence. A better functional check is that the NVML GPC clock VF offset
-    range comes back as `[-1000 .. +1000]` rather than `[0 .. 0]`; see
-    [tuning](../operations/tuning.md).
+> [!WARNING]
+> **`clocks.max.sm` is not a good verification signal**
+>
+> `install.sh` prints `nvidia-smi --query-gpu=clocks.max.sm --format=csv,noheader` as its
+> compute verification step, and one post-unlock report read `1935 MHz` from it. Every sustained
+> measurement contradicts reading that as an operating clock: the VBIOS table maximum graphics
+> clock is 1695 MHz and the practical silicon ceiling is about 1604 to 1614 MHz at a +350 offset.
+> Sustained SM clock is **1410 MHz** (1470 MHz at `-pl 300`). Treat 1935 MHz as a reported field,
+> single report, low confidence. A better functional check is that the NVML GPC clock VF offset
+> range comes back as `[-1000 .. +1000]` rather than `[0 .. 0]`; see
+> [tuning](../operations/tuning.md).
 
 ---
 
@@ -335,19 +335,21 @@ report in the private verified channel. Source attachment:
 | INT1 | 46.16 TOP/s | 1038.89 TOP/s | 22.5x |
 | TF32 | 90.72 TF/s | 90.09 TF/s | 1.0x, marked "untouched" (disputed) |
 
-!!! note "Why this date is six days before the timeline's unlock milestone"
-    [timeline.md](../history/timeline.md) dates "compute unlock works on hardware" to **2026-07-12**.
-    That is the first *community-reproduced* unlock. This table predates it because the private
-    verified channel had compute working on **2026-07-06 01:24**, in the same message that reported
-    INT4 and INT8 hitting 300 and 600 with CUTLASS TN shape tuning. The two dates are not in
-    conflict; they mark private first light and public reproduction.
-
-    Treat the numbers themselves with the caution an image deserves: no tool is named, no clock or
-    flop-counting convention is stated, and none of the eight rows was ever reproduced digit for
-    digit. The throttled column is corroborated in kind by the external clpeak review (locked FP64
-    182.72 GFLOPS against 0.20 TF/s here; locked FP32 394.77 GFLOPS against 0.41 TF/s), and the
-    unlocked FP16 and BF16 rows sit inside the later 8-card spread. The TF32 row is disputed
-    outright.
+> [!NOTE]
+> **Why this date is six days before the timeline's unlock milestone**
+>
+> [timeline.md](../history/timeline.md) dates "compute unlock works on hardware" to **2026-07-12**.
+> That is the first *community-reproduced* unlock. This table predates it because the private
+> verified channel had compute working on **2026-07-06 01:24**, in the same message that reported
+> INT4 and INT8 hitting 300 and 600 with CUTLASS TN shape tuning. The two dates are not in
+> conflict; they mark private first light and public reproduction.
+>
+> Treat the numbers themselves with the caution an image deserves: no tool is named, no clock or
+> flop-counting convention is stated, and none of the eight rows was ever reproduced digit for
+> digit. The throttled column is corroborated in kind by the external clpeak review (locked FP64
+> 182.72 GFLOPS against 0.20 TF/s here; locked FP32 394.77 GFLOPS against 0.41 TF/s), and the
+> unlocked FP16 and BF16 rows sit inside the later 8-card spread. The TF32 row is disputed
+> outright.
 
 ### Independent confirmations
 
@@ -464,15 +466,17 @@ where `SM_ISSUE_RATE_MODIFIER` lives (`0x20504xxx`) is completely absent from it
 physically unable to write it even with a perfect PROD_DIFF list; and GSP-RM is NVIDIA-signed
 anyway.
 
-!!! question "Open problem: does `0x00504204` impose any residual limit on an already-unlocked card?"
-    Nobody has run the obvious A/B: write `0x00504204` to zero **on a card whose SS0/SS1 are
-    already set** and re-run the benchmark suite. The register is host-writable, the write
-    primitive exists in the ROP toolchain, and the answer is a yes or no. This is the most
-    tractable open question in the compute domain. A second, related unknown is whether
-    `0xbadf1201` at that offset means "privilege-blocked" or "not decoded" on GA100: the whole
-    `0x00504xxx` and `0x00407xxx` aperture returns the same sentinel on a 170HX while a GA10x
-    control returns real values everywhere, which points at an address-decode difference rather
-    than a per-register block. A `0x20bb` GA100 reading a real `0x00000005` complicates that.
+> [!NOTE]
+> **Open problem: does `0x00504204` impose any residual limit on an already-unlocked card?**
+>
+> Nobody has run the obvious A/B: write `0x00504204` to zero **on a card whose SS0/SS1 are
+> already set** and re-run the benchmark suite. The register is host-writable, the write
+> primitive exists in the ROP toolchain, and the answer is a yes or no. This is the most
+> tractable open question in the compute domain. A second, related unknown is whether
+> `0xbadf1201` at that offset means "privilege-blocked" or "not decoded" on GA100: the whole
+> `0x00504xxx` and `0x00407xxx` aperture returns the same sentinel on a 170HX while a GA10x
+> control returns real values everywhere, which points at an address-decode difference rather
+> than a per-register block. A `0x20bb` GA100 reading a real `0x00000005` complicates that.
 
 ---
 
@@ -514,72 +518,37 @@ Two clarifications that are often conflated:
 
 ---
 
-## Superseded recipes
-
-!!! note "Superseded"
-    Several recipes circulated before the shipping code settled the matter. None of them are what
-    ships, and none should be followed.
-
-    - **"Open `FUSE_SS_PLM 0x008200FC` and write `FBPA_CFG1_BROADCAST 0x009A0204`" (2026-06-30).**
-      Declared insufficient on 2026-07-08 because both SS0 and SS1 must be written. The shipping
-      code never touches `0x008200fc` at all: the FBPA PLM it opens is `0x009a0148`.
-    - **The five-value recipe (2026-07-07)**, which had `FEAT_OVR_PLM 0x00823804 = 0x000000ff`.
-      Shipping opens it to `0xffffffff`. Only the host-side SS0/SS1 pair survived verbatim.
-    - **A single three-write ROP payload (2026-06-22)** carrying `0x0082381c`, `0x00823820` and
-      `0x00823804` in one 63,232-byte `/tmp/payload.bin`. The shipping design is structurally
-      different: one (address, value) pair per payload, Booter Load re-fired four times, and
-      SS0/SS1 written by the host afterwards, from a 63,488-byte (`0x0000f800`) signature buffer.
-    - **"Zero the nine fuse-adjacent registers" (2026-07-06).** The shipping implementation zeroes
-      nothing.
-    - **The manual five-step TTY procedure (2026-07-12):** run the ROP script, FLR, kill the
-      NVIDIA driver, FLR again, run the SM unlock script. It worked, on open kernel modules at
-      580.159.04 with a `patch_gsp.py`-spliced `gsp_tu10x.bin`, and it had to be run from a TTY.
-      Replaced entirely by the patched modules on nvidia-open 610.43.02 / 610.43.03. Recorded here
-      only because its structure documents the dependency chain: `fire_compute` in
-      `refire_chain_v6.py` is annotated "Compute throttle-off: open FEAT PLM 0x823804 -> PL0-write
-      SS0/SS1 (AON, FLR-sticky)".
-
-!!! note "Superseded: 'the throttle is hardware and cannot be overridden'"
-    An externally published, AI-generated write-up concluded that "the FFMA throttle is not a
-    software restriction ... it is a physical property of the chip, programmed at the factory and
-    enforced by hardware logic that runs before any software has a chance to intervene." Its
-    measurements were correct and every path it tried genuinely did fail. It was wrong because its
-    search space never included the FEATURE_OVERRIDE block: it never opened `0x00823804` and never
-    wrote `0x0082381c`. The nuance worth keeping is that the fuse really is unchangeable and the
-    throttle really is hardware-enforced, but the enforcement is configurable at PL3 through an
-    override that supersedes the fuse, and only because `0x008203f0` reads zero on this part.
-
----
-
 ## Remaining open questions
 
-!!! question "Open problems in this domain"
-    1. **Does `0x00504204` matter on an unlocked card?** See above. One A/B settles it.
-    2. **Why is INT8 / IMMA still gated?** The IMLA fuses read `0x5` and the override nibbles are
-       set identically to the FMA ones, yet measured IMMA does not follow. Next step: dump
-       `0x00823818` alongside a per-datatype microbenchmark to see whether the effective IMLA
-       fields really are zero, and look for a separate DP4A/IMMA gate outside the
-       `SM_SPEED_SELECT` block.
-    3. **Isolate SS1's effect on FP64.** The claim "SS1 nerfs 64-bit compute" is, strictly, an
-       untested 2026-07-14 prediction that happens to sit next to a correct FP64 measurement. A
-       one-line build with the `0x00823820` write removed, then the OpenCL FP64 test, would give
-       the answer (expect 6.421 versus something near 0.19 TFLOPs/s if the belief is right).
-    4. **Decode `FEATURE_READOUT_1` (`0x00823818`).** A naive nine-by-three-bit LSB-first unpack of
-       the stock `0x016db6ed` yields `[5,5,3,3,3,3,3,3,1]`, which does not match the fuses
-       (uniformly 5 with DP at 1, predicting `0x01b6db6d`). Either the field order or width
-       assumption is wrong, or the readout is a post-arbitration effective rate. Regardless of
-       decode, `== 0` remains the practical success test.
-    5. **Why does `FUSE_SS_FMLA16 = 0x5` not appear to throttle FP16?** Likely because FMLA16
-       governs a tensor/MLA path distinct from the packed-half CUDA-core path, but nobody has
-       measured FP16 scalar and FP16 tensor separately on the same card in both states.
-    6. **Is TF32 throttled at stock?** One table says `90.72 → 90.09 TF/s` (untouched); another,
-       on a different card, says `2.96 → 51.53`, `3.01 → 84.75` and `3.21 → 80.59 TFLOPS` at
-       1024³, 4096³ and 8192³. Both cannot be true. One TF32 GEMM on a card confirmed locked by
-       `0x00823818 != 0x00000000` would settle it.
-    7. **Is `0x008200fc` writable, and what does it read cold?** `0xffffffff` in one sweep,
-       `0x000003ff` in another, and `status=0xffff` from the nine-PLM branch attempt with no
-       readback recorded. The register is called `FUSE_SS_PLM` in clean-room tooling and
-       `OPT_PLM` in branch source; they are the same register.
+> [!NOTE]
+> **Open problems in this domain**
+>
+> 1. **Does `0x00504204` matter on an unlocked card?** See above. One A/B settles it.
+> 2. **Why is INT8 / IMMA still gated?** The IMLA fuses read `0x5` and the override nibbles are
+>    set identically to the FMA ones, yet measured IMMA does not follow. Next step: dump
+>    `0x00823818` alongside a per-datatype microbenchmark to see whether the effective IMLA
+>    fields really are zero, and look for a separate DP4A/IMMA gate outside the
+>    `SM_SPEED_SELECT` block.
+> 3. **Isolate SS1's effect on FP64.** The claim "SS1 nerfs 64-bit compute" is, strictly, an
+>    untested 2026-07-14 prediction that happens to sit next to a correct FP64 measurement. A
+>    one-line build with the `0x00823820` write removed, then the OpenCL FP64 test, would give
+>    the answer (expect 6.421 versus something near 0.19 TFLOPs/s if the belief is right).
+> 4. **Decode `FEATURE_READOUT_1` (`0x00823818`).** A naive nine-by-three-bit LSB-first unpack of
+>    the stock `0x016db6ed` yields `[5,5,3,3,3,3,3,3,1]`, which does not match the fuses
+>    (uniformly 5 with DP at 1, predicting `0x01b6db6d`). Either the field order or width
+>    assumption is wrong, or the readout is a post-arbitration effective rate. Regardless of
+>    decode, `== 0` remains the practical success test.
+> 5. **Why does `FUSE_SS_FMLA16 = 0x5` not appear to throttle FP16?** Likely because FMLA16
+>    governs a tensor/MLA path distinct from the packed-half CUDA-core path, but nobody has
+>    measured FP16 scalar and FP16 tensor separately on the same card in both states.
+> 6. **Is TF32 throttled at stock?** One table says `90.72 → 90.09 TF/s` (untouched); another,
+>    on a different card, says `2.96 → 51.53`, `3.01 → 84.75` and `3.21 → 80.59 TFLOPS` at
+>    1024³, 4096³ and 8192³. Both cannot be true. One TF32 GEMM on a card confirmed locked by
+>    `0x00823818 != 0x00000000` would settle it.
+> 7. **Is `0x008200fc` writable, and what does it read cold?** `0xffffffff` in one sweep,
+>    `0x000003ff` in another, and `status=0xffff` from the nine-PLM branch attempt with no
+>    readback recorded. The register is called `FUSE_SS_PLM` in clean-room tooling and
+>    `OPT_PLM` in branch source; they are the same register.
 
 ---
 

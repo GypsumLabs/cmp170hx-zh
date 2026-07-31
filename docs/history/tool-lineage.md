@@ -76,10 +76,12 @@ echo <BDF> | sudo tee /sys/bus/pci/drivers/nvidia/unbind
 GA100 BAR0 is a 16 MiB PRI aperture (`0x1000000`); `PMC_BOOT_0` at offset 0 identifies the chip:
 `0x170000a1` GA100, `0xb72000a1` GA102, `0xb74000a1` GA104.
 
-!!! warning "The advertised `/dev/mem` fallback does not exist"
-    Line 9 of the header comment reads `# Falls back to /dev/mem path if resource0 fails.` The
-    resource0 resolution block actually ends with
-    `log "ERROR: cannot find resource0 for $PCI_BDF"; ... exit 2`. The code path was never written.
+> [!WARNING]
+> **The advertised `/dev/mem` fallback does not exist**
+>
+> Line 9 of the header comment reads `# Falls back to /dev/mem path if resource0 fails.` The
+> resource0 resolution block actually ends with
+> `log "ERROR: cannot find resource0 for $PCI_BDF"; ... exit 2`. The code path was never written.
 
 ### VBIOS tooling
 
@@ -93,13 +95,15 @@ ROM header pointer at `+0x18`, the BIT pattern `ff b8 42 49 54 00`, and `RFRD` a
 The CFG1 strap table is auto-located by a stride-1 scan of `0x30000` to `0xB0000` for 16 consecutive
 4-byte entries whose byte+2 is in `{0x44,0x55,0x66,0x77}` and byte+3 in `{0x02,0x22}`.
 
-!!! warning "The parser's labels are stale in four places"
-    Its `extract_cfg1_strap_table` docstring cites "~0x3FB18 in A100 PCIe" while the comparison table
-    places it at `0x4285A`; `extract_rfrd` calls RFRD a "power table" when it is an image layout
-    descriptor and `field_0C` is the MAC-verified range size, not a power limit;
-    `extract_fbpa_tier_table` can match the CFG1 table itself and report a duplicate; and
-    `find_subsystem_id` is a stub. Anyone quoting the tool's output labels verbatim propagates all
-    four. See [VBIOS](../hardware/vbios.md).
+> [!WARNING]
+> **The parser's labels are stale in four places**
+>
+> Its `extract_cfg1_strap_table` docstring cites "~0x3FB18 in A100 PCIe" while the comparison table
+> places it at `0x4285A`; `extract_rfrd` calls RFRD a "power table" when it is an image layout
+> descriptor and `field_0C` is the MAC-verified range size, not a power limit;
+> `extract_fbpa_tier_table` can match the CFG1 table itself and report a duplicate; and
+> `find_subsystem_id` is a stub. Anyone quoting the tool's output labels verbatim propagates all
+> four. See [VBIOS](../hardware/vbios.md).
 
 ### `pcielink.sh`
 
@@ -123,11 +127,13 @@ plus sysfs link speed and width, `nvidia-smi pcie.link.gen`, AER counters, and t
 `SEC2_DEBUG lines=152` alongside `OPT=00000001/00000001/16680000` on two separate unlocked two-card
 Gen2 rigs, one HiveOS and one Unraid.
 
-!!! note "Line counts are not a reliable cross-build fingerprint"
-    Every recorded value differs: 29 on the archived single-card 8 GB capture, 134 on the archived
-    two-card Gen2-branch `610.43.03` log, 34 (Gen1 build) and 80 (Gen2 build) from the reporting
-    tools, and 152 from `pcielink.sh` on two two-card Gen2 rigs. Do not read a mismatch as a failed
-    install.
+> [!NOTE]
+> **Line counts are not a reliable cross-build fingerprint**
+>
+> Every recorded value differs: 29 on the archived single-card 8 GB capture, 134 on the archived
+> two-card Gen2-branch `610.43.03` log, 34 (Gen1 build) and 80 (Gen2 build) from the reporting
+> tools, and 152 from `pcielink.sh` on two two-card Gen2 rigs. Do not read a mismatch as a failed
+> install.
 
 ### The A100 probe kit
 
@@ -153,13 +159,15 @@ sweep retrains the live link.
 | `cuda_dbg.py` | Lighter alias test | `cuMemGetInfo_v2`, then `cuMemAlloc_v2` at 64, 60, 56, 52, 48, 44, 42 GiB until one succeeds; writes `0xAAAA0000` at offset 0 and `0xBBBB0000` at 40 GiB, reads offset 0. Reading back `0xBBBB0000` means the space aliases. It leaks its allocation, so run it once per driver load |
 | `cuda_memtest` 1.2.3 | Community VRAM validator | Exits on the first error. On an unlocked card reports `global memory size=85545582592`. On the 80 GB profile prints `Attached to device 0 successfully.` then hangs indefinitely unless capped at 39 GB |
 
-!!! danger "An earlier fold harness was itself broken"
-    A control run after an SBR back to consistent native state (10240 MiB, driver 610.43.03, CFG1
-    `0x02449000`) allocated 9 GiB of genuinely native memory and reported "4608 chunks, 4608
-    corrupt/aliased" across five passes, that is, native memory "folding", which is impossible. The
-    same harness had earlier reported 10 GiB as fully aliased at roughly 26.6 GB/s on pass 1 then
-    197 to 198 GB/s on passes 2 to 5. This retroactively invalidated a body of fold-at-40 GB
-    conclusions. Use `check_fold.py`, not any earlier harness output.
+> [!CAUTION]
+> **An earlier fold harness was itself broken**
+>
+> A control run after an SBR back to consistent native state (10240 MiB, driver 610.43.03, CFG1
+> `0x02449000`) allocated 9 GiB of genuinely native memory and reported "4608 chunks, 4608
+> corrupt/aliased" across five passes, that is, native memory "folding", which is impossible. The
+> same harness had earlier reported 10 GiB as fully aliased at roughly 26.6 GB/s on pass 1 then
+> 197 to 198 GB/s on passes 2 to 5. This retroactively invalidated a body of fold-at-40 GB
+> conclusions. Use `check_fold.py`, not any earlier harness output.
 
 The standard driver-teardown sequence used throughout testing, still correct:
 
@@ -171,11 +179,6 @@ echo 1 | sudo tee /sys/bus/pci/devices/<BDF>/reset
 ---
 
 ## Generation 1: manual BAR0 poking and Python ROP unlockers
-
-!!! note "Superseded"
-    Everything in this section is obsolete. It is documented because the constants and failure modes
-    recur in older guides that are still circulating, and a reader needs to recognise a dead path on
-    sight. Replaced by [generation 2](#generation-2-cmpunlocker-the-shipping-driver-patch).
 
 ### What the era looked like
 
@@ -269,16 +272,6 @@ payload_frames:
 with a zeroed terminator frame returning to `0x0000810D`. Its three writes were
 `0x009A0204 = 0x02779000`, `0x00100CE0 = 0x0000020B` and `0x00823804 = 0xFFFFFFFF`.
 
-!!! note "Superseded"
-    Commit `06fabf2 "WORKING MEMORY UNLOCK"` deleted the entire Python pipeline, the daemon and
-    `.pylintrc`, replacing all of it with six driver patches. The pylint and tests GitHub workflows
-    survived that commit and went about two hours later in `99338ef "Goodbye lint"`, with the last
-    remaining test file removed in `8206c16 "Goodbye tests"`. The
-    stated reason: the Python path did compute only; the driver path did compute **and** memory in
-    one shot. The trade also abandoned the effort's founding goal, an unlock that does not modify the
-    driver so that Secure Boot can stay enabled. `install.sh` now hard-fails with "Secure Boot is
-    enabled. Disable it before installing unsigned patched modules."
-
 ---
 
 ## Generation 2: `cmpunlocker`, the shipping driver patch
@@ -321,11 +314,13 @@ head -1` and maps four windows: `>= 60000 MiB` to `8gb` (already unlocked), `350
 `7680-8704` to `8gb`, `9728-10752` to `10gb`. Anything else prints `unknown:<mib>` and the installer
 dies telling you to pass `--profile=8gb|10gb`.
 
-!!! danger "Auto-detection is unsafe on mixed-GPU hosts"
-    `detect_card_profile()` reads the **first GPU in `nvidia-smi` order**, not the CMP that `lspci`
-    found. A system with an RTX 3080 10 GB alongside an 8 GB CMP 170HX detects "10GB" from the 3080
-    and selects the wrong profile. Reproduced by at least two users; other CMP SKUs have also been
-    misdetected as 10 GB 170HX cards. **Always pass `--profile` explicitly on a multi-GPU host.**
+> [!CAUTION]
+> **Auto-detection is unsafe on mixed-GPU hosts**
+>
+> `detect_card_profile()` reads the **first GPU in `nvidia-smi` order**, not the CMP that `lspci`
+> found. A system with an RTX 3080 10 GB alongside an 8 GB CMP 170HX detects "10GB" from the 3080
+> and selects the wrong profile. Reproduced by at least two users; other CMP SKUs have also been
+> misdetected as 10 GB 170HX cards. **Always pass `--profile` explicitly on a multi-GPU host.**
 
 Secure Boot is a hard gate: if `/sys/firmware/efi` exists, `mokutil` is present and `mokutil
 --sb-state` reports it enabled, the installer refuses. Driver version must exactly match a line in
@@ -355,13 +350,15 @@ It also cross-checks that the patched module won. Before reload it runs
 on mismatch warns `Loaded nvidia srcversion (X) != patched (Y)`, clears `reload_ok`, and advises a
 cold reboot plus `cat /proc/driver/nvidia/version  (should NOT say dvs-builder)`.
 
-!!! warning "`--profile` no longer selects geometry"
-    On the `memory` branch snapshot, `--profile` genuinely chose CFG1 and LMR through a build-time
-    Python regex rewrite. On current `master` it does not. Patch `0001` contains all six markers the
-    `build.sh` guard looks for, so the rewrite prints `runtime device-id geometry (profile
-    metadata=<label>)` and exits without editing anything. Geometry is chosen at GSP boot from
-    `pGpu->idInfo.PCIDeviceID >> 16`. `--profile` now affects only the printed banner, `EXPECTED_MIB`
-    and the metadata files. Instructions written before 2026-07-18 are wrong about this.
+> [!WARNING]
+> **`--profile` no longer selects geometry**
+>
+> On the `memory` branch snapshot, `--profile` genuinely chose CFG1 and LMR through a build-time
+> Python regex rewrite. On current `master` it does not. Patch `0001` contains all six markers the
+> `build.sh` guard looks for, so the rewrite prints `runtime device-id geometry (profile
+> metadata=<label>)` and exits without editing anything. Geometry is chosen at GSP boot from
+> `pGpu->idInfo.PCIDeviceID >> 16`. `--profile` now affects only the printed banner, `EXPECTED_MIB`
+> and the metadata files. Instructions written before 2026-07-18 are wrong about this.
 
 ### The six patches
 
@@ -410,11 +407,13 @@ The built-in payload can be overridden at runtime from
 `SEC2_DEBUG: <path> not found (0x%x), using built-in payload` (the reported code is `0x59`, benign)
 and falls back to the compiled-in fill, whose default single write is `0x009a0148U = 0xffffffffU`.
 
-!!! warning "The shipping payload's marker word is `0xc0deca7e`, not `0xFACEB13D`"
-    `0xc0deca7e` appears at payload offsets `0x5b40`, `0xf758`, `0xf794`, `0xf7a0` and `0xf7c4`. The
-    earlier standalone harnesses used `0xFACEB13D` at `CANARY_ADDR = 0x6340` with
-    `DMA_TARGET = 0x0800`. `0x5b40 + 0x0800 = 0x6340`, so it is the same slot with a different
-    literal. Do not assume `0xFACEB13D` when reading shipping code.
+> [!WARNING]
+> **The shipping payload's marker word is `0xc0deca7e`, not `0xFACEB13D`**
+>
+> `0xc0deca7e` appears at payload offsets `0x5b40`, `0xf758`, `0xf794`, `0xf7a0` and `0xf7c4`. The
+> earlier standalone harnesses used `0xFACEB13D` at `CANARY_ADDR = 0x6340` with
+> `DMA_TARGET = 0x0800`. `0x5b40 + 0x0800 = 0x6340`, so it is the same slot with a different
+> literal. Do not assume `0xFACEB13D` when reading shipping code.
 
 The shipping in-driver stack and the standalone driverless chain share the **same tail recipe**: at
 payload offsets `0xf78c` to `0xf7f8`, patch 0001 writes the non-zero gadget sequence
@@ -453,10 +452,12 @@ See [install](../procedures/install.md), [verify](../procedures/verify.md) and
 
 ## Generation 3: the driverless SEC2 refire chain
 
-!!! warning "Experimental"
-    This is a parallel path, not part of `cmpunlocker`, and it is not what anyone should run to
-    unlock a card for production use. It matters because it is the only line of work that still
-    pursues the founding goal of an unlock that does not modify the driver.
+> [!WARNING]
+> **Experimental**
+>
+> This is a parallel path, not part of `cmpunlocker`, and it is not what anyone should run to
+> unlock a card for production use. It matters because it is the only line of work that still
+> pursues the founding goal of an unlock that does not modify the driver.
 
 `refire_chain_v6.py` (27,769 bytes, released 2026-07-24) performs the whole unlock from userspace
 with **no NVIDIA driver loaded**, using only stdlib (`os`, `sys`, `mmap`, `ctypes`, `struct`, `time`,
@@ -506,11 +507,13 @@ descriptor magics `0x371a60b3` and `0xdc3aae21`.
 | v2 | Payload becomes a generic write engine taking a flat `[(addr, value), ...]` list with zero WprMeta or geometry knowledge. WprMeta is built once in the delivery layer purely as the signature-DMA overflow trigger. Delivery primitives `Bar0, alloc, flush, reset_sec2, load_booter, wpr_meta, start_wait, stage_radix3, geometry, fire, PATCHLOC` reused verbatim from the hardware-proven v1. Payload size `0xF800`, entry tail constant `TAIL0 = 0x815a` |
 | v6 | Adds the mode flags, BDF resolution and environment overrides above |
 
-!!! danger "Portability limit: 10 GB cards only"
-    The released chain carries a WprMeta template captured from a **10 GB** boot. It cannot be
-    applied unmodified to a `0x20C2` 8 GB card. Producing an 8 GB template is a recorded open task:
-    capture `pWprMeta` from an 8 GB card during a normal driver GSP boot and substitute it. Only six
-    fields are overridden anyway, so the risk is low, but nobody has done it.
+> [!CAUTION]
+> **Portability limit: 10 GB cards only**
+>
+> The released chain carries a WprMeta template captured from a **10 GB** boot. It cannot be
+> applied unmodified to a `0x20C2` 8 GB card. Producing an 8 GB template is a recorded open task:
+> capture `pWprMeta` from an 8 GB card during a normal driver GSP boot and substitute it. Only six
+> fields are overridden anyway, so the risk is low, but nobody has done it.
 
 ---
 
@@ -546,12 +549,14 @@ and `35000..59999 MiB` for `10gb`; `is_stock_memory` accepts `7680..8704` and `9
 status is `OK`, `STOCK`, `MISSING` or `UNEXPECTED`. A missing `SEC2_DEBUG` dmesg trail is a warning,
 not a failure, because ring buffers rotate.
 
-!!! question "Open problem"
-    **`verify.sh` never checks PCIe Gen2, not even on the Gen2 branch lineage.** Grepping
-    `Gen2/verify.sh`, `far/verify.sh` and `deced/verify.sh` for "pcie" returns zero hits. Gen2
-    verification is left entirely to the user running `nvidia-smi` by hand. The fix is small: query
-    `nvidia-smi --query-gpu=pcie.link.gen.current,pcie.link.gen.max`, or reuse `pcielink.sh`'s
-    `CAP_EXP+12.w` LnkSta decode.
+> [!NOTE]
+> **Open problem**
+>
+> **`verify.sh` never checks PCIe Gen2, not even on the Gen2 branch lineage.** Grepping
+> `Gen2/verify.sh`, `far/verify.sh` and `deced/verify.sh` for "pcie" returns zero hits. Gen2
+> verification is left entirely to the user running `nvidia-smi` by hand. The fix is small: query
+> `nvidia-smi --query-gpu=pcie.link.gen.current,pcie.link.gen.max`, or reuse `pcielink.sh`'s
+> `CAP_EXP+12.w` LnkSta decode.
 
 ### Gen2 lineage supersessions
 
@@ -564,30 +569,28 @@ at probe time. The installer actively disables `cmpretrain.service` and `cmp-gen
 and `rm -f`s the helper scripts, printing `Removed legacy PCIe retrain helpers`. A 15-second-sleep
 oneshot after `multi-user.target` is fragile and cannot run before the driver claims the device.
 
-!!! note "Superseded"
-    `tools/retrain.sh` is **dead code** on the `Gen2`, `far` and `deced` trees. It is still present in
-    the source, but from `Gen2` onward the installer deletes the installed copy and patch 0008 does
-    the retrain in-kernel. Only `debug-gen2` actually installs it. Fixing its hardcoded `0a:00.0` BDF
-    (done on `deced`) changes nothing about what runs.
-
 The Gen2-lineage installers also write `/etc/modprobe.d/cmp-pcie-gen2.conf` and configure the IOMMU,
 appending `intel_iommu=on iommu=pt` or `amd_iommu=on iommu=pt` to the kernel command line unless
 `--no-iommu` is passed.
 
-!!! danger "`Gen2` installs a Gen1 clamp"
-    `debug-gen2` and `Gen2` write
-    `options nvidia NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"`, pinning the link
-    to Gen1 while simultaneously trying to enable Gen2. `far` and `deced` write `0x2`. Which value is
-    correct is **genuinely unresolved**: both spellings ship, on branches whose authors each believed
-    theirs was right, and no A/B boot test exists. One three-way boot comparison on one card would
-    settle it.
+> [!CAUTION]
+> **`Gen2` installs a Gen1 clamp**
+>
+> `debug-gen2` and `Gen2` write
+> `options nvidia NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"`, pinning the link
+> to Gen1 while simultaneously trying to enable Gen2. `far` and `deced` write `0x2`. Which value is
+> correct is **genuinely unresolved**: both spellings ship, on branches whose authors each believed
+> theirs was right, and no A/B boot test exists. One three-way boot comparison on one card would
+> settle it.
 
-!!! danger "Do not follow the `docs` branch"
-    `docs/INSTALLATION.md` line 40 says `sudo ./uninstall.sh --yes` (no such file);
-    `docs/ARCHITECTURE.md` lines 81-82 claim `SEC2_DEBUG: SS0 = 0xffffffff` / `SS1 = 0xffffffff` when
-    the shipping code writes `0x88888888` and `0x00000008`; `docs/DEBUGGING.md` line 15 says "All the
-    PLMs must show `0xffffffff`" when WPR_CFG at `0x001fa7cc` is opened to `0xfffff0ff`. The branch
-    also invents acronym expansions found nowhere in the code.
+> [!CAUTION]
+> **Do not follow the `docs` branch**
+>
+> `docs/INSTALLATION.md` line 40 says `sudo ./uninstall.sh --yes` (no such file);
+> `docs/ARCHITECTURE.md` lines 81-82 claim `SEC2_DEBUG: SS0 = 0xffffffff` / `SS1 = 0xffffffff` when
+> the shipping code writes `0x88888888` and `0x00000008`; `docs/DEBUGGING.md` line 15 says "All the
+> PLMs must show `0xffffffff`" when WPR_CFG at `0x001fa7cc` is opened to `0xfffff0ff`. The branch
+> also invents acronym expansions found nowhere in the code.
 
 ---
 
@@ -617,14 +620,6 @@ The FP32 FMA lockdown is worked around at compile time, not by any unlock: OpenC
 `#pragma OPENCL FP_CONTRACT OFF` plus macro-shadowing of `fma()` and `mad()`, CUDA via
 `nvcc -fmad=false`, SYCL via clang `-ffp-contract=off`. Both explicit calls and implicit contraction
 of `a * b + c` must be suppressed, and the numerical consequence is two roundings instead of one.
-
-!!! note "Superseded"
-    On an unlocked card the FMA workaround is no longer the point: the compute unlock removes the
-    throttle in hardware. Two limits made it a ceiling anyway. A transparent compiler or runtime
-    patch does not affect built-in function behaviour, GPU kernels are often shipped precompiled, and
-    most HPC libraries contain hand-tuned assembly that relies on FMA. A PoCL 4.0 runtime-level
-    variant patching `pocl_llvm_build.cc`, `lib/kernel/fma.cl` and `lib/kernel/mad.cl` was never
-    benchmarked to completion and does not cover `mad24()`, `mad_hi()` or `mad_sat()`.
 
 ---
 
@@ -665,13 +660,15 @@ PIO-loads the booter and before it reuses SEC2.
 The production booter cannot be modified or even read: it is encrypted with a strong key. The exploit
 therefore changes the *flow of execution* via the stack, not the code, and no re-signing is required.
 
-!!! question "Open problem"
-    `envydis` with the `fuc5` target successfully disassembles the GA100 booter even though the
-    envytools table nominally assigns `fuc6` to GP102-and-later parts. envytools has not been updated
-    in roughly 8 years; `envyhooks` was suggested as a successor but lacks equivalent functionality;
-    `faucon` targets fuc5 only. Whether the 170HX SEC2 is formally fuc5 or fuc6 is unsettled. Next
-    step: diff a fuc5 and a fuc6 decode of the same image and look for instructions only one target
-    decodes coherently.
+> [!NOTE]
+> **Open problem**
+>
+> `envydis` with the `fuc5` target successfully disassembles the GA100 booter even though the
+> envytools table nominally assigns `fuc6` to GP102-and-later parts. envytools has not been updated
+> in roughly 8 years; `envyhooks` was suggested as a successor but lacks equivalent functionality;
+> `faucon` targets fuc5 only. Whether the 170HX SEC2 is formally fuc5 or fuc6 is unsettled. Next
+> step: diff a fuc5 and a fuc6 decode of the same image and look for instructions only one target
+> decodes coherently.
 
 ---
 

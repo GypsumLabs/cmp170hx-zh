@@ -66,48 +66,52 @@ report behind it; the specific case cited was assessed as a 10 GB card being pus
 80 GB geometry. Seller talk of a "defective batch" during the late-July 2026 price spike was a
 cancellation excuse used against listings that had already shown working cards.
 
-!!! question "Open problem: one report that does not fit"
-    One first-hand account describes a 10 GB card wedged with three stuck D-state threads that would
-    not clear with FLR, SBR, PCI detach and reattach, **or a full PSU power-off cold boot**: "when I
-    rebooted, the registers were still written, and the D-threads were still there... card booted
-    pre-wedged". Recovery eventually required holding the power switch with the power strip off and
-    physically removing the card for a few hours. The observation was doubted in-channel and remains
-    unexplained. It contradicts the otherwise well-supported no-persistent-state model, which is
-    exactly why it is recorded rather than dismissed. The honest statement is: the model says a power
-    cycle always wins, and in every reproducible case it did, but one credible operator reports a
-    state that survived one.
+> [!NOTE]
+> **Open problem: one report that does not fit**
+>
+> One first-hand account describes a 10 GB card wedged with three stuck D-state threads that would
+> not clear with FLR, SBR, PCI detach and reattach, **or a full PSU power-off cold boot**: "when I
+> rebooted, the registers were still written, and the D-threads were still there... card booted
+> pre-wedged". Recovery eventually required holding the power switch with the power strip off and
+> physically removing the card for a few hours. The observation was doubted in-channel and remains
+> unexplained. It contradicts the otherwise well-supported no-persistent-state model, which is
+> exactly why it is recorded rather than dismissed. The honest statement is: the model says a power
+> cycle always wins, and in every reproducible case it did, but one credible operator reports a
+> state that survived one.
 
 ### 2.2 By specific physical actions: yes, permanently
 
-!!! danger "Actions that will destroy hardware"
-    **Forcing a PCIe 8-pin cable into the card's EPS socket.** The two are keyed differently and
-    only go together if forced. The 12 V and ground lines are swapped on some pins between the two
-    connector types, so forcing it **will damage the card**. The socket is a single 8-pin
-    CPU-style (EPS) connector carrying two logical 12 V rails (12V_EXT1 and 12V_EXT2); cards ship
-    with a dual 8-pin-PCIe to 8-pin-EPS Y adapter for exactly this reason.
-
-    **Reusing a modular PSU cable across PSU brands.** Modular-side pinouts are vendor-specific with
-    no standard. This destroys hardware in the general case, not just on this card.
-
-    **Running the card with no airflow.** See section 3. This is the single most likely way to kill
-    a 170HX.
-
-    **Preheating the whole board in an oven, or over-preheating with an IR stove plus hot air,
-    during the capacitor mod.** The dominant beginner failure mode: it bends the PCB, breaks internal
-    traces and cooks ICs, and those defects are extremely hard to diagnose afterwards. The oven idea
-    was proposed in-channel and immediately rejected.
-
-    **Flashing a VBIOS that is not for this device.** TechPowerUp entry 283106 is an
-    A100 / DRIVE-PG199-PROD image (device `0x20BB`, subsystem `10DE 14A1`) that has circulated as a
-    170HX reference and must never be flashed to a 170HX. Recovery from a bad flash needs an external
-    programmer; GPU EEPROMs are 1.8 V, so a CH341A needs a 1.8 V adapter. Note that the unlocker
-    itself never touches the VBIOS, so flashing is an entirely separate decision with its own risk.
-
-    **Writing the VRM duty-cycle registers `0x20340` / `0x20344`.** Re-executing devinit through the
-    PMU at runtime with a wrong value could push the VRM past **1.3 V**, because the devinit region
-    containing memory timing also covers clocks, PLLs and VID-PWM. This has never been tested, these
-    addresses appear nowhere in the unlocker or any of its twelve branches, and there is no reason to
-    go near them.
+> [!CAUTION]
+> **Actions that will destroy hardware**
+>
+> **Forcing a PCIe 8-pin cable into the card's EPS socket.** The two are keyed differently and
+> only go together if forced. The 12 V and ground lines are swapped on some pins between the two
+> connector types, so forcing it **will damage the card**. The socket is a single 8-pin
+> CPU-style (EPS) connector carrying two logical 12 V rails (12V_EXT1 and 12V_EXT2); cards ship
+> with a dual 8-pin-PCIe to 8-pin-EPS Y adapter for exactly this reason.
+>
+> **Reusing a modular PSU cable across PSU brands.** Modular-side pinouts are vendor-specific with
+> no standard. This destroys hardware in the general case, not just on this card.
+>
+> **Running the card with no airflow.** See section 3. This is the single most likely way to kill
+> a 170HX.
+>
+> **Preheating the whole board in an oven, or over-preheating with an IR stove plus hot air,
+> during the capacitor mod.** The dominant beginner failure mode: it bends the PCB, breaks internal
+> traces and cooks ICs, and those defects are extremely hard to diagnose afterwards. The oven idea
+> was proposed in-channel and immediately rejected.
+>
+> **Flashing a VBIOS that is not for this device.** TechPowerUp entry 283106 is an
+> A100 / DRIVE-PG199-PROD image (device `0x20BB`, subsystem `10DE 14A1`) that has circulated as a
+> 170HX reference and must never be flashed to a 170HX. Recovery from a bad flash needs an external
+> programmer; GPU EEPROMs are 1.8 V, so a CH341A needs a 1.8 V adapter. Note that the unlocker
+> itself never touches the VBIOS, so flashing is an entirely separate decision with its own risk.
+>
+> **Writing the VRM duty-cycle registers `0x20340` / `0x20344`.** Re-executing devinit through the
+> PMU at runtime with a wrong value could push the VRM past **1.3 V**, because the devinit region
+> containing memory timing also covers clocks, PLLs and VID-PWM. This has never been tested, these
+> addresses appear nowhere in the unlocker or any of its twelve branches, and there is no reason to
+> go near them.
 
 ---
 
@@ -117,17 +121,19 @@ This is a **250 W card with a fully passive heatsink and no fan of its own**. `n
 `Fan Speed : N/A` on every capture ever taken. It was designed for the forced air of a high-RPM
 server chassis. In a desktop case with ambient airflow it will cook.
 
-!!! danger "Never power the card without arranged airflow"
-    The GA100 die exhibits genuine leakage-driven thermal runaway. Higher junction temperature raises
-    CMOS leakage current, which produces more heat, which raises leakage further. Observed first-hand
-    while dry-running a card with a waterblock fitted but no coolant: idle draw started around
-    **40 W**, climbed to **60 W at 80 °C**, and was still rising when the card was powered off.
-
-    **If you dry-run the card without coolant, power off within 5 minutes.**
-
-    If cooling fails outright under load, the card does not settle at its throttle point: it climbs.
-    The hands-on description is "it'll thermally throttle, but to a temperature above 100 degrees,
-    that then consumes more power, thus increased temperature... and you end up with a volcano."
+> [!CAUTION]
+> **Never power the card without arranged airflow**
+>
+> The GA100 die exhibits genuine leakage-driven thermal runaway. Higher junction temperature raises
+> CMOS leakage current, which produces more heat, which raises leakage further. Observed first-hand
+> while dry-running a card with a waterblock fitted but no coolant: idle draw started around
+> **40 W**, climbed to **60 W at 80 °C**, and was still rising when the card was powered off.
+>
+> **If you dry-run the card without coolant, power off within 5 minutes.**
+>
+> If cooling fails outright under load, the card does not settle at its throttle point: it climbs.
+> The hands-on description is "it'll thermally throttle, but to a temperature above 100 degrees,
+> that then consumes more power, thus increased temperature... and you end up with a volcano."
 
 The driver-reported limits, read from an unlocked 10 GB card on driver 610.43.02:
 
@@ -198,19 +204,21 @@ See [Power and PSU](../operations/power-and-psu.md) and
 
 ## 5. The capacitor mod: the one genuinely irreversible step
 
-The x4-to-x16 link-width mod means hand-soldering **24 × 0402 capacitors** (220 nF, X7R, ≥ 16 V,
+The x4-to-x16 link-width mod means hand-soldering **24 × 0402 capacitors** (220 nF, X7R, ≥ 6.3 V,
 designators roughly C1100 to C1350) onto pads immediately adjacent to the PCIe gold fingers of an
 8 to 12 layer board. There is no software involved and no undo.
 
-!!! danger "Soldering risk, not firmware risk"
-    Rework datum for this board: **hot air at 420 °C for two minutes** before any chip can be
-    removed. That is the thermal mass you are working against, a few millimetres from the edge
-    connector.
-
-    The dominant beginner failure is over-preheating with an IR stove plus hot air, which bends the
-    PCB, breaks internal traces and cooks ICs. Those defects are extremely hard to diagnose
-    afterwards, and a warning raised in-channel is blunt: inexperienced buyers attempting this
-    themselves are likely to brick cards by improperly soldering the decoupling caps.
+> [!CAUTION]
+> **Soldering risk, not firmware risk**
+>
+> Rework datum for this board: **hot air at 420 °C for two minutes** before any chip can be
+> removed. That is the thermal mass you are working against, a few millimetres from the edge
+> connector.
+>
+> The dominant beginner failure is over-preheating with an IR stove plus hot air, which bends the
+> PCB, breaks internal traces and cooks ICs. Those defects are extremely hard to diagnose
+> afterwards, and a warning raised in-channel is blunt: inexperienced buyers attempting this
+> themselves are likely to brick cards by improperly soldering the decoupling caps.
 
 Honest counterweight: several experienced modders rate the job beginner-to-hobbyist level, called it
 "probably the easiest card to do PCIE mod", and one completed a card by hand in about 20 minutes.
@@ -246,12 +254,14 @@ allowed to allocate in, and workloads that run past the genuinely usable edge di
   with hundreds of 60-second health samples there were **zero** hard faults when the workload was
   driven properly, so this is an operator-induced class of failure, not a hardware one.
 
-!!! danger "The over-provisioned 80 GB geometry destroys workloads"
-    The 8 GB card at 64 GB is stable and in production. The 10 GB card at 40 GB is stable. The 10 GB
-    card pushed to **80 GB reports the capacity but is unusable above roughly 40 GB**: hangs,
-    Xid 154, and memory errors under stress (one gpu-burn run at 80 GB logged **2,796 errors**
-    while the same card ran cleanly at 40 GB). It is power-limit independent. This wrecks jobs
-    rather than cards, but it wrecks them reliably. See [80 GB](../frontier/80gb.md).
+> [!CAUTION]
+> **The over-provisioned 80 GB geometry destroys workloads**
+>
+> The 8 GB card at 64 GB is stable and in production. The 10 GB card at 40 GB is stable. The 10 GB
+> card pushed to **80 GB reports the capacity but is unusable above roughly 40 GB**: hangs,
+> Xid 154, and memory errors under stress (one gpu-burn run at 80 GB logged **2,796 errors**
+> while the same card ran cleanly at 40 GB). It is power-limit independent. This wrecks jobs
+> rather than cards, but it wrecks them reliably. See [80 GB](../frontier/80gb.md).
 
 Host-level risk is real but ordinary. Driver-patch iteration on bare metal is destructive enough
 that one developer reported reinstalling the OS after each botched `nvidia.ko` deploy. Prefer a

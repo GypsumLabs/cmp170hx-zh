@@ -133,17 +133,19 @@ NvU64 stockSignatureSize;
 The real GSP firmware signature is copied aside into these before the payload overwrites the
 buffer, and logged as `SEC2_DEBUG: saved stock signature (4096 bytes)`.
 
-!!! danger "Restore stock GSP firmware first"
-    If the machine ever ran cmpunlocker's firmware-patching predecessor, restore
-    `gsp_tu10x.bin` to stock before installing the driver patch. The driver saves whatever
-    signature the firmware carries as "stock". If the firmware on disk is still patched, it
-    saves the **exploit payload** as stock, and the subsequent clean GSP-RM boot DMAs the wrong
-    ROP chain.
-
-    ```bash
-    GSP_DIR=/lib/firmware/nvidia/610.43.03
-    sudo cp $GSP_DIR/gsp_tu10x.bin.cmpunlocker.bak $GSP_DIR/gsp_tu10x.bin
-    ```
+> [!CAUTION]
+> **Restore stock GSP firmware first**
+>
+> If the machine ever ran cmpunlocker's firmware-patching predecessor, restore
+> `gsp_tu10x.bin` to stock before installing the driver patch. The driver saves whatever
+> signature the firmware carries as "stock". If the firmware on disk is still patched, it
+> saves the **exploit payload** as stock, and the subsequent clean GSP-RM boot DMAs the wrong
+> ROP chain.
+>
+> ```bash
+> GSP_DIR=/lib/firmware/nvidia/610.43.03
+> sudo cp $GSP_DIR/gsp_tu10x.bin.cmpunlocker.bak $GSP_DIR/gsp_tu10x.bin
+> ```
 
 ### 2. An oversized signature buffer
 
@@ -204,11 +206,13 @@ SEC2_DEBUG: /lib/firmware/nvidia/ga100/gsp/dmem.bin not found (0x59), using buil
 The built-in default arms `writeAddr = 0x009a0148`, `writeValue = 0xffffffff`, which the PLM loop
 immediately overwrites per iteration.
 
-!!! note "`0xFACEB13D` is not the shipping canary"
-    Earlier standalone harnesses used `0xFACEB13D` at `CANARY_ADDR = 0x6340` with
-    `DMA_TARGET = 0x0800`. That is the same slot as the shipping `0x5b40` canary
-    (`0x5b40 + 0x0800 = 0x6340`) with a different literal. Reading shipping code, expect
-    `0xc0deca7e`.
+> [!NOTE]
+> **`0xFACEB13D` is not the shipping canary**
+>
+> Earlier standalone harnesses used `0xFACEB13D` at `CANARY_ADDR = 0x6340` with
+> `DMA_TARGET = 0x0800`. That is the same slot as the shipping `0x5b40` canary
+> (`0x5b40 + 0x0800 = 0x6340`) with a different literal. Reading shipping code, expect
+> `0xc0deca7e`.
 
 ### 4. The PLM loop
 
@@ -227,12 +231,14 @@ register: it decides which privilege level may read or write the register it gua
 { 0x00823804U, 0xffffffffU, "FEAT"    },
 ```
 
-!!! warning "Three of four target `0xffffffff`, WPR_CFG does not"
-    `WPR_CFG` at `0x001fa7cc` is deliberately opened to **`0xfffff0ff`**. The loop's success
-    predicate is `if (regVal == plmTable[plmIdx].value)`, so `0xfffff0ff` is a **pass**. The
-    project's own `docs/DEBUGGING.md` says "All the PLMs must show `0xffffffff`" and the
-    `README.md` says "Expected: PLMs opening to 0xffffffff". Both are loose wording. Do not read
-    `WPR_CFG=0xfffff0ff` as a failure.
+> [!WARNING]
+> **Three of four target `0xffffffff`, WPR_CFG does not**
+>
+> `WPR_CFG` at `0x001fa7cc` is deliberately opened to **`0xfffff0ff`**. The loop's success
+> predicate is `if (regVal == plmTable[plmIdx].value)`, so `0xfffff0ff` is a **pass**. The
+> project's own `docs/DEBUGGING.md` says "All the PLMs must show `0xffffffff`" and the
+> `README.md` says "Expected: PLMs opening to 0xffffffff". Both are loose wording. Do not read
+> `WPR_CFG=0xfffff0ff` as a failure.
 
 Around each attempt the driver saves and restores the write-protected-region-2 bounds. Before the
 loop it reads `wpr2Lo = GPU_REG_RD32(pGpu, 0x001fa824U)` and
@@ -247,14 +253,16 @@ kgspExecuteBooterLoad_HAL(pGpu, pKernelGsp,
 and reads the target register back. After the loop it restores `wpr2Lo`/`wpr2Hi` one final time.
 Worst case that is **eight Booter Load executions before the normal bootstrap Booter Load**.
 
-!!! note "`status=0xffff` on every payload pass is expected"
-    `s_executeBooterUcode_TU102` finds an error code left in mailbox0 by the seccode after every
-    run, so `kgspExecuteBooterLoad_HAL` returns `NV_ERR_GENERIC` (`0xffff`) unconditionally on
-    payload passes. That is the invalid-signature complaint raised *after* the injected chain has
-    already executed. **The register readback is the only valid success criterion.**
-    `kgspExecuteBooterLoad_TU102` also performs `kflcnReset(SEC2)` before every run, so SEC2
-    accumulates no state across passes. Booter status `0x31` during these early passes is also
-    tolerated.
+> [!NOTE]
+> **`status=0xffff` on every payload pass is expected**
+>
+> `s_executeBooterUcode_TU102` finds an error code left in mailbox0 by the seccode after every
+> run, so `kgspExecuteBooterLoad_HAL` returns `NV_ERR_GENERIC` (`0xffff`) unconditionally on
+> payload passes. That is the invalid-signature complaint raised *after* the injected chain has
+> already executed. **The register readback is the only valid success criterion.**
+> `kgspExecuteBooterLoad_TU102` also performs `kflcnReset(SEC2)` before every run, so SEC2
+> accumulates no state across passes. Booter status `0x31` during these early passes is also
+> tolerated.
 
 Failure prints `FAILED to open %s after 2 attempts`. Success prints:
 
@@ -283,11 +291,13 @@ GPU_REG_WR32(pGpu, 0x00100ce0U, lmrValue);      /* MMU LMR   */
 SS0 and SS1 are written **unconditionally for both SKUs**. `common/constants.yaml` agrees with
 the code (`ss0: "0x88888888"`, `ss1: "0x00000008"`).
 
-!!! danger "The documentation branch is wrong about SS0 and SS1"
-    `docs/ARCHITECTURE.md` claims cmpunlocker writes `0xffffffff` to both SS0 and SS1 and shows
-    expected dmesg lines to match. It does not. Validating an unlock against those strings will
-    make a working card look broken. The code has written `0x88888888` / `0x00000008` since
-    2026-07-18. See [Compute throttle](compute-throttle.md).
+> [!CAUTION]
+> **The documentation branch is wrong about SS0 and SS1**
+>
+> `docs/ARCHITECTURE.md` claims cmpunlocker writes `0xffffffff` to both SS0 and SS1 and shows
+> expected dmesg lines to match. It does not. Validating an unlock against those strings will
+> make a working card look broken. The code has written `0x88888888` / `0x00000008` since
+> 2026-07-18. See [Compute throttle](compute-throttle.md).
 
 A readback line follows:
 
@@ -423,10 +433,12 @@ finally  memmgrRegenerateFbRegionPriority()
 If a split is needed and `numFBRegions >= MAX_FB_REGIONS`, it returns
 `NV_ERR_INSUFFICIENT_RESOURCES` rather than splitting.
 
-!!! note "`stockFbBytes` is 8 GiB even on a 10 GB card"
-    `0x200000000ULL` is hard-coded for both profiles. On a `0x2082` card the boundary is
-    therefore 8 GiB, not the card's native 10 GiB. This is in the shipping code and is not a
-    typo in this wiki.
+> [!NOTE]
+> **`stockFbBytes` is 8 GiB even on a 10 GB card**
+>
+> `0x200000000ULL` is hard-coded for both profiles. On a `0x2082` card the boundary is
+> therefore 8 GiB, not the card's native 10 GiB. This is in the shipping code and is not a
+> typo in this wiki.
 
 ### What breaks without 0003
 
@@ -554,10 +566,12 @@ One reference capture from a working two-card 8 GB boot on 610.43.03 contained *
 `SEC2_DEBUG` lines (medium confidence, single capture). Absence of the trail is not proof of
 failure on its own, because kernel ring buffers rotate.
 
-!!! note "Line counts are not a reliable cross-build fingerprint"
-    34 (Gen1 build) / 80 (Gen2 build) is recorded at high confidence, while a separate
-    Gen2-branch 610.43.03 boot counted 152 at medium confidence. Do not read a mismatch as a
-    failed install.
+> [!NOTE]
+> **Line counts are not a reliable cross-build fingerprint**
+>
+> 34 (Gen1 build) / 80 (Gen2 build) is recorded at high confidence, while a separate
+> Gen2-branch 610.43.03 boot counted 152 at medium confidence. Do not read a mismatch as a
+> failed install.
 
 ---
 
@@ -571,13 +585,15 @@ and as evidence against NVIDIA-internal authorship, since a person with legitima
 access would not need the disguise. The practical consequence is the useful one: a single grep
 finds every unlock line in a boot log.
 
-!!! note "Invented acronym expansions to ignore"
-    The `docs` branch expands PLM as "Program Logic Modules", SS0/SS1 as "Suspension State"
-    registers, PMA as "Power Management Array", and introduces a "SEC2 Booter PMM" that appears
-    nowhere in the code. All four are wrong. PLM is the privilege level mask; PMA is the
-    physical memory allocator (`pmaRegisterRegion`, `pmaGetFreeMemory`, `PMA_REGION_DESCRIPTOR`,
-    `pmaIsPmaManaged`); the code's own names for SS0/SS1 are
-    `FEATURE_OVERRIDE_SM_SPEED` and `_SM_SPEED_1`. Do not propagate the expansions.
+> [!NOTE]
+> **Invented acronym expansions to ignore**
+>
+> The `docs` branch expands PLM as "Program Logic Modules", SS0/SS1 as "Suspension State"
+> registers, PMA as "Power Management Array", and introduces a "SEC2 Booter PMM" that appears
+> nowhere in the code. All four are wrong. PLM is the privilege level mask; PMA is the
+> physical memory allocator (`pmaRegisterRegion`, `pmaGetFreeMemory`, `PMA_REGION_DESCRIPTOR`,
+> `pmaIsPmaManaged`); the code's own names for SS0/SS1 are
+> `FEATURE_OVERRIDE_SM_SPEED` and `_SM_SPEED_1`. Do not propagate the expansions.
 
 ---
 

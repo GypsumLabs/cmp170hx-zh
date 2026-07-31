@@ -12,24 +12,26 @@ software), a strap-selected memory geometry (defeated in software), a PCIe **spe
 depopulation and can only be fixed with a soldering iron. NVLink and ECC are fused off with no
 known lever. Whether NVLink is additionally depopulated at board level is unresolved.
 
-!!! note "Corrections to the existing community wiki"
-    Three errors circulate widely and are corrected here with evidence.
-
-    1. **SM count.** Both the 8 GB and the 10 GB SKU expose exactly **70 SMs / 4480 CUDA
-       cores**. This was verified by a tester holding both SKUs, by an eight-device
-       enumeration reporting `cu: 70` on all eight, and by four independent topology reports.
-       Any table giving a different SM count for the 10 GB card, or disagreeing with its own
-       notes, is wrong.
-    2. **"PCIe Gen 1 x4, firmware locked" is half right.** The *speed* cap is firmware and
-       fuse mediated and has been defeated in software. The *width* limit is not firmware at
-       all: 12 of the 16 lanes ship with their AC-coupling capacitors depopulated. The lane
-       fuses are clean (`OPT_PCIE_LANE_DISABLE` = `0x00000000`), and a stock unmodded card
-       running the Gen2 branch reports `LnkCap: Speed 5GT/s, Width x16` while `LnkSta` still
-       reads `Width x4 (downgraded)`, which proves the limit is board-level. Note also that
-       Gen2 has never been reproduced under VM passthrough or over Thunderbolt.
-    3. **"Unlocked FP64 is 6.44 TFLOPS" versus "11.6 TFLOPS"** is a non-tensor versus tensor
-       confusion, not a contradiction. Both numbers are real. See
-       [Compute throughput](#compute-throughput-measured).
+> [!NOTE]
+> **Corrections to the existing community wiki**
+>
+> Three errors circulate widely and are corrected here with evidence.
+>
+> 1. **SM count.** Both the 8 GB and the 10 GB SKU expose exactly **70 SMs / 4480 CUDA
+>    cores**. This was verified by a tester holding both SKUs, by an eight-device
+>    enumeration reporting `cu: 70` on all eight, and by four independent topology reports.
+>    Any table giving a different SM count for the 10 GB card, or disagreeing with its own
+>    notes, is wrong.
+> 2. **"PCIe Gen 1 x4, firmware locked" is half right.** The *speed* cap is firmware and
+>    fuse mediated and has been defeated in software. The *width* limit is not firmware at
+>    all: 12 of the 16 lanes ship with their AC-coupling capacitors depopulated. The lane
+>    fuses are clean (`OPT_PCIE_LANE_DISABLE` = `0x00000000`), and a stock unmodded card
+>    running the Gen2 code reports `LnkCap: Speed 5GT/s, Width x16` while `LnkSta` still
+>    reads `Width x4 (downgraded)`, which proves the limit is board-level. Note also that
+>    Gen2 has never been reproduced under VM passthrough or over Thunderbolt.
+> 3. **"Unlocked FP64 is 6.44 TFLOPS" versus "11.6 TFLOPS"** is a non-tensor versus tensor
+>    confusion, not a contradiction. Both numbers are real. See
+>    [Compute throughput](#compute-throughput-measured).
 
 ## Silicon
 
@@ -89,24 +91,28 @@ back. See [GA100 silicon](ga100-silicon.md) and [fuses and OTP](fuses-and-otp.md
 | NVML GPC clock VF offset | `[-1000 .. +1000]` MHz on the **8 GB** card; `[0 .. 0]` on the 10 GB card | Works on 8 GB only: the shipped 8 GB VBIOS permits the range (`freqDelta` ±1000 at `0x47177`/`0x47179`, `0` on the 10 GB and A100 images). **Not** a valid unlock test on a 10 GB card |
 | NVML MEM clock VF offset | `[0 .. 0]` | The driver refuses memory clock changes; `nvidia-smi -lmc` returns "not supported" |
 
-!!! question "Open problem: the 8 GB card's real HBM clock"
-    Three conventions are in circulation and none has been reconciled. The specification
-    database and a 2023 `deviceQuery` say **1458 MHz** (reported as 729 MHz and doubled by
-    convention), implying a 1492.99 GB/s ceiling. A 2026-07-27 direct measurement says
-    **1728 MHz**, giving 3.456 Gbps/pin and a 1769 GB/s ceiling. A third account puts the
-    8 GB card at 398 MHz against 304 MHz on the A100, which times four gives **1592** and
-    1216 MHz. The measured 1679-1699 GB/s delivered read bandwidth rules out 1458 MHz for
-    that run but does not choose between 1592 and 1728. What would settle it: a raw FBPA PLL
-    register read with the divider chain published.
+> [!NOTE]
+> **Open problem: the 8 GB card's real HBM clock**
+>
+> Three conventions are in circulation and none has been reconciled. The specification
+> database and a 2023 `deviceQuery` say **1458 MHz** (reported as 729 MHz and doubled by
+> convention), implying a 1492.99 GB/s ceiling. A 2026-07-27 direct measurement says
+> **1728 MHz**, giving 3.456 Gbps/pin and a 1769 GB/s ceiling. A third account puts the
+> 8 GB card at 398 MHz against 304 MHz on the A100, which times four gives **1592** and
+> 1216 MHz. The measured 1679-1699 GB/s delivered read bandwidth rules out 1458 MHz for
+> that run but does not choose between 1592 and 1728. What would settle it: a raw FBPA PLL
+> register read with the divider chain published.
 
-!!! danger "A run that completes is not evidence a clock offset is safe"
-    On the tuning reference card at a 1400 MHz ceiling, +250 MHz passed three full-VRAM
-    pattern sweeps with zero errors and +300 MHz passed four, but **+325 MHz silently
-    corrupted memory without crashing**: three sweeps returned 6 errors, then 3, then 0. The
-    safe window there is one 25 MHz step wide, and past it the failure mode is bad data rather
-    than a crash. Gate every candidate setting on four full-VRAM sweeps, not two, and note
-    that per-card silicon variance means a validated offset on one serial says nothing about
-    another. Details and the full fault matrix are in [Tuning](../operations/tuning.md).
+> [!CAUTION]
+> **A run that completes is not evidence a clock offset is safe**
+>
+> On the tuning reference card at a 1400 MHz ceiling, +250 MHz passed three full-VRAM
+> pattern sweeps with zero errors and +300 MHz passed four, but **+325 MHz silently
+> corrupted memory without crashing**: three sweeps returned 6 errors, then 3, then 0. The
+> safe window there is one 25 MHz step wide, and past it the failure mode is bad data rather
+> than a crash. Gate every candidate setting on four full-VRAM sweeps, not two, and note
+> that per-card silicon variance means a validated offset on one serial says nothing about
+> another. Details and the full fault matrix are in [Tuning](../operations/tuning.md).
 
 ## Cache
 
@@ -142,25 +148,29 @@ The unlock restores genuine A100 geometry. LMR encodes total framebuffer size as
 treatment in [memory geometry](../unlock/memory-geometry.md) and
 [the memory subsystem](memory-subsystem.md).
 
-!!! info "The memory geometry does not survive FLR or a power cycle; the compute unlock does"
-    SS0, SS1 and `0x00823804` survive FLR; the CFG1/LMR geometry rewrite does not. This
-    asymmetry is why compute shipped before memory, and it is why "no FLR" appears as a stated
-    condition on the DtoD bandwidth rows below.
+> [!NOTE]
+> **The memory geometry does not survive FLR or a power cycle; the compute unlock does**
+>
+> SS0, SS1 and `0x00823804` survive FLR; the CFG1/LMR geometry rewrite does not. This
+> asymmetry is why compute shipped before memory, and it is why "no FLR" appears as a stated
+> condition on the DtoD bandwidth rows below.
 
-!!! warning "The 80 GB configuration is not a third option"
-    The experimental `80` branch is presented as working in its own README and is not. It
-    programs CFG1 `0x02779000` with LMR `0x0000028A` and `fb_length` `0x0000001400000000`, a
-    three-way disagreement between the three layers that is the best explanation for its fold at
-    exactly 40 GiB (`constants.yaml`'s `0x0000028B` / `81920` is inert metadata that `build.sh`
-    never reads). A clean-room script firing the coherent `LMR 0x0000028B` removes the fold, but
-    it is unshipped and still loses the device after about one CUDA context. Cards report
-    ~81920 MiB and a 77 GiB dense fill passes, but kernels touching
-    more than roughly 40 GB cause fatal GPU loss, independent of power limit. Reported Xid codes
-    include Xid 31 (described as harmless) and Xid 154 after CUDA memory tests; the dominant
-    reported symptom is hangs. Xid 31 alone was suggested by a bystander and was not corroborated
-    as *the* signature by the operator with the failing card. Only one CUDA context is available
-    per fire. See
-    [the 80 GB frontier page](../frontier/80gb.md).
+> [!WARNING]
+> **The 80 GB configuration is not a third option**
+>
+> The experimental `80` branch is presented as working in its own README and is not. It
+> programs CFG1 `0x02779000` with LMR `0x0000028A` and `fb_length` `0x0000001400000000`, a
+> three-way disagreement between the three layers that is the best explanation for its fold at
+> exactly 40 GiB (`constants.yaml`'s `0x0000028B` / `81920` is inert metadata that `build.sh`
+> never reads). A clean-room script firing the coherent `LMR 0x0000028B` removes the fold, but
+> it is unshipped and still loses the device after about one CUDA context. Cards report
+> ~81920 MiB and a 77 GiB dense fill passes, but kernels touching
+> more than roughly 40 GB cause fatal GPU loss, independent of power limit. Reported Xid codes
+> include Xid 31 (described as harmless) and Xid 154 after CUDA memory tests; the dominant
+> reported symptom is hangs. Xid 31 alone was suggested by a bystander and was not corroborated
+> as *the* signature by the operator with the failing card. Only one CUDA context is available
+> per fire. See
+> [the 80 GB frontier page](../frontier/80gb.md).
 
 ## Memory bandwidth
 
@@ -205,17 +215,19 @@ be BF16 because FP8 KV is unsupported on `sm_80`. See
 [LLM inference](../operations/llm-inference.md) and
 [performance](../operations/performance.md).
 
-!!! note "The `deviceQuery` 8960-core and 25.27 TFLOPS figures are wrong"
-    `deviceQuery` prints `Total SPs: 8960 (70 MPs x 128 SPs/MP)` and 25267.20 GFlops. The
-    discrepancy is exactly 2x and is consistent with the tool applying the compute-capability
-    8.6 figure of 128 FP32 lanes per SM instead of GA100's 64. The arithmetic and every
-    measured result favour 4480 cores and ~12.6 TFLOPS.
+> [!NOTE]
+> **The `deviceQuery` 8960-core and 25.27 TFLOPS figures are wrong**
+>
+> `deviceQuery` prints `Total SPs: 8960 (70 MPs x 128 SPs/MP)` and 25267.20 GFlops. The
+> discrepancy is exactly 2x and is consistent with the tool applying the compute-capability
+> 8.6 figure of 128 FP32 lanes per SM instead of GA100's 64. The arithmetic and every
+> measured result favour 4480 cores and ~12.6 TFLOPS.
 
 ## PCIe
 
 The two restrictions are independent and must never be conflated.
 
-| Quantity | Stock | With the Gen2 branch | With the capacitor mod |
+| Quantity | Stock, no unlock | With the unlocker | With the capacitor mod |
 |---|---|---|---|
 | Link speed | Gen1, 2.5 GT/s | **Gen2, 5 GT/s** | unchanged by the mod |
 | Link width trained | x4 (of x16 wired) | x4 | **x16** (or x8 if the solder work is incomplete) |
@@ -256,14 +268,16 @@ Gen3 *advertisement* has been made to work, but `LnkSta` never left 2.5 GT/s. Se
 [the PCIe subsystem](pcie-subsystem.md), [Gen2](../unlock/pcie-gen2.md) and
 [Gen3/Gen4](../frontier/pcie-gen3-gen4.md).
 
-!!! warning "Experimental: Gen2 is not in the shipping product"
-    Shipping `master` contains patches `0001` through `0006` only, has no `pcie:` block in
-    `constants.yaml`, and its "What Gets Unlocked" table has three rows with no PCIe entry.
-    `0007-pcie-gen2.patch` exists on branches `debug-gen2`, `Gen2`, `far` and `deced`;
-    `0008-pcie-gen2-probe-retrain.patch` on `Gen2`, `far` and `deced`. None has been merged.
-    Gen2 is also not deterministic in the field, does not work under VM passthrough, and fails
-    entirely over Thunderbolt 3 enclosures (Oculink works, because it is essentially a direct
-    riser).
+> [!WARNING]
+> **Experimental: Gen2 is not in the shipping product**
+>
+> Shipping `master` contains patches `0001` through `0006` only, has no `pcie:` block in
+> `constants.yaml`, and its "What Gets Unlocked" table has three rows with no PCIe entry.
+> `0007-pcie-gen2.patch` exists on branches `debug-gen2`, `Gen2`, `far` and `deced`;
+> `0008-pcie-gen2-probe-retrain.patch` on `Gen2`, `far` and `deced`. None has been merged.
+> Gen2 is also not deterministic in the field, does not work under VM passthrough, and fails
+> entirely over Thunderbolt 3 enclosures (Oculink works, because it is essentially a direct
+> riser).
 
 ## NVLink, P2P and other absent features
 
@@ -290,13 +304,15 @@ Gen3 *advertisement* has been made to work, but `LnkSta` never left 2.5 GT/s. Se
 | Rails | `3V3_PEX` (to 1.8 V by LDO), `12V_PEX` (to 5 V via MP1475, 1.35 V and PEXVDD via MP2988, HBMVPP 2.5 V via a second MP1475), `12V_EXT1`/`12V_EXT2` (NVVDD 1.0 V core and HBMVDD via MP2988 multiphase) |
 | VRM population | **Depopulated relative to the A100.** Three power MOSFETs and coils absent per side, versus one per side on an A100 40 GB and none on an A100 80 GB; a second comparison put it at roughly 6 of about 20 phases. The 8 GB 64 GB unlock was reported to need no VRM work |
 
-!!! danger "The 8-pin socket is EPS, not PCIe"
-    An 8-pin PCIe cable is keyed differently from the card's EPS socket and can only be forced
-    in, and the 12 V and ground lines are swapped on some pins between the two connector types.
-    Forcing one in **will damage the card**. Use the supplied adapter: one leg for 150 W of
-    budget, both legs for 300 W.
-    Modular PSU cables are also vendor-specific with no standard modular-side pinout; reusing
-    one across brands can destroy hardware.
+> [!CAUTION]
+> **The 8-pin socket is EPS, not PCIe**
+>
+> An 8-pin PCIe cable is keyed differently from the card's EPS socket and can only be forced
+> in, and the 12 V and ground lines are swapped on some pins between the two connector types.
+> Forcing one in **will damage the card**. Use the supplied adapter: one leg for 150 W of
+> budget, both legs for 300 W.
+> Modular PSU cables are also vendor-specific with no standard modular-side pinout; reusing
+> one across brands can destroy hardware.
 
 Real measured draw by workload is much lower than the label suggests, and this is a
 characteristic of the part rather than a fault: conventional FP32 burn-in reaches only about
@@ -321,13 +337,15 @@ core and memory both below 65 C. Full detail in [power delivery](power-delivery.
 | Memory max operating temperature | 95 C |
 | Practical throttle onset | ~80 C (one tester's telemetry; community design targets settled at 70 C core / 75-76 C memory hotspot) |
 
-!!! danger "GA100 exhibits leakage-driven thermal runaway"
-    Higher junction temperature raises CMOS leakage, which raises power, which raises
-    temperature. Observed first-hand on a card dry-run with a waterblock fitted but no
-    coolant: idle draw rose from **40 W to 60 W at 80 C and was still climbing**. If cooling
-    fails outright, the part does not settle at its throttle point, it climbs past it. If you
-    ever dry-run this card without coolant, power off within five minutes. Cooling solutions
-    with measured results are compared in [cooling](../operations/cooling.md).
+> [!CAUTION]
+> **GA100 exhibits leakage-driven thermal runaway**
+>
+> Higher junction temperature raises CMOS leakage, which raises power, which raises
+> temperature. Observed first-hand on a card dry-run with a waterblock fitted but no
+> coolant: idle draw rose from **40 W to 60 W at 80 C and was still climbing**. If cooling
+> fails outright, the part does not settle at its throttle point, it climbs past it. If you
+> ever dry-run this card without coolant, power off within five minutes. Cooling solutions
+> with measured results are compared in [cooling](../operations/cooling.md).
 
 ## Firmware, identification and APIs
 

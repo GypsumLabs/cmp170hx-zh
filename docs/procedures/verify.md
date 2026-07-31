@@ -55,24 +55,28 @@ Reading the result:
 - **Anything between the stock size and the target size is not a partial unlock.** The geometry
   is a fixed CFG1 + LMR pair chosen from the PCI device ID; it either landed or it did not.
 
-!!! danger "81920 MiB is not a success"
-    A 10 GB card reporting ~81920 MiB, with CUDA seeing 85,545,582,592 bytes (79.67 GiB), is
-    running the experimental 80 GB
-    tier, not the shipping 40 GB profile. `cudaMalloc` of 77 GiB succeeds, but kernels touching
-    more than roughly 40 GB cause fatal GPU loss, independent of power limit. Reported Xid codes
-    include Xid 31 (described as harmless) and Xid 154 after CUDA memory tests; the dominant
-    reported symptom is hangs. Xid 31 alone was suggested by a bystander and was not corroborated
-    as *the* signature by the operator with the failing card. The
-    80 GB configuration was attempted and abandoned. See [80 GB](../frontier/80gb.md). Every
-    document that mentions it records it as unstable; the `80` branch README's "Working" row is a
-    documentation defect.
+> [!CAUTION]
+> **81920 MiB is not a success**
+>
+> A 10 GB card reporting ~81920 MiB, with CUDA seeing 85,545,582,592 bytes (79.67 GiB), is
+> running the experimental 80 GB
+> tier, not the shipping 40 GB profile. `cudaMalloc` of 77 GiB succeeds, but kernels touching
+> more than roughly 40 GB cause fatal GPU loss, independent of power limit. Reported Xid codes
+> include Xid 31 (described as harmless) and Xid 154 after CUDA memory tests; the dominant
+> reported symptom is hangs. Xid 31 alone was suggested by a bystander and was not corroborated
+> as *the* signature by the operator with the failing card. The
+> 80 GB configuration was attempted and abandoned. See [80 GB](../frontier/80gb.md). Every
+> document that mentions it records it as unstable; the `80` branch README's "Working" row is a
+> documentation defect.
 
-!!! note "`clocks.max.sm = 1935 MHz` is a reported field, not an achievable clock"
-    `install.sh` suggests checking `clocks.max.sm` as step 4 of verification, and unlocked cards
-    do report 1935 MHz. Treat that number as **low confidence** and not as an operating clock:
-    the VBIOS table maximum graphics clock is 1695 MHz and the practical silicon ceiling is around
-    1604-1614 MHz at a +350 offset. Every sustained measurement sits at **1410 MHz** nominal, or
-    **1470 MHz** at `-pl 300`. See [Tuning](../operations/tuning.md).
+> [!NOTE]
+> **`clocks.max.sm = 1935 MHz` is a reported field, not an achievable clock**
+>
+> `install.sh` suggests checking `clocks.max.sm` as step 4 of verification, and unlocked cards
+> do report 1935 MHz. Treat that number as **low confidence** and not as an operating clock:
+> the VBIOS table maximum graphics clock is 1695 MHz and the practical silicon ceiling is around
+> 1604-1614 MHz at a +350 offset. Every sustained measurement sits at **1410 MHz** nominal, or
+> **1470 MHz** at `-pl 300`. See [Tuning](../operations/tuning.md).
 
 ---
 
@@ -88,13 +92,15 @@ sudo dmesg | grep SEC2_DEBUG
 sudo dmesg | grep -c SEC2_DEBUG      # the count varies by build and card count, see below
 ```
 
-!!! note "The line count is not a pass/fail test"
-    Every archived count is different, and none of them is a fingerprint. The single archived
-    single-card 8 GB capture contains **29** lines. The single archived two-card Gen2-branch
-    `610.43.03` boot log contains **134**. The `pcielink.sh` reporting tool printed
-    `SEC2_DEBUG lines=152` on two separate two-card Gen2 rigs (a HiveOS host and an Unraid host),
-    and 34 (Gen1 build) / 80 (Gen2 build) are also on record. Do not read a mismatch as a failed
-    install. The register readback lines below are the criterion.
+> [!NOTE]
+> **The line count is not a pass/fail test**
+>
+> Every archived count is different, and none of them is a fingerprint. The single archived
+> single-card 8 GB capture contains **29** lines. The single archived two-card Gen2-branch
+> `610.43.03` boot log contains **134**. The `pcielink.sh` reporting tool printed
+> `SEC2_DEBUG lines=152` on two separate two-card Gen2 rigs (a HiveOS host and an Unraid host),
+> and 34 (Gen1 build) / 80 (Gen2 build) are also on record. Do not read a mismatch as a failed
+> install. The register readback lines below are the criterion.
 
 Lines are emitted roughly in this order on a healthy boot.
 
@@ -124,21 +130,6 @@ Lines are emitted roughly in this order on a healthy boot.
 | FBPA | `0x009a0148` | `0xffffffff` | Also the built-in payload's default target |
 | WPR | `0x001fa7c4` | `0xffffffff` | |
 | FEAT | `0x00823804` | `0xffffffff` | Stock is `0xffffff8f`; always-on, survives a function-level reset |
-
-!!! note "Superseded: two documentation defects to ignore"
-    The `docs` branch is not authoritative and will make you misdiagnose a healthy card:
-
-    - `docs/DEBUGGING.md` line 15 says "All the PLMs must show `0xffffffff`." Wrong for WPR_CFG.
-      Master's `README.md` carries a milder version of the same imprecision
-      ("Expected: PLMs opening to 0xffffffff").
-    - `docs/ARCHITECTURE.md` prints expected `SEC2_DEBUG: SS0 = 0xffffffff` /
-      `SS1 = 0xffffffff`. The code writes `0x88888888` and `0x00000008`, and
-      `common/constants.yaml` agrees. Anyone validating an unlock against those strings will
-      wrongly conclude it failed.
-
-    The same document also invents acronym expansions ("Program Logic Modules", "Suspension
-    State", "Power Management Array") that appear nowhere in the code. Do not propagate them; see
-    the [glossary](../start/glossary.md).
 
 ### When the log is missing
 
@@ -178,10 +169,12 @@ as the multi-GPU depmod ambiguity described in [Multi-GPU](multi-gpu.md).
 
 ## `verify.sh`
 
-!!! warning "Experimental: branch-only script"
-    `verify.sh` does **not** exist on `master`. It ships on the `multiple-cards`, `Gen2`, `far`
-    and `deced` branches only. There is no `tools/` directory and no test suite on `master`
-    either.
+> [!WARNING]
+> **Experimental: branch-only script**
+>
+> `verify.sh` does **not** exist on `master`. It ships on the `multiple-cards`, `Gen2`, `far`
+> and `deced` branches only. There is no `tools/` directory and no test suite on `master`
+> either.
 
 `verify.sh` is a multi-GPU post-install checker. It requires `nvidia-smi`, caches
 `nvidia-smi --query-gpu=pci.bus_id,memory.total --format=csv,noheader,nounits`, then enumerates
@@ -260,13 +253,15 @@ Lighter and heavier alternatives:
 - The leaked distribution's README suggests `./gpu_burn -m 63500 -d 30` on a 64 GB card,
   expecting zero memory errors.
 
-!!! warning "Fold harnesses have produced false positives"
-    An early fold/alias harness reported *native, un-unlocked* memory as folding: a control run
-    after a reset to a consistent native state (10240 MiB, driver 610.43.03, CFG1 `0x02449000`)
-    allocated 9 GiB of genuinely native memory and reported "4608 chunks, 4608 corrupt/aliased"
-    across five passes, which is impossible. That retroactively invalidated a body of earlier
-    fold-at-40 GB conclusions. Trust `check_fold.py`'s dense method, and treat any fold result
-    from an ad-hoc script as unproven until a native control run comes back clean.
+> [!WARNING]
+> **Fold harnesses have produced false positives**
+>
+> An early fold/alias harness reported *native, un-unlocked* memory as folding: a control run
+> after a reset to a consistent native state (10240 MiB, driver 610.43.03, CFG1 `0x02449000`)
+> allocated 9 GiB of genuinely native memory and reported "4608 chunks, 4608 corrupt/aliased"
+> across five passes, which is impossible. That retroactively invalidated a body of earlier
+> fold-at-40 GB conclusions. Trust `check_fold.py`'s dense method, and treat any fold result
+> from an ad-hoc script as unproven until a native control run comes back clean.
 
 ---
 
@@ -308,22 +303,6 @@ Use a compute benchmark, not a memory one: the project's own proof-of-concept sc
 are also in use. Compare against the same benchmark on the same card before the unlock, on the
 same driver, at the same power limit. See [Performance](../operations/performance.md).
 
-!!! note "Superseded: the stock restriction is issue-rate throttling, not SM disablement"
-    The `docs` branch asserts "Stock firmware sets these to disable ~50% of the SMs". That claim
-    is false, and the matter is settled rather than open. Both SKUs already enumerate all 70 SMs
-    at stock and sit at their silicon fuse floor: a PTX `%smid` dumper returns 0..69 with no
-    gaps, `OPT_GPC_DISABLE` accounts for exactly 35 active TPC, and every `CTRL_OPT` floorsweep
-    register reads `0x00000000`. The code's own register names are `FEATURE_OVERRIDE_SM_SPEED`
-    and `_SM_SPEED_1`, and the written values `0x88888888` / `0x00000008` are nibble-patterned
-    issue-rate overrides rather than a bitmask of enabled clusters. The instruction-class evidence
-    comes from an April-2026 firmware-patching investigation on driver 535.288.01, before any
-    working unlock existed: non-FMA FP32 throughput was bit-identical at **4.3077 TFLOPS** across
-    the unpatched card and every failed firmware and module patch, while FFMA stayed pinned near
-    **0.316 TFLOPS**. A per-instruction-class throttle explains that; missing SMs would have moved
-    both numbers together. To confirm it on a card, compare a CUDA
-    `multiProcessorCount` query before and after the unlock: the SM count does not move, only
-    throughput does. See [Compute throttle](../unlock/compute-throttle.md).
-
 ### A note on the FMA lockdown
 
 Separately from SS0/SS1, FP32 fused-multiply-add throughput on this part is restricted in a way
@@ -339,9 +318,11 @@ signature, not an FMA-contraction artefact**. See [Performance](../operations/pe
 
 ## A complete verification checklist
 
-!!! warning "`check_fold.py` and `cuda_dbg.py` are not in the repository"
-    Both were published out-of-band as gists and channel attachments, not through the repository,
-    and must be obtained separately. Cloning will not get you either one.
+> [!WARNING]
+> **`check_fold.py` and `cuda_dbg.py` are not in the repository**
+>
+> Both were published out-of-band as gists and channel attachments, not through the repository,
+> and must be obtained separately. Cloning will not get you either one.
 
 ```bash
 # 1. Right module is live

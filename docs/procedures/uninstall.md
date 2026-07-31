@@ -17,13 +17,15 @@ initramfs, cleans up residue from two abandoned generation-1 designs, and reload
 NVIDIA modules. The card returns to its factory-reported 8192 MiB or 10240 MiB after the next
 cold boot; a warm reboot is not a reset and is not established to clear the geometry.
 
-!!! danger "`uninstall.sh` does not exist"
-    `docs/INSTALLATION.md` on the `docs` branch, line 40, instructs `sudo ./uninstall.sh --yes`.
-    **There is no `uninstall.sh` anywhere in the repository**, on `master` or on the `docs` branch
-    itself. Running it produces a shell error and does nothing, which some people have read as
-    "the uninstaller silently failed". The correct command is `remove.sh --yes`. The `docs` branch
-    also carries three other known defects and is not authoritative: see
-    [Verify](verify.md#the-sec2_debug-dmesg-trail).
+> [!CAUTION]
+> **`uninstall.sh` does not exist**
+>
+> `docs/INSTALLATION.md` on the `docs` branch, line 40, instructs `sudo ./uninstall.sh --yes`.
+> **There is no `uninstall.sh` anywhere in the repository**, on `master` or on the `docs` branch
+> itself. Running it produces a shell error and does nothing, which some people have read as
+> "the uninstaller silently failed". The correct command is `remove.sh --yes`. The `docs` branch
+> also carries three other known defects and is not authoritative: see
+> [Verify](verify.md#the-sec2_debug-dmesg-trail).
 
 ---
 
@@ -67,15 +69,6 @@ Stops and disables a `cmpunlocker` service, removes `/etc/systemd/system/cmpunlo
 runs `systemctl daemon-reload` and `reset-failed`, then
 `pkill -f /opt/cmpunlocker/daemon/watchdog.py`.
 
-!!! note "Superseded: the watchdog era"
-    The current installer never creates that service or that daemon. They are residue from
-    generation 1, when persistence was a userspace design: a systemd unit polled
-    `/proc/driver/nvidia/gpus/<BDF>/clients` and re-applied the unlock within 250 ms whenever a
-    new CUDA process opened the GPU. That was replaced on 2026-07-18 by patch 0006, which sets
-    `NV_FLAG_PERSISTENT_SW_STATE` so RM never tears down software state when the last client
-    closes. No daemon, no polling, no re-apply race. The cleanup code remains for people
-    upgrading from the old design.
-
 ### Step 3/5: remove patched modules and legacy files
 
 - For every `/lib/modules/*/updates/cmpunlocker` directory found (so **all** installed kernels,
@@ -91,11 +84,13 @@ runs `systemctl daemon-reload` and `reset-failed`, then
 - Removes `/opt/cmpunlocker` if present, warning
   `/opt/cmpunlocker not found (ok for module-only installs)` otherwise.
 
-!!! danger "This deletes your only backup of a patched-era `gsp_tu10x.bin`"
-    If you are mid-migration from the firmware-patching predecessor and have **not** yet restored
-    the stock GSP firmware, restore it *before* running `remove.sh`. Step 3 deletes
-    `gsp_tu10x.bin.cmpunlocker.bak`, which is the copy of the original blob. Restoring first:
-    `sudo cp /lib/firmware/nvidia/610.43.03/gsp_tu10x.bin.cmpunlocker.bak /lib/firmware/nvidia/610.43.03/gsp_tu10x.bin`.
+> [!CAUTION]
+> **This deletes your only backup of a patched-era `gsp_tu10x.bin`**
+>
+> If you are mid-migration from the firmware-patching predecessor and have **not** yet restored
+> the stock GSP firmware, restore it *before* running `remove.sh`. Step 3 deletes
+> `gsp_tu10x.bin.cmpunlocker.bak`, which is the copy of the original blob. Restoring first:
+> `sudo cp /lib/firmware/nvidia/610.43.03/gsp_tu10x.bin.cmpunlocker.bak /lib/firmware/nvidia/610.43.03/gsp_tu10x.bin`.
 
 ### Step 4/5: reload the stock driver
 
@@ -109,11 +104,13 @@ Only if `lsmod` shows an `nvidia` module. In order:
    `Could not reload NVIDIA driver, reboot to finish cleanup`.
 6. Restart the first display manager that was enabled.
 
-!!! danger "Step 4 will kill your graphical session"
-    `remove.sh` stops display managers and force-unloads modules with `rmmod -f`. Run it from a
-    text console or over SSH, not from a terminal inside the desktop session you are about to
-    terminate. On a headless compute box this is harmless; on a workstation, expect the display
-    to go away and possibly not come back until you reboot.
+> [!CAUTION]
+> **Step 4 will kill your graphical session**
+>
+> `remove.sh` stops display managers and force-unloads modules with `rmmod -f`. Run it from a
+> text console or over SSH, not from a terminal inside the desktop session you are about to
+> terminate. On a headless compute box this is harmless; on a workstation, expect the display
+> to go away and possibly not come back until you reboot.
 
 ### Step 5: summary
 

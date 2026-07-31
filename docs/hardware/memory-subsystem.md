@@ -42,11 +42,13 @@ These scalars are read directly from the PTOP block and are identical on every 1
 | `TPC_PER_GPC` | `0x00022434` | 8 | |
 | `NUM_NVLINK` | `0x0002246c` | 12 | fused off, see [NVLink](nvlink-hardware.md) |
 
-!!! question "Open problem: how many HBM stacks are actually bonded?"
-    A delidded 8 GB card visibly showed six stack sites; a separate die-shot source claims two of
-    the six are dummies. Both readings are compatible with the measured 4096-bit bus, so bus width
-    cannot discriminate. Only a package X-ray or a per-FBPA-to-stack channel-targeted access
-    pattern would settle it. The geometry arithmetic below does not depend on the answer.
+> [!NOTE]
+> **Open problem: how many HBM stacks are actually bonded?**
+>
+> A delidded 8 GB card visibly showed six stack sites; a separate die-shot source claims two of
+> the six are dummies. Both readings are compatible with the measured 4096-bit bus, so bus width
+> cannot discriminate. Only a package X-ray or a per-FBPA-to-stack channel-targeted access
+> pattern would settle it. The geometry arithmetic below does not depend on the answer.
 
 ---
 
@@ -96,24 +98,15 @@ than the SKU. The two physically probed 10 GB units disagree: one reads `OPT_FBP
 (FBPAs 12/13 and 22/23), which is also the A100 PCIe 40G/80G value. All three keep 20 FBPAs live,
 so the capacity arithmetic is unaffected.
 
-!!! note "A reconciliation, not a confirmed fact"
-    `MMU_NUM_ACTIVE_LTCS` was recorded once as `0x05001414` and once as `0x04001410` on parts both
-    described as 170HX, and one adjudicated document lists that as an unresolved contradiction. The
-    per-SKU split above resolves it arithmetically: the LTC-count field reads 16 on a 16-FBPA card
-    and 20 on a 20-FBPA card, exactly as it should. No paired same-boot capture stating the PCI
-    device ID alongside the register has been posted, so treat the split as strongly indicated
-    rather than proven.
-
-!!! note "Superseded: the FBP index to FBPA index mapping is linear"
-    An earlier note read `FBP_DEFECTIVE = 0x840` (FBPs 6 and 11) against measured dead FBPAs 00/01
-    and 06/07 as evidence that the mapping might not be linear, and asked for one report giving the
-    PCI device ID, the full 24-instance CSTATUS sweep, the FBPA mask from `0x00820c18` and the FBP
-    mask from `0x00820d38` all from the same boot. The 15-card fuse reference table is that report,
-    for five GA100 parts at once. Every one obeys FBP *n* to FBPAs *2n* and *2n+1*: FBP mask
-    `0x00000009` pairs with FBPA mask `0x000000c3`, `0x00000180` with `0x0003c000`, `0x00000012`
-    with `0x0000030c`, `0x00000840` with `0x00c03000` and `0x00000852` with `0x00c0330c`, and in
-    each case the poisoned CSTATUS instances are exactly those FBPAs. The mapping is linear; the
-    puzzle was two different physical cards being conflated in the reports.
+> [!NOTE]
+> **A reconciliation, not a confirmed fact**
+>
+> `MMU_NUM_ACTIVE_LTCS` was recorded once as `0x05001414` and once as `0x04001410` on parts both
+> described as 170HX, and one adjudicated document lists that as an unresolved contradiction. The
+> per-SKU split above resolves it arithmetically: the LTC-count field reads 16 on a 16-FBPA card
+> and 20 on a 20-FBPA card, exactly as it should. No paired same-boot capture stating the PCI
+> device ID alongside the register has been posted, so treat the split as strongly indicated
+> rather than proven.
 
 ### Poison sentinels
 
@@ -154,23 +147,11 @@ document records `0x400` in a single sentence; that is a dropped-zero typo contr
 other entries in the same document, by the probe tooling's own constants
 (`FBPA_BASE = 0x900000`, `FBPA_STRIDE = 0x4000`) and by the broadcast window size.
 
-!!! note "Superseded"
-    An early hypothesis put the per-instance CFG1 at `0x009a<N>204` with a `0x1000` stride. It was
-    tested in the same dump that proposed it and produced garbage: `0x009a1204` = `0x0007fff0`,
-    `0x009a2204` = `0x00000000`, `0x009a3204` = `0xbadf1002`, `0x009a4204` = `0xbadf4000`. Use
-    `0x00900204 + n*0x4000`.
-
 **CFG0** reads `0x07981800` on the broadcast register and on every live per-instance copy, on both
 170HX SKUs and on A100 SXM4 40 GB, A100 PCIe 40 GB and A100 PCIe 80 GB alike. A Drive A100 reads
 `0x06981800` and a GA10x control card `0x069f9803`. The memory-controller base configuration is
 therefore **not** restricted on the 170HX. Only CFG1 differs. Uniformity across instances is also
 what makes a single broadcast write safe.
-
-!!! note "Superseded"
-    A probe catalogue annotates `NV_PFB_FBPA_CFG0` with `CMP170HX=0x24490000, A100=0x26690000`.
-    That is wrong: the register measures `0x07981800`. The quoted pair are the CFG1 values
-    `0x02449000` and `0x02669000` shifted one nibble left and attached to the wrong register. Do
-    not use it.
 
 ---
 
@@ -252,16 +233,20 @@ Note the counter-intuitive consequence: the 8 GB card has the *narrower* bus but
 
 ### Measured bandwidth
 
-!!! warning "There is no single canonical measured bandwidth figure for this card"
-    Across tools and access patterns the reported values span **1305.86 to 1600 GB/s**. Use the
-    range. Two directional read-stream measurements sit above it and are listed with their
-    conditions below; a point estimate quoted without a tool and an access pattern is not
-    meaningful on this hardware.
+> [!WARNING]
+> **There is no single canonical measured bandwidth figure for this card**
+>
+> Across tools and access patterns the reported values span **1305.86 to 1600 GB/s**. Use the
+> range. Two directional read-stream measurements sit above it and are listed with their
+> conditions below; a point estimate quoted without a tool and an access pattern is not
+> meaningful on this hardware.
 
-!!! info "The memory geometry does not survive FLR or a power cycle; the compute unlock does"
-    SS0, SS1 and `0x00823804` survive FLR; the CFG1/LMR geometry rewrite does not. This asymmetry
-    is why compute shipped before memory, and it is why "no FLR" appears as a stated condition on
-    the DtoD bandwidth row below.
+> [!NOTE]
+> **The memory geometry does not survive FLR or a power cycle; the compute unlock does**
+>
+> SS0, SS1 and `0x00823804` survive FLR; the CFG1/LMR geometry rewrite does not. This asymmetry
+> is why compute shipped before memory, and it is why "no FLR" appears as a stated condition on
+> the DtoD bandwidth row below.
 
 | Measurement | Value | Conditions |
 |---|---|---|
@@ -280,13 +265,15 @@ Within an over-provisioned 80 GB configuration, an offset sweep found the origin
 reach 100 %. An earlier reading that showed a collapse to 32 GiB/s above 32 GB was an artefact of
 the sweep exhausting its single CUDA context and is retracted.
 
-!!! question "Open problem: the stock HBM clock on the 8 GB card"
-    Three figures circulate: 1458 MHz (specification database and a 2023 `deviceQuery` reporting
-    729 MHz, doubled by convention), 1592 MHz, and 1728 MHz (direct 2026 measurement). The
-    1679 to 1699 GB/s delivered read bandwidth is decisive *against* 1458 MHz for that run because
-    it exceeds the ceiling that clock implies, but it does not choose between 1592 and 1728. What
-    would settle it: a raw FBPA PLL register read published with the divider chain. 1728 MHz is the
-    best-supported figure and is the one used above.
+> [!NOTE]
+> **Open problem: the stock HBM clock on the 8 GB card**
+>
+> Three figures circulate: 1458 MHz (specification database and a 2023 `deviceQuery` reporting
+> 729 MHz, doubled by convention), 1592 MHz, and 1728 MHz (direct 2026 measurement). The
+> 1679 to 1699 GB/s delivered read bandwidth is decisive *against* 1458 MHz for that run because
+> it exceeds the ceiling that clock implies, but it does not choose between 1592 and 1728. What
+> would settle it: a raw FBPA PLL register read published with the divider chain. 1728 MHz is the
+> best-supported figure and is the one used above.
 
 ### Memory clocking is closed by measurement
 
@@ -308,12 +295,14 @@ instruction not to re-run the PLL sweep.
 Memory *underclocking* is a real efficiency lever on compute-bound work and is covered in
 [Tuning](../operations/tuning.md).
 
-!!! warning "Experimental"
-    An unreleased third-party fork carries a memory overclock with a stock multiplier of 64 and a
-    shipped default of 70 (lowered from 72 after one tester's 8 GB-to-64 GB card produced
-    `gpu_burn` errors within about two minutes at roughly 1944 MHz effective and 85 C). One author
-    reports all of their own cards stable at 73. This is not the shipping tool and the values are
-    per-card.
+> [!WARNING]
+> **Experimental**
+>
+> An unreleased third-party fork carries a memory overclock with a stock multiplier of 64 and a
+> shipped default of 70 (lowered from 72 after one tester's 8 GB-to-64 GB card produced
+> `gpu_burn` errors within about two minutes at roughly 1944 MHz effective and 85 C). One author
+> reports all of their own cards stable at 73. This is not the shipping tool and the values are
+> per-card.
 
 ---
 
@@ -344,11 +333,13 @@ respectively, sharing low 16 bits (`0xffc1` / `0xff83`) with per-unit upper halv
 a much tidier `0xNN000000` / `0xNN00f000` family. GA10x parts return `0xbadf5040` for the whole
 block, so the aperture is GA100-specific.
 
-!!! question "Open problem: nobody has decoded `I1500_SHADOW_WDR`"
-    The next step is to shift in the standard IEEE 1500 `DEVICE_ID` WIR opcode rather than reading
-    whatever instruction was left latched (`I1500_INSTR` = `0x0000000f`, `I1500_MODE` = `0x00000008`
-    at the time of the reads). That would give HBM vendor and per-stack density from the DRAM
-    itself and would settle several long-running arguments at once.
+> [!NOTE]
+> **Open problem: nobody has decoded `I1500_SHADOW_WDR`**
+>
+> The next step is to shift in the standard IEEE 1500 `DEVICE_ID` WIR opcode rather than reading
+> whatever instruction was left latched (`I1500_INSTR` = `0x0000000f`, `I1500_MODE` = `0x00000008`
+> at the time of the reads). That would give HBM vendor and per-stack density from the DRAM
+> itself and would settle several long-running arguments at once.
 
 ### Which vendor, and HBM2 or HBM2e?
 
@@ -388,11 +379,6 @@ Register map highlights (reconstructed against NVIDIA's own `dev_fbpa.h` from th
 | `TIMING12` | `0x9A0250` | `0x0BB800A1` | CKE 10, LOCKPLL 3000 |
 | `TIMING*` writable | `0x9A0220`-`0x9A028C` | inert | ignored while `USE_TIMING_REGS` = 0 |
 | `TIMING*_GEN` shadows | `0x9A02B0`-`0x9A02F0`, plus `0x9A0288` | live | read-only |
-
-!!! note "Superseded"
-    `CONFIG4` is at `0x9A02A0`, **not** `0x9A0210`. `0x9A0210` is the REFCTRL PUT/GET queue-pointer
-    pair and wanders (`0x7575` to `0x5252` to `0x3535` to `0x1a1a` to `0x0101`) within a single read
-    loop. `0x9A02A0` reads a rock-stable `0xc4030033`.
 
 ### The refresh experiment
 
@@ -445,13 +431,6 @@ reference, so nothing was ever running at half capacity and there is nothing to 
 
 Together those force the PLM-plus-MMIO route and rule out the fuse-override route entirely.
 
-!!! note "Superseded"
-    Software re-enable of floorswept FBPAs was tested on hardware and failed. `EN_SW_OVERRIDE`
-    moved `0x0` to `0x1` (the write took), but `DISABLE_SW_OVERRIDE_STATUS` stayed at `0x1`,
-    `CTRL_OPT_FBPA` stayed at `0x0`, and the effective mask `STATUS_FBPA` did not move from
-    `0x00c0330c`. Fused-off partitions cannot be recovered by this exploit. Only the VBIOS-imposed
-    per-partition capacity cap is reversible.
-
 Also relevant: on both physical 10 GB units, `DEVIDA` (`0x008204d8`) = `0x00002082` and `DEVIDB`
 (`0x0082056c`) = `0x000020c2`, consistent with the `DEVIDB = DEVIDA + 0x40` rule that holds on all
 11 parts with data (A100 SXM4 40G and A100 PCIe 40G read `0x20b1`/`0x20f1`; A100 PCIe 80G reads
@@ -486,12 +465,6 @@ reports every ECC field as `N/A`, `Remapped Rows: N/A`.
 **Practical consequence: an unlocked 170HX has no ECC telemetry, so silent corruption above the real
 capacity ceiling never surfaces as a counter.** This is why the fold test exists.
 
-!!! note "Superseded"
-    The branch named `ecc` contains no ECC code. Its patch directory is byte-identical to master and
-    its single commit is "Fixed dual geometry support". A grep across master and all 12 unreleased
-    branch snapshots finds zero references to `0x00820228` or `0x009a0470`. See
-    [ECC frontier](../frontier/ecc.md).
-
 ---
 
 ## The stock, locked state
@@ -518,12 +491,14 @@ Baseline runtime numbers from an independent 2023 review of a stock, locked 8 GB
 `Memory bandwidth: 1492.99 GB/sec`, `deviceQuery` memory clock 729 MHz; `gpu_burn` saw
 `7961 MB of memory (7660 MB available, using 6894 MB of it)`.
 
-!!! note "No uncontaminated stock CFG1 exists in any capture taken through the patched driver"
-    Patch `0001` writes CFG1 before anything can read it, so every "stock" value above comes from
-    pre-write pipeline logs or driverless reads. There is also **no known way to read back which
-    VBIOS strap is currently selected**; the only indirect indication is the value at `0x009a0204`,
-    which the unlock overwrites. That blocks distinguishing "the card was strapped down" from "the
-    card was fused down".
+> [!NOTE]
+> **No uncontaminated stock CFG1 exists in any capture taken through the patched driver**
+>
+> Patch `0001` writes CFG1 before anything can read it, so every "stock" value above comes from
+> pre-write pipeline logs or driverless reads. There is also **no known way to read back which
+> VBIOS strap is currently selected**; the only indirect indication is the value at `0x009a0204`,
+> which the unlock overwrites. That blocks distinguishing "the card was strapped down" from "the
+> card was fused down".
 
 ---
 
@@ -544,64 +519,76 @@ confidence and not independently verified: NVIDIA never produced A100s with 80 G
 and Samsung most likely sold NVIDIA partly-defective 16 GB HBM2e stacks binned as 8 GB stacks. The
 exploit lets the 10 GB card address all 80 GB, but the upper 40 GB does not perform to standard.
 
-!!! danger "Do not target 80 GB on a 10 GB card"
-    The 80 GB configuration reports ~81920 MiB (85,545,582,592 bytes to CUDA) and `cudaMalloc` of
-    77 GiB succeeds, but kernels touching more than roughly 40 GB cause fatal GPU loss, independent
-    of power limit. Reported Xid codes include Xid 31 (described as harmless) and Xid 154 after
-    CUDA memory tests; the dominant reported symptom is hangs. Xid 31 alone was suggested by a
-    bystander and was not corroborated as *the* signature by the operator with the failing card.
-    See [The 80 GB question](../frontier/80gb.md).
+> [!CAUTION]
+> **Do not target 80 GB on a 10 GB card**
+>
+> The 80 GB configuration reports ~81920 MiB (85,545,582,592 bytes to CUDA) and `cudaMalloc` of
+> 77 GiB succeeds, but kernels touching more than roughly 40 GB cause fatal GPU loss, independent
+> of power limit. Reported Xid codes include Xid 31 (described as harmless) and Xid 154 after
+> CUDA memory tests; the dominant reported symptom is hangs. Xid 31 alone was suggested by a
+> bystander and was not corroborated as *the* signature by the operator with the failing card.
+> See [The 80 GB question](../frontier/80gb.md).
 
 ---
 
 ## Open problems on the physical side
 
-!!! question "Open problem: can disabled-but-not-defective FBPs be re-enabled?"
-    `OPT_FBP_DISABLE` = `0x00000852` on the 8 GB SKU is high confidence, but the paired
-    `FBP_DEFECTIVE` = `0x840` comes from a single medium-confidence community reference dump whose
-    card identity is disputed: `0x840` is also the A100 PCIe 40G/80G `FUSE_FBP_DISABLE` value. If
-    the pairing holds, two FBPs are disabled purely for binning and re-enabling both would move the
-    card from 64 GB to 80 GB, but the inference is unproven. The
-    software-override path is closed (see above), and re-enabling fuse-disabled partitions at
-    register level was reported to produce `0xbadf` poison on read. Devinit is the only untested
-    escape hatch, and nobody has made devinit run at runtime.
+> [!NOTE]
+> **Open problem: can disabled-but-not-defective FBPs be re-enabled?**
+>
+> `OPT_FBP_DISABLE` = `0x00000852` on the 8 GB SKU is high confidence, but the paired
+> `FBP_DEFECTIVE` = `0x840` comes from a single medium-confidence community reference dump whose
+> card identity is disputed: `0x840` is also the A100 PCIe 40G/80G `FUSE_FBP_DISABLE` value. If
+> the pairing holds, two FBPs are disabled purely for binning and re-enabling both would move the
+> card from 64 GB to 80 GB, but the inference is unproven. The
+> software-override path is closed (see above), and re-enabling fuse-disabled partitions at
+> register level was reported to produce `0xbadf` poison on read. Devinit is the only untested
+> escape hatch, and nobody has made devinit run at runtime.
 
-!!! question "Open problem: does the physical DRAM above the shipping tier work, or only exist?"
-    PRAMIN sweeps on a 10 GB card proved 80 of 80 distinct GiB are physically present, a dense
-    77 GiB fill and verify at 64 KiB granularity returned zero errors twice, and the largest
-    verified no-fold run was 72 GiB at stock boot timings. Against that: crashes above roughly
-    40 GB, one CUDA context per fire before Xid 154, and 79 % of peak bandwidth in the extended
-    region. The current synthesis, not a resolution: the cells are addressable and hold data briefly
-    under a single context, and addressable is different from working.
+> [!NOTE]
+> **Open problem: does the physical DRAM above the shipping tier work, or only exist?**
+>
+> PRAMIN sweeps on a 10 GB card proved 80 of 80 distinct GiB are physically present, a dense
+> 77 GiB fill and verify at 64 KiB granularity returned zero errors twice, and the largest
+> verified no-fold run was 72 GiB at stock boot timings. Against that: crashes above roughly
+> 40 GB, one CUDA context per fire before Xid 154, and 79 % of peak bandwidth in the extended
+> region. The current synthesis, not a resolution: the cells are addressable and hold data briefly
+> under a single context, and addressable is different from working.
 
-!!! question "Open problem: retention failure or address-decode failure?"
-    A retention failure should scatter errors by time and address across the whole upper region. A
-    decode fold should produce exact aliasing at a power-of-two boundary, and the observed fold sits
-    at exactly 40 GiB, which is suspiciously exact for a retention problem. That fold was seen under
-    the `80` branch's incoherent LMR `0x0000028A`, and it disappears when the coherent `0x0000028B`
-    is fired instead, which reads as a decode story. But the crashes do not disappear with it.
-    Doubling refresh (`FBPA_CONFIG4 = 0xc403001a`) landed
-    on all 20 live FBPAs and did **not** fix the instability while costing about 40 % of bandwidth,
-    which is evidence against the retention story too. Neither mechanism is established.
+> [!NOTE]
+> **Open problem: retention failure or address-decode failure?**
+>
+> A retention failure should scatter errors by time and address across the whole upper region. A
+> decode fold should produce exact aliasing at a power-of-two boundary, and the observed fold sits
+> at exactly 40 GiB, which is suspiciously exact for a retention problem. That fold was seen under
+> the `80` branch's incoherent LMR `0x0000028A`, and it disappears when the coherent `0x0000028B`
+> is fired instead, which reads as a decode story. But the crashes do not disappear with it.
+> Doubling refresh (`FBPA_CONFIG4 = 0xc403001a`) landed
+> on all 20 live FBPAs and did **not** fix the instability while costing about 40 % of bandwidth,
+> which is evidence against the retention story too. Neither mechanism is established.
 
-!!! question "Open problem: is the upper region 'untrained'?"
-    `FBPA_TRAINING_STATUS` (`0x009a0974`) reads FINISHED on every card probed, including an unlocked
-    card already carrying the 64 GB CFG1 value, and a controlled A/B established that row/bank/column
-    addressing is combinational and needs no training, so capacity is not gated on retraining. Yet
-    "untrained" remains the most-repeated explanation for the instability. The reconciliation on
-    offer is that the status bit reflects only the stock-geometry pass, or that the internally
-    generated timings are simply wrong for the widened geometry (a timings problem, not a training
-    problem). Nobody has correlated `TRAINING_STATUS` with an actual crash trace.
+> [!NOTE]
+> **Open problem: is the upper region 'untrained'?**
+>
+> `FBPA_TRAINING_STATUS` (`0x009a0974`) reads FINISHED on every card probed, including an unlocked
+> card already carrying the 64 GB CFG1 value, and a controlled A/B established that row/bank/column
+> addressing is combinational and needs no training, so capacity is not gated on retraining. Yet
+> "untrained" remains the most-repeated explanation for the instability. The reconciliation on
+> offer is that the status bit reflects only the stock-geometry pass, or that the internally
+> generated timings are simply wrong for the widened geometry (a timings problem, not a training
+> problem). Nobody has correlated `TRAINING_STATUS` with an actual crash trace.
 
-!!! question "Open problem: is MIG usable on an unlocked card?"
-    The MIG-relevant descriptors are populated and readable (`FBHUB_MEM_PART_BOT` `0x00100b88`,
-    `MID` `0x00100b8c`, `BOUNDARY_CFG0` `0x00100b90` = `0x00000603`,
-    `SYSMEM_HSHUB_CONNECTION_CFG` `0x00100b98` = `0x00000003`), and the fuse survey shows MIG is not
-    fused off, merely unprogrammed. MIG does enable, but it cannot partition: `-lgip` exposes only
-    one profile (`1g.64gb`, 63.00 GiB, 70 SMs, P2P No), `-cgi 0` was run and produced a single
-    instance at `1 MiB / 65053 MiB`, and a standard A100 profile (`-cgi 9,3g.20gb -C`) is rejected
-    with `Invalid Argument`. What is open is whether the boundary descriptors can be reprogrammed to
-    expose more than one profile.
+> [!NOTE]
+> **Open problem: is MIG usable on an unlocked card?**
+>
+> The MIG-relevant descriptors are populated and readable (`FBHUB_MEM_PART_BOT` `0x00100b88`,
+> `MID` `0x00100b8c`, `BOUNDARY_CFG0` `0x00100b90` = `0x00000603`,
+> `SYSMEM_HSHUB_CONNECTION_CFG` `0x00100b98` = `0x00000003`), and the fuse survey shows MIG is not
+> fused off, merely unprogrammed. MIG does enable, but it cannot partition: `-lgip` exposes only
+> one profile (`1g.64gb`, 63.00 GiB, 70 SMs, P2P No), `-cgi 0` was run and produced a single
+> instance at `1 MiB / 65053 MiB`, and a standard A100 profile (`-cgi 9,3g.20gb -C`) is rejected
+> with `Invalid Argument`. What is open is whether the boundary descriptors can be reprogrammed to
+> expose more than one profile.
 
 ---
 

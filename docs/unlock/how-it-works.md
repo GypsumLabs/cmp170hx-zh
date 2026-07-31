@@ -169,13 +169,6 @@ its own it is not a signature-validity verdict.
 `/lib/firmware/nvidia/ga100/gsp/dmem.bin` and, on failure, logs
 `SEC2_DEBUG: <path> not found (0x59), using built-in payload`. Status `0x59` is benign and expected.
 
-!!! note "Superseded"
-    `dmem.bin` is effectively vestigial on the released path. It is a leftover from the 580-era
-    workflow that spliced the payload into the `.fwsignature_ga100` section of a firmware file on
-    disk. In the shipping flow, no Booter Load runs between that file read and the first
-    `kgspSec2PostblTimingRefillPayload()` call, which rewrites the entire buffer with the built-in
-    template. Dropping a file there has no effect.
-
 ---
 
 ## Step 3: the payload is written
@@ -258,14 +251,16 @@ no state across passes. The Booter loads, passes the RSA-3072 boot ROM check on 
 (which is untouched and genuine), decrypts itself into HS mode, begins verifying the LS signature,
 DMAs `0xf800` bytes into DMEM, and unwinds through the injected return addresses instead of its own.
 
-!!! warning "The reported status is always a failure and that is expected"
-    Every payload pass logs
-    `s_executeBooterUcode_TU102: Booter failed with non-zero error code: 0x31` and
-    `kgspExecuteBooterLoad_TU102: failed to execute Booter Load: 0xffff`, and the register writes
-    still land. The seccode leaves an error code in mailbox0 after every run, and `mailbox0 != 0`
-    makes the HAL return `NV_ERR_GENERIC` (`0xffff`). **Register readback is the only valid success
-    criterion**, and it is exactly the criterion the shipping loop uses. Do not read
-    `status=0xffff` as a problem.
+> [!WARNING]
+> **The reported status is always a failure and that is expected**
+>
+> Every payload pass logs
+> `s_executeBooterUcode_TU102: Booter failed with non-zero error code: 0x31` and
+> `kgspExecuteBooterLoad_TU102: failed to execute Booter Load: 0xffff`, and the register writes
+> still land. The seccode leaves an error code in mailbox0 after every run, and `mailbox0 != 0`
+> makes the HAL return `NV_ERR_GENERIC` (`0xffff`). **Register readback is the only valid success
+> criterion**, and it is exactly the criterion the shipping loop uses. Do not read
+> `status=0xffff` as a problem.
 
 A Booter pass costs about **180 ms**.
 
@@ -288,10 +283,12 @@ The shipping `plmTable[]` has exactly four entries, opened in this order:
 | 2 | WPR | `0x001fa7c4` | `0xffffffff` | Gates the WPR region registers |
 | 3 | FEAT | `0x00823804` | `0xffffffff` | `FEAT_OVR_PLM`. Gates the feature-override block, i.e. SS0 and SS1 |
 
-!!! warning "WPR_CFG opens to `0xfffff0ff`, not `0xffffffff`"
-    Both the distribution README and `docs/ARCHITECTURE.md` say every PLM should read `0xffffffff`.
-    The code writes and verifies `0xfffff0ff` for entry 0. Treat `0xfffff0ff` as canonical: it is
-    what the shipping loop both writes and checks against.
+> [!WARNING]
+> **WPR_CFG opens to `0xfffff0ff`, not `0xffffffff`**
+>
+> Both the distribution README and `docs/ARCHITECTURE.md` say every PLM should read `0xffffffff`.
+> The code writes and verifies `0xfffff0ff` for entry 0. Treat `0xfffff0ff` as canonical: it is
+> what the shipping loop both writes and checks against.
 
 Each entry gets **up to two attempts**. The attempt loop is:
 
@@ -399,12 +396,14 @@ size_MiB = MAG[9:4] << SCALE[3:0]
 
 MAG is constant per SKU and equals twice the active-FBPA count. SCALE is what the unlock changes.
 
-!!! warning "`0x40A` and `0x50A` are refuted, not observed"
-    Both circulated as candidate encodings. `(0x40A >> 4) & 0x3F = 0` and
-    `(0x50A >> 4) & 0x3F = 0x10`, so neither decodes under a 6-bit MAG field, and a 2026-07-11
-    attempt at `0x40A` on a 10 GB card moved neither register. The exact width of the `LOWER_MAG`
-    field (6 bits at [9:4] versus 7 at [10:4]) has never been read out of `dev_fb.h` and remains
-    the last open detail here.
+> [!WARNING]
+> **`0x40A` and `0x50A` are refuted, not observed**
+>
+> Both circulated as candidate encodings. `(0x40A >> 4) & 0x3F = 0` and
+> `(0x50A >> 4) & 0x3F = 0x10`, so neither decodes under a 6-bit MAG field, and a 2026-07-11
+> attempt at `0x40A` on a 10 GB card moved neither register. The exact width of the `LOWER_MAG`
+> field (6 bits at [9:4] versus 7 at [10:4]) has never been read out of `dev_fb.h` and remains
+> the last open detail here.
 
 **Why the LMR is a hard prerequisite, not an optimisation.** A controlled three-way comparison on
 hardware: no memory writes gives CPU-RM failure `0x24` at `kbusVerifyBar2`; a 40 GB CFG1 strap with
@@ -581,40 +580,48 @@ always-on shadow for framebuffer geometry.
 
 ## Where PCIe Gen2 slots into this narrative
 
-!!! warning "Experimental, branch only"
-    `0007-pcie-gen2.patch` injects its entire register block into `kernel_gsp.c` at
-    `@@ -4942,6 +4942,260 @@`, immediately after the `devId` print and immediately **before** the
-    call to `kgspSec2PostblTimingRebuildStockSignature()`. It therefore runs inside exactly the
-    window described in steps 5 and 6, while the PLMs are still open and the crafted signature
-    payload still provides the arbitrary BAR0 write primitive. It pushes a 23-entry `xp3gTable`
-    plus two further registers through the Booter (25 Booter-routed writes), then does plain host
-    BAR0 writes, then leaves the actual link retrain to patch 0008 or to userspace. Full detail on
-    [PCIe Gen2](pcie-gen2.md).
+> [!WARNING]
+> **Experimental, branch only**
+>
+> `0007-pcie-gen2.patch` injects its entire register block into `kernel_gsp.c` at
+> `@@ -4942,6 +4942,260 @@`, immediately after the `devId` print and immediately **before** the
+> call to `kgspSec2PostblTimingRebuildStockSignature()`. It therefore runs inside exactly the
+> window described in steps 5 and 6, while the PLMs are still open and the crafted signature
+> payload still provides the arbitrary BAR0 write primitive. It pushes a 23-entry `xp3gTable`
+> plus two further registers through the Booter (25 Booter-routed writes), then does plain host
+> BAR0 writes, then leaves the actual link retrain to patch 0008 or to userspace. Full detail on
+> [PCIe Gen2](pcie-gen2.md).
 
 ---
 
 ## Open problems in the mechanism itself
 
-!!! question "Open problem"
-    **Does the chain actually execute `0x0ccb`?** A hard constraint was recorded that no ROP exit
-    path may route through `regtable_rw_indexed (0x0ccb)`, because the `0xF800` payload linearly
-    smashes the descriptor tables it indexes at DMEM `0x2383` and `0x8e08`, and a 2026-07-06
-    isolation matrix showed every write-carrying rejoin chain dying there. Yet the shipping payload
-    places `0x00000ccb` at DMEM `0xFFF4` and works. The next step is to single-step or emulate the
-    unwind from `0xFF54` and record whether `0xFFF4` is ever popped into PC or is only a
-    live-through saved slot in the outermost frame.
+> [!NOTE]
+> **Open problem**
+>
+> **Does the chain actually execute `0x0ccb`?** A hard constraint was recorded that no ROP exit
+> path may route through `regtable_rw_indexed (0x0ccb)`, because the `0xF800` payload linearly
+> smashes the descriptor tables it indexes at DMEM `0x2383` and `0x8e08`, and a 2026-07-06
+> isolation matrix showed every write-carrying rejoin chain dying there. Yet the shipping payload
+> places `0x00000ccb` at DMEM `0xFFF4` and works. The next step is to single-step or emulate the
+> unwind from `0xFF54` and record whether `0xFFF4` is ever popped into PC or is only a
+> live-through saved slot in the outermost frame.
 
-!!! question "Open problem"
-    **Does `0x00000007` at payload offset `0x1100` do anything beyond the reset PLM?** Its main
-    role is settled: DMEM `0x1900` is the `f100_field_save_restore` slot reached from IMEM
-    `0x1d3b`, and the `0x7` is what makes the exit through `secure_teardown` leave the SEC2 reset
-    PLM at `0xff` instead of the usual `0x8f` taint. Whether it has any further effect has never
-    been established.
+> [!NOTE]
+> **Open problem**
+>
+> **Does `0x00000007` at payload offset `0x1100` do anything beyond the reset PLM?** Its main
+> role is settled: DMEM `0x1900` is the `f100_field_save_restore` slot reached from IMEM
+> `0x1d3b`, and the `0x7` is what makes the exit through `secure_teardown` leave the SEC2 reset
+> PLM at `0xff` instead of the usual `0x8f` taint. Whether it has any further effect has never
+> been established.
 
-!!! question "Open problem"
-    **Is `0x008200FC` writable, and what does it read on a cold card?** One sweep reported
-    `0xffffffff`, another `0x000003FF`. The nine-PLM Gen2 branch attempt returned `status=0xffff`
-    with no readback recorded.
+> [!NOTE]
+> **Open problem**
+>
+> **Is `0x008200FC` writable, and what does it read on a cold card?** One sweep reported
+> `0xffffffff`, another `0x000003FF`. The nine-PLM Gen2 branch attempt returned `status=0xffff`
+> with no readback recorded.
 
 More at [Open questions](../frontier/open-questions.md) and the
 [Status board](../frontier/status-board.md). For what was tried and failed on the way here, see

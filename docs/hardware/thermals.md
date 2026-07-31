@@ -42,13 +42,15 @@ The 40 mm slot width matters for bracket shopping: A100/H100-style 40 mm blower 
 advertised for A100, H100, A20, A30, A40 and CMP 170HX measure 1.57 in wide and therefore
 fit standard 2-slot spacing.
 
-!!! question "Open problem: nobody has measured this heatsink"
-    No CFM, static-pressure, dBA or fin-pitch figure for the stock 170HX heatsink is
-    published anywhere in this corpus. Every airflow number in this wiki is a community
-    measurement of a fan-plus-card system, not a heatsink specification. The closest thing
-    to an anchor is the two-120 mm-fans-for-four-cards result at `-pl 160`. Closing this
-    needs one person with a known fan curve correlating fan operating point against
-    steady-state die temperature at a fixed power limit.
+> [!NOTE]
+> **Open problem: nobody has measured this heatsink**
+>
+> No CFM, static-pressure, dBA or fin-pitch figure for the stock 170HX heatsink is
+> published anywhere in this corpus. Every airflow number in this wiki is a community
+> measurement of a fan-plus-card system, not a heatsink specification. The closest thing
+> to an anchor is the two-120 mm-fans-for-four-cards result at `-pl 160`. Closing this
+> needs one person with a known fan curve correlating fan operating point against
+> steady-state die temperature at a fixed power limit.
 
 ---
 
@@ -71,16 +73,18 @@ At that capture the card read GPU 34 C, memory 48 C, `Fan Speed : N/A`, and ever
 event reason `Not Active`, including HW Thermal Slowdown and HW Power Brake Slowdown, with
 every event counter at `0 us`.
 
-!!! question "Open problem: the throttle layering is inferred, not established"
-    Four numbers are on the record for "when does it throttle": 80 C (one tester's own
-    telemetry), 85 C (two GA100 recollections and the driver's Max Operating Temp), 95 C
-    (driver Slowdown Temp) and "above 100 C" (described for a card whose cooling failed
-    entirely). These may all be true at different layers: a soft VBIOS-level clock
-    reduction at 80 C, a driver operating ceiling at 85 C, a hardware slowdown at 95 C,
-    and runaway when there is no cooling loop at all. **No one has posted a throttle log
-    correlating clock reduction against temperature.** What would settle it is a logged
-    sweep through 75-95 C of `nvidia-smi
-    --query-gpu=temperature.gpu,clocks.sm,clocks_throttle_reasons.active --format=csv -l 1`.
+> [!NOTE]
+> **Open problem: the throttle layering is inferred, not established**
+>
+> Four numbers are on the record for "when does it throttle": 80 C (one tester's own
+> telemetry), 85 C (two GA100 recollections and the driver's Max Operating Temp), 95 C
+> (driver Slowdown Temp) and "above 100 C" (described for a card whose cooling failed
+> entirely). These may all be true at different layers: a soft VBIOS-level clock
+> reduction at 80 C, a driver operating ceiling at 85 C, a hardware slowdown at 95 C,
+> and runaway when there is no cooling loop at all. **No one has posted a throttle log
+> correlating clock reduction against temperature.** What would settle it is a logged
+> sweep through 75-95 C of `nvidia-smi
+> --query-gpu=temperature.gpu,clocks.sm,clocks_throttle_reasons.active --format=csv -l 1`.
 
 ### The community design target
 
@@ -91,11 +95,6 @@ this, a participant shopping for fans asked whether 90 C was acceptable for the 
 reported reading that throttling starts at 80 C, and was answered "Absolutely not!". No
 telemetry was posted alongside the 80 C figure, so treat it as a reading rather than a
 measurement.
-
-!!! note "Superseded"
-    "90 C is a fine operating temperature for this chip" was the early consumer-GPU
-    intuition. It is retired. Size cooling for 70 C core / 75 C memory, not for the 98 C
-    shutdown point.
 
 ---
 
@@ -150,10 +149,12 @@ The cleanest measurement of it was taken by accident. One researcher dry-ran a c
 waterblock fitted but no coolant in it: idle draw started at about **40 W**, climbed to
 **60 W at 80 C**, and was still rising when the card was powered off.
 
-!!! danger "Never power a card with a mounted-but-dry waterblock for more than 5 minutes"
-    A dry block is worse than no block: it insulates. The measured 40 W to 60 W climb had
-    not stabilised at 80 C. If you must dry-fit to check clearances, power off within
-    5 minutes.
+> [!CAUTION]
+> **Never power a card with a mounted-but-dry waterblock for more than 5 minutes**
+>
+> A dry block is worse than no block: it insulates. The measured 40 W to 60 W climb had
+> not stabilised at 80 C. If you must dry-fit to check clearances, power off within
+> 5 minutes.
 
 Two consequences follow, one benign and one not:
 
@@ -226,12 +227,14 @@ right here.. you can save watts, but you wont be able to drop temps on air" and 
 lower hbm temps on air seems impossible". A 30-minute `gpu_burn` at those settings
 (`EFF / Balanced +300MHz / 1400`) completed with no errors.
 
-!!! question "Open problem: is the HBM temperature floor a cooling limit or intrinsic?"
-    A direct request for waterblock HBM temperature data went unanswered, so the floor is
-    unbounded from below: nobody knows whether water gets HBM materially cooler than air.
-    The single cheapest high-value experiment in this domain is for the owner of the
-    budget waterblock (48 C core / 58 C memory over one hour) to re-run the same
-    `EFF / Balanced +300MHz / 1400` sweep with the memory sensor logged.
+> [!NOTE]
+> **Open problem: is the HBM temperature floor a cooling limit or intrinsic?**
+>
+> A direct request for waterblock HBM temperature data went unanswered, so the floor is
+> unbounded from below: nobody knows whether water gets HBM materially cooler than air.
+> The single cheapest high-value experiment in this domain is for the owner of the
+> budget waterblock (48 C core / 58 C memory over one hour) to re-run the same
+> `EFF / Balanced +300MHz / 1400` sweep with the memory sensor logged.
 
 ---
 
@@ -247,14 +250,6 @@ This surprises people, and it changes how you should spend money on cooling.
   exposed cap explains that ceiling, and it remains unexplained.
 - The 80 GB configuration's instability is not thermal and not power-related: the failing
   cards **never drew above about 80 W** during the crashing workload.
-
-!!! note "Superseded"
-    "Delid the card and replace the die-to-IHS TIM" was proposed twice and closed by
-    argument, not experiment: "We struggle to hit 250 W with GPCs disabled. That would have
-    to be fixed first." Nobody has delidded a 170HX. The one reason to revisit it is
-    diagnostic rather than thermal: if an HBM stack is physically too short to contact the
-    IHS properly, that could be why it is disabled, which would matter most on the 8 GB
-    card.
 
 One genuine thermal fault mode does exist. Cards that have never been re-pasted or
 re-padded can throttle heavily: one owner with two 8 GB cards could only bench one, because

@@ -17,12 +17,14 @@ of them are opened to all ones:
 | 2 | `WPR` | `0x001fa7c4` | `0xffffffff` |
 | 3 | `FEAT` | `0x00823804` | `0xffffffff` |
 
-!!! danger "`WPR_CFG` opens to `0xfffff0ff`, not `0xffffffff`"
-    Bits [11:8] of `0x001fa7cc` are deliberately left clear. Both the project README and the
-    `docs` branch describe the unlock as "opening the PLMs to `0xffffffff`", or state that all PLMs
-    must read `0xffffffff` after a successful unlock. That phrasing is imprecise for the first entry
-    and will make a correct unlock look like a failure to anyone verifying by eye. A card that shows
-    `0x001fa7cc = 0xfffff0ff` and the other three at `0xffffffff` is **correct**.
+> [!CAUTION]
+> **`WPR_CFG` opens to `0xfffff0ff`, not `0xffffffff`**
+>
+> Bits [11:8] of `0x001fa7cc` are deliberately left clear. Both the project README and the
+> `docs` branch describe the unlock as "opening the PLMs to `0xffffffff`", or state that all PLMs
+> must read `0xffffffff` after a successful unlock. That phrasing is imprecise for the first entry
+> and will make a correct unlock look like a failure to anyone verifying by eye. A card that shows
+> `0x001fa7cc = 0xfffff0ff` and the other three at `0xffffffff` is **correct**.
 
 ---
 
@@ -49,13 +51,15 @@ to be running inside a signed heavy-secure microcode. Once a PLM has been rewrit
 to allow L0 writes, ordinary host BAR0 writes work with no further exploit. This pivot is the entire
 architecture of the shipping unlock.
 
-!!! warning "PLM means Privilege Level Mask"
-    The project's own `docs` branch (`cmpunlocker-branches/docs/docs/ARCHITECTURE.md`) expands PLM
-    as "Program Logic Modules", and also invents "PMM (Permute Mask Model)", "LMR (LM Request)",
-    "SS0/SS1 (Suspension State)" and "PMA (Power Management Array)". All of these are inventions.
-    The underlying register name in NVIDIA's headers is `PRIV_LEVEL_MASK`. Nothing from that
-    document should be carried into a description of this hardware. See
-    [dead ends](../history/dead-ends.md).
+> [!WARNING]
+> **PLM means Privilege Level Mask**
+>
+> The project's own `docs` branch (`cmpunlocker-branches/docs/docs/ARCHITECTURE.md`) expands PLM
+> as "Program Logic Modules", and also invents "PMM (Permute Mask Model)", "LMR (LM Request)",
+> "SS0/SS1 (Suspension State)" and "PMA (Power Management Array)". All of these are inventions.
+> The underlying register name in NVIDIA's headers is `PRIV_LEVEL_MASK`. Nothing from that
+> document should be carried into a description of this hardware. See
+> [dead ends](../history/dead-ends.md).
 
 ---
 
@@ -220,12 +224,14 @@ no further exploit:
 | `0x009a0204` (CFG1) | `0x02779000` (8 GB card) / `0x02669000` (10 GB card) | Memory geometry |
 | `0x00100ce0` (LMR) | `0x0000020B` (8 GB card) / `0x0000028A` (10 GB card) | Memory geometry |
 
-!!! warning "The `docs` branch is wrong about SS0 and SS1"
-    `ARCHITECTURE.md` states `SEC2_DEBUG: SS0 = 0xffffffff` and `SS1 = 0xffffffff`, and prints an
-    expected log line `SEC2_DEBUG: Executing unlock sequence...` that does not exist anywhere in the
-    code. The shipping code writes SS0 = `0x88888888` and SS1 = `0x00000008`. The geometry table in
-    the same document (8 GB to 64 GB with `0x02779000`/`0x0000020B`, 10 GB to 40 GB with
-    `0x02669000`/`0x0000028A`) is, however, correct.
+> [!WARNING]
+> **The `docs` branch is wrong about SS0 and SS1**
+>
+> `ARCHITECTURE.md` states `SEC2_DEBUG: SS0 = 0xffffffff` and `SS1 = 0xffffffff`, and prints an
+> expected log line `SEC2_DEBUG: Executing unlock sequence...` that does not exist anywhere in the
+> code. The shipping code writes SS0 = `0x88888888` and SS1 = `0x00000008`. The geometry table in
+> the same document (8 GB to 64 GB with `0x02779000`/`0x0000020B`, 10 GB to 40 GB with
+> `0x02669000`/`0x0000028A`) is, however, correct.
 
 ---
 
@@ -255,22 +261,15 @@ read `0xFFFFFF8F` and `0x100B84` read `0xFFFFFF88`.
 The distinction drawn from that sweep: persistent PLMs sit on an always-on power island; reset PLMs
 need re-unlocking every boot.
 
-!!! question "Open problem: a systematic AON classification"
-    An experiment named `nuke.sh` fully specifies the work: build a three-write ROP payload per
-    cycle, patch the GSP, load the driver, FLR, kill the driver, FLR again, and read 26 candidate
-    PLMs with no driver loaded, over nine cycles with a cold-boot baseline first. Candidate set:
-    `0x008200D0, D4, D8, DC, E0, E4, E8, EC, F0, F4, FC`; `0x00823800`, `0x00823804`, `0x00823B00`;
-    `0x009A0008, 000C, 0148, 014C, 0168, 03F0, 0554, 0BFC`; `0x00100B10, B38, B84, B9C`. The
-    methodology and the candidate list are on record; the resulting classification table is not.
-
-!!! note "Superseded"
-    A 2026-07-16 register sweep found `0x100b10`, `0x100b38`, `0x9A0148`, `0x9A014C`,
-    `0x9A0108`/`0x9A0008` and `0x9A010C`/`0x9A000C` all NON-AON (reverting `0xffffffff` to
-    `0xffffff8f` on FLR) and marked them **non-functional for geometry**. The shipping patch opens
-    `0x009a0148` to `0xffffffff` on every boot and logs the read-back. The sweep's own author flagged
-    the methodology hole that explains the discrepancy: the sweep opened the PLM in HS then performed
-    the geometry write from the host **after** an FLR, so if the geometry shadow only latches an
-    in-HS write, the sweep would report "geometry = NO" for every PLM regardless.
+> [!NOTE]
+> **Open problem: a systematic AON classification**
+>
+> An experiment named `nuke.sh` fully specifies the work: build a three-write ROP payload per
+> cycle, patch the GSP, load the driver, FLR, kill the driver, FLR again, and read 26 candidate
+> PLMs with no driver loaded, over nine cycles with a cold-boot baseline first. Candidate set:
+> `0x008200D0, D4, D8, DC, E0, E4, E8, EC, F0, F4, FC`; `0x00823800`, `0x00823804`, `0x00823B00`;
+> `0x009A0008, 000C, 0148, 014C, 0168, 03F0, 0554, 0BFC`; `0x00100B10, B38, B84, B9C`. The
+> methodology and the candidate list are on record; the resulting classification table is not.
 
 Because geometry does not survive an FLR, the "attack, FLR, reload a clean driver" trick that works
 for the compute unlock cannot carry the memory unlock: the FLR that clears the GSP-RM damage also
@@ -280,11 +279,13 @@ clears the LMR write. That constraint is what forced the in-driver, same-load de
 
 ## 6. The nine-mask table on the unreleased branches
 
-!!! warning "Experimental"
-    Four unreleased branches, `Gen2`, `debug-gen2`, `far` and `deced`, extend the table from four
-    entries to **nine** and loop `plmIdx < 9`. This code is not on `master`, has no shipping
-    consumer, and its read-back results are not recorded in the sources for the entries that matter
-    most. See [PCIe Gen2](pcie-gen2.md).
+> [!WARNING]
+> **Experimental**
+>
+> Four unreleased branches, `Gen2`, `debug-gen2`, `far` and `deced`, extend the table from four
+> entries to **nine** and loop `plmIdx < 9`. This code is not on `master`, has no shipping
+> consumer, and its read-back results are not recorded in the sources for the entries that matter
+> most. See [PCIe Gen2](pcie-gen2.md).
 
 | Order | Name | Address | Value | Status |
 |:---:|---|---|---|---|
@@ -308,34 +309,38 @@ byte for byte against the shipping table including the partial `0xfffff0ff`.
 
 That result sits in tension with a separate, concrete observation:
 
-!!! question "Open problem: does `FEAT2` `0x00823b00` actually open?"
-    One researcher reported on 2026-07-22 that `0x00823b00` **rejects** the SEC2 chain, because its
-    `SOURCE_ENABLE` field does not whitelist sec2-HS, and that the SEC2 ROP can only open masks
-    whose `SOURCE_ENABLE` permits it. Another statement from the same period: "There are other
-    primitives that allow PLM opening. Not all L3 access is equal. Regops via bar0 or via sec2
-    `iowrs`." The branch code logs a per-entry read-back, so a single boot on a card would settle
-    it.
+> [!NOTE]
+> **Open problem: does `FEAT2` `0x00823b00` actually open?**
+>
+> One researcher reported on 2026-07-22 that `0x00823b00` **rejects** the SEC2 chain, because its
+> `SOURCE_ENABLE` field does not whitelist sec2-HS, and that the SEC2 ROP can only open masks
+> whose `SOURCE_ENABLE` permits it. Another statement from the same period: "There are other
+> primitives that allow PLM opening. Not all L3 access is equal. Regops via bar0 or via sec2
+> `iowrs`." The branch code logs a per-entry read-back, so a single boot on a card would settle
+> it.
 
 ### 6.1 `0x008200FC`: two names, three readings, no resolution
 
-!!! question "Open problem"
-    The register at `0x008200FC` is called `OPT_PLM` in the branch source and `FUSE_SS_PLM` in the
-    clean-room tooling. **They are the same register**, and the wiki carries both aliases on one
-    entry. What it reads and whether it is writable is not settled:
-
-    | Date | Report |
-    |---|---|
-    | 2026-07-09 | "PLM = `0x000003FF` (target `0xFFFFFFFF`) ... the FUSE write fails, register appears physically read-only. Direct `writel` from host also capped at `0x3FF`." |
-    | 2026-07-16 | "reads `0xffffffff` (open to all levels) across the whole Ampere lineup" |
-    | 2026-07-23/24 | The nine-PLM tool includes it and reports `PLM[8] OPT_PLM(0x8200fc) attempt=0 status=0xffff reg=0xffffffff`, i.e. success |
-
-    Possible resolutions: a card-state difference, the naming mix-up, or the register only being
-    writable once other masks are open. Settled by reading `0x008200FC` on a cold-booted card before
-    any unlock, then after each of the nine opens, on the same unit.
-
-    Early ROP chains (v2 and v3) wrote `0x008200FC = 0xFFFFFFFF` and the write failed. It was
-    correctly diagnosed as unnecessary: the working compute unlock uses only `FEAT_OVR_PLM`
-    `0x00823804` plus SS0/SS1. **Shipping `master` does not write it.**
+> [!NOTE]
+> **Open problem**
+>
+> The register at `0x008200FC` is called `OPT_PLM` in the branch source and `FUSE_SS_PLM` in the
+> clean-room tooling. **They are the same register**, and the wiki carries both aliases on one
+> entry. What it reads and whether it is writable is not settled:
+>
+> | Date | Report |
+> |---|---|
+> | 2026-07-09 | "PLM = `0x000003FF` (target `0xFFFFFFFF`) ... the FUSE write fails, register appears physically read-only. Direct `writel` from host also capped at `0x3FF`." |
+> | 2026-07-16 | "reads `0xffffffff` (open to all levels) across the whole Ampere lineup" |
+> | 2026-07-23/24 | The nine-PLM tool includes it and reports `PLM[8] OPT_PLM(0x8200fc) attempt=0 status=0xffff reg=0xffffffff`, i.e. success |
+>
+> Possible resolutions: a card-state difference, the naming mix-up, or the register only being
+> writable once other masks are open. Settled by reading `0x008200FC` on a cold-booted card before
+> any unlock, then after each of the nine opens, on the same unit.
+>
+> Early ROP chains (v2 and v3) wrote `0x008200FC = 0xFFFFFFFF` and the write failed. It was
+> correctly diagnosed as unnecessary: the working compute unlock uses only `FEAT_OVR_PLM`
+> `0x00823804` plus SS0/SS1. **Shipping `master` does not write it.**
 
 ---
 
@@ -355,35 +360,41 @@ corroborated by a second researcher.
 Each PLM sits near the registers it protects. Opening one allows writes from all privilege levels
 L0 to L3.
 
-!!! question "Open problem: is a register's PLM address derivable from the register's own address?"
-    Asked directly and never answered. The shipping set (`FEAT 0x00823804`, `FBPA 0x009a0148`,
-    `WPR 0x001fa7c4`, `WPR_CFG 0x001fa7cc`) follows no obvious offset rule relative to the registers
-    it guards, though the observation that they are all placed near their registers holds. Next
-    step: a full PLM sweep across one aperture, to see whether masks occupy a fixed sub-range of
-    each block.
+> [!NOTE]
+> **Open problem: is a register's PLM address derivable from the register's own address?**
+>
+> Asked directly and never answered. The shipping set (`FEAT 0x00823804`, `FBPA 0x009a0148`,
+> `WPR 0x001fa7c4`, `WPR_CFG 0x001fa7cc`) follows no obvious offset rule relative to the registers
+> it guards, though the observation that they are all placed near their registers holds. Next
+> step: a full PLM sweep across one aperture, to see whether masks occupy a fixed sub-range of
+> each block.
 
-!!! question "Open problem: where is the LMR PLM?"
-    Nobody located the mask that gates LMR `0x00100CE0`. A candidate FBHUB table was posted
-    (`0x100B10 = 0xFFFFFF8F`, `0x100B38 = 0xFFFFFF8F`, `0x100B84 = 0xFFFFFF88`,
-    `0x100B9C = 0xFFFFFFCF`) but the poster disclaimed it and later reported being unable to find
-    it. The shipping driver nevertheless writes LMR from the host successfully after opening
-    `WPR_CFG`, `FBPA`, `WPR` and `FEAT`, so **one of those four already gates it**. A four-way
-    ablation of the shipping table would identify which.
+> [!NOTE]
+> **Open problem: where is the LMR PLM?**
+>
+> Nobody located the mask that gates LMR `0x00100CE0`. A candidate FBHUB table was posted
+> (`0x100B10 = 0xFFFFFF8F`, `0x100B38 = 0xFFFFFF8F`, `0x100B84 = 0xFFFFFF88`,
+> `0x100B9C = 0xFFFFFFCF`) but the poster disclaimed it and later reported being unable to find
+> it. The shipping driver nevertheless writes LMR from the host successfully after opening
+> `WPR_CFG`, `FBPA`, `WPR` and `FEAT`, so **one of those four already gates it**. A four-way
+> ablation of the shipping table would identify which.
 
-!!! question "Open problem: how many FBPA-side masks the memory unlock actually needs"
-    One position held that four FBPA masks (`0x9A0148`, `0x9A014C`, `0x9A0008`, `0x9A000C`) plus LMR
-    plus the reset PLM are required, with `0x100b10` proven unnecessary. A second position, argued
-    forcefully, held that CFG1 and LMR alone suffice and the FBPA masks are set automatically by the
-    CFG1 broadcast. The shipping code partially settles it by opening exactly **one** FBPA mask,
-    `0x009a0148`, and then writing CFG1 and LMR from the host, so neither "four" nor "none" is the
-    shipping answer. It cuts against a third data point: the driverless `geometry_chain()` opens
-    **five** FB-geometry masks including `0x100b10`. Settled by ablating both lists one entry at a
-    time on the same card.
-
-    A relevant measurement narrows the question: **a single heavy-secure broadcast write to CFG1 at
-    `0x009A0204` propagated to all 20 per-FBPA `CSTATUS` registers** (`0x200` to `0x800` on every
-    live FBPA), so HS bypasses the FBPA masks entirely. Opening them was only ever needed for
-    host-PL0 per-FBPA writes at `0x00900204 + n*0x4000`.
+> [!NOTE]
+> **Open problem: how many FBPA-side masks the memory unlock actually needs**
+>
+> One position held that four FBPA masks (`0x9A0148`, `0x9A014C`, `0x9A0008`, `0x9A000C`) plus LMR
+> plus the reset PLM are required, with `0x100b10` proven unnecessary. A second position, argued
+> forcefully, held that CFG1 and LMR alone suffice and the FBPA masks are set automatically by the
+> CFG1 broadcast. The shipping code partially settles it by opening exactly **one** FBPA mask,
+> `0x009a0148`, and then writing CFG1 and LMR from the host, so neither "four" nor "none" is the
+> shipping answer. It cuts against a third data point: the driverless `geometry_chain()` opens
+> **five** FB-geometry masks including `0x100b10`. Settled by ablating both lists one entry at a
+> time on the same card.
+>
+> A relevant measurement narrows the question: **a single heavy-secure broadcast write to CFG1 at
+> `0x009A0204` propagated to all 20 per-FBPA `CSTATUS` registers** (`0x200` to `0x800` on every
+> live FBPA), so HS bypasses the FBPA masks entirely. Opening them was only ever needed for
+> host-PL0 per-FBPA writes at `0x00900204 + n*0x4000`.
 
 ---
 
@@ -408,12 +419,14 @@ SBR clears it back to `0xff`. In that state `0x8f` blocks GSP-RM boot with the e
 
 The engine-reset gate the host-side procedure checks is `(value & 0x77) == 0x77`.
 
-!!! abstract "The shipping driver never touches it"
-    A grep of the shipping repository finds zero references to `0x008403c4`. The whole clean-SEC2
-    discipline belongs to the driverless tooling. The in-driver path re-fires Booter Load through
-    the driver's own `kflcnReset`/FWSEC sequence instead, so it never needs a host-issued SFTRESET.
-    Confidence in that explanation: medium, it is inference, since nobody stated it. Settled by
-    reading `0x008403C4` before and after each of the 4 to 8 PLM passes under the shipping driver.
+> [!NOTE]
+> **The shipping driver never touches it**
+>
+> A grep of the shipping repository finds zero references to `0x008403c4`. The whole clean-SEC2
+> discipline belongs to the driverless tooling. The in-driver path re-fires Booter Load through
+> the driver's own `kflcnReset`/FWSEC sequence instead, so it never needs a host-issued SFTRESET.
+> Confidence in that explanation: medium, it is inference, since nobody stated it. Settled by
+> reading `0x008403C4` before and after each of the 4 to 8 PLM passes under the shipping driver.
 
 Full detail, including the `D[0x1900] = 7` mechanism by which the shipping payload leaves it at
 `0xff` anyway, is on [falcon-and-booter.md](falcon-and-booter.md#10-leaving-heavy-secure-mode-and-the-reset-plm)
@@ -444,21 +457,25 @@ a way to reach level 3, and it predicted correctly that the answer would be "nee
 
 See [fuses and OTP](../hardware/fuses-and-otp.md) for the full fuse picture.
 
-!!! note "A negative result worth keeping"
-    Running the LMR and CFG1 writes from a non-secure Hello-World ucode over the priv bus was tried
-    and did not work, exactly as NVIDIA's own Falcon-Security documentation predicts: NS restricts
-    register and physical-memory access, and the masks on these registers demand the highest level.
-    A later driverless probe that appeared to confirm NS cannot reach external BAR0 at all was
-    **withdrawn by its own author**, because the failing test used a `D[0x14000000]` window that
-    aliased the Falcon's local DMEM and therefore never probed BAR0. No replacement measurement was
-    reported.
+> [!NOTE]
+> **A negative result worth keeping**
+>
+> Running the LMR and CFG1 writes from a non-secure Hello-World ucode over the priv bus was tried
+> and did not work, exactly as NVIDIA's own Falcon-Security documentation predicts: NS restricts
+> register and physical-memory access, and the masks on these registers demand the highest level.
+> A later driverless probe that appeared to confirm NS cannot reach external BAR0 at all was
+> **withdrawn by its own author**, because the failing test used a `D[0x14000000]` window that
+> aliased the Falcon's local DMEM and therefore never probed BAR0. No replacement measurement was
+> reported.
 
-!!! question "Open problem: can PL0 reach the geometry registers once the mask is open?"
-    The stake is large. Because the SS0/SS1 mask at `0x00823804` is always-on and stays open through
-    FLR, if host PL0 can reach CFG1 at `0x00900204 + n*0x4000`, LMR `0x00100CE0` and SS0/SS1 after a
-    single one-time HS open, then a permanent path exists with no further heavy-secure work. Next
-    step: re-run the withdrawn probe with a correctly mapped external aperture window and check each
-    register individually.
+> [!NOTE]
+> **Open problem: can PL0 reach the geometry registers once the mask is open?**
+>
+> The stake is large. Because the SS0/SS1 mask at `0x00823804` is always-on and stays open through
+> FLR, if host PL0 can reach CFG1 at `0x00900204 + n*0x4000`, LMR `0x00100CE0` and SS0/SS1 after a
+> single one-time HS open, then a permanent path exists with no further heavy-secure work. Next
+> step: re-run the withdrawn probe with a correctly mapped external aperture window and check each
+> register individually.
 
 ---
 

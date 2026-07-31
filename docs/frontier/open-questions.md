@@ -180,12 +180,16 @@ multi-card host, with and without the layered patch. The test is cheap and the r
 unambiguous.
 **Caveat:** everyone involved agrees P2P is bandwidth-bound and buys little at Gen1 x4.
 
-### 1.7 Reproduce Gen2 at x16
+### 1.7 Long-term stability at Gen2 x16
 
-One capture exists (2026-07-26). No burn-in, no AER counters over time, no second rig, and no
-`lspci` capture bridging the earlier survey that found "always x4".
-**Next step:** anyone with both a completed 24-capacitor mod and the `Gen2` branch installed posts
-`nvidia-smi --query-gpu=pcie.link.gen.current` alongside
+Reproduction is settled: two rigs, five cards, two board revisions, `lspci` captures and zero AER
+errors over 90 minutes of continuous four-card load. See the
+[field report](../operations/physical-mods.md#field-report-four-cards-at-gen2-x16).
+
+What is still missing is duration. Nobody has published error counters after days of sustained
+load, which is the only remaining way a marginal AC-coupling network would show itself.
+**Next step:** anyone running a capacitor-modded card at Gen2 x16 posts
+`cat /sys/bus/pci/devices/<bdf>/aer_dev_correctable` after a week of uptime, alongside
 `lspci -d 10de:20c2 -vv | grep -E 'LnkCap:|LnkSta:'`.
 
 ### 1.8 What does `0x008200FC` read, and is it writable?
@@ -200,13 +204,15 @@ nine PLM opens, on the same unit.
 
 ### 1.9 The RAMCFG re-strap result (closed)
 
-!!! success "Closed 2026-07-25: confirmed negative, as predicted"
-    The RAMCFG resistors on a 10 GB card were moved to `HHLLH`, the 8 GB stock strap pattern. The
-    card booted, and `probe.sh` read `FBPA_CFG1_BROADCAST` at `0x009a0204` still equal to
-    **`0x02449000`**, the 10 GB value. Summarised in-channel as "the resistor change had no effect".
-    This is exactly the **predicted outcome from code**: the driver keys geometry off the PCI device
-    ID, not off the strap. Worth noting the card booted with the L2 decode already at `0x10000300`.
-    Physical RAMCFG re-strapping is a dead end for capacity.
+> [!TIP]
+> **Closed 2026-07-25: confirmed negative, as predicted**
+>
+> The RAMCFG resistors on a 10 GB card were moved to `HHLLH`, the 8 GB stock strap pattern. The
+> card booted, and `probe.sh` read `FBPA_CFG1_BROADCAST` at `0x009a0204` still equal to
+> **`0x02449000`**, the 10 GB value. Summarised in-channel as "the resistor change had no effect".
+> This is exactly the **predicted outcome from code**: the driver keys geometry off the PCI device
+> ID, not off the strap. Worth noting the card booted with the L2 decode already at `0x10000300`.
+> Physical RAMCFG re-strapping is a dead end for capacity.
 
 ### 1.10 Does the eviction-test fold reproduce on the shipping geometries?
 
@@ -266,19 +272,21 @@ shipping `plmTable[]` identifies which.
 
 ### 2.4 What the leading digit of CFG1 means (closed)
 
-!!! success "Closed 2026-07-27: bit 29 halves the tier"
-    The experiment was run. Writing CFG1 `0x22779000` in place of `0x02669000` on a card with 20
-    live FBPAs **halved the `0x77` tier** to 2048 MiB per FBPA, giving 20 x 2048 = 40960 MiB (40 GB).
-    Per-FBPA `CSTATUS` stayed at `0x0800` and LMR stayed at `0x0000028a` across the change, so the
-    capacity move came from CFG1 alone.
-
-    A second effect showed up in the timing block: `HBM_CFG0` at `0x9a038c` went `0xa7` to `0xa6`,
-    the dual-rank bit, and 6 of 7 timing registers moved to their strap-5 values. So the leading
-    digit is not a pure capacity divider; it re-selects a rank configuration and drags the timing
-    strap with it. The candidate VBIOS strap entry `00 90 77 22` carrying the same odd `2` is
-    consistent with that reading.
-
-    The ROP path may be required for the write; that part was reported as not entirely certain.
+> [!TIP]
+> **Closed 2026-07-27: bit 29 halves the tier**
+>
+> The experiment was run. Writing CFG1 `0x22779000` in place of `0x02669000` on a card with 20
+> live FBPAs **halved the `0x77` tier** to 2048 MiB per FBPA, giving 20 x 2048 = 40960 MiB (40 GB).
+> Per-FBPA `CSTATUS` stayed at `0x0800` and LMR stayed at `0x0000028a` across the change, so the
+> capacity move came from CFG1 alone.
+>
+> A second effect showed up in the timing block: `HBM_CFG0` at `0x9a038c` went `0xa7` to `0xa6`,
+> the dual-rank bit, and 6 of 7 timing registers moved to their strap-5 values. So the leading
+> digit is not a pure capacity divider; it re-selects a rank configuration and drags the timing
+> strap with it. The candidate VBIOS strap entry `00 90 77 22` carrying the same odd `2` is
+> consistent with that reading.
+>
+> The ROP path may be required for the write; that part was reported as not entirely certain.
 
 ### 2.5 Gen3 through the same table that attempts the Gen2 fuse
 
@@ -581,13 +589,15 @@ CTRL_OPT-swept to 56 SM instead of the fuse-floor 70, with 6 SM clawed back to r
 These are not unknowns so much as numbers that were never taken under one methodology. Each needs
 one tester, one card, one session, with the tool, the clock and the flop-counting convention stated.
 
-!!! success "Closed: the unlocked FP64 spread"
-    FP64 used to sit in this table as an 11.48-to-12.91 versus 6.3 TFLOPS dispute. It is resolved,
-    and it was never a counting error. A single clpeak dump on 2026-07-15 printed both figures in
-    one run on one card: **FP64 non-tensor 6.31 TFLOPS** (`double : 6308.65`, exactly half the same
-    run's `float : 12565.14`, i.e. the architectural 1:2 rate) and **FP64 tensor 11.96 TFLOPS**
-    (`wmma_fp64`, the 8x8x4 DMMA path). The high cluster is the tensor path. See
-    [compute-throttle.md](../unlock/compute-throttle.md).
+> [!TIP]
+> **Closed: the unlocked FP64 spread**
+>
+> FP64 used to sit in this table as an 11.48-to-12.91 versus 6.3 TFLOPS dispute. It is resolved,
+> and it was never a counting error. A single clpeak dump on 2026-07-15 printed both figures in
+> one run on one card: **FP64 non-tensor 6.31 TFLOPS** (`double : 6308.65`, exactly half the same
+> run's `float : 12565.14`, i.e. the architectural 1:2 rate) and **FP64 tensor 11.96 TFLOPS**
+> (`wmma_fp64`, the 8x8x4 DMMA path). The high cluster is the tensor path. See
+> [compute-throttle.md](../unlock/compute-throttle.md).
 
 | Dispute | The spread | What settles it |
 |---|---|---|

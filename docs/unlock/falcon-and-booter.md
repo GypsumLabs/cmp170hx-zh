@@ -67,10 +67,12 @@ inside the Falcon in HS mode. The Falcon enters HS by running the 0x100-byte cle
 and then issuing the special instruction that decrypts the code, verifies it and switches to HS.
 The consequence is architectural and is the reason the whole unlock is shaped the way it is:
 
-!!! note "The rule that shapes everything"
-    Every HS-privileged register write in the unlock must be issued from inside the hijacked
-    genuine booter. A home-grown microcode cannot do it, because a home-grown microcode cannot be
-    made to run in HS.
+> [!NOTE]
+> **The rule that shapes everything**
+>
+> Every HS-privileged register write in the unlock must be issued from inside the hijacked
+> genuine booter. A home-grown microcode cannot do it, because a home-grown microcode cannot be
+> made to run in HS.
 
 The HS entry routine, as reverse-engineered for Tegra TSEC and structurally the same on GA100 SEC2,
 computes `microcode_start = (*SEC & 0xFF) << 8` and `microcode_size = ((*SEC >> 24) & 0xFF) << 8`,
@@ -89,16 +91,18 @@ A zero start or size raises `OP_SECURE_FAULT`. Four conditions must hold to auth
 microcode pages must be mapped at a pre-chosen virtual address, marked secret, that information
 loaded into the `SEC` register, and a valid MAC present in crypto register 6.
 
-!!! warning "Two different verification schemes, do not conflate them"
-    The immutable boot ROM's check of the HS booter image is described in the corpus as an RSA-3K
-    check, and a 384-byte signature blob does ship alongside the image at `PATCH_LOC = 0x8900`.
-    Separately, the booter's *own* verification of the GSP image it loads was traced to
-    `_acrVerifySignature_TU10X` to `_acrCalculateDmhash_TU10X` to
-    `_acrDeriveLsVerifKeyAndEncryptDmHash_TU10X` to `_acrMemcmp`, which is a Davies-Meyer hash plus
-    an AES key derivation keyed from a `csecret`, with no RSA on that path. The booter does contain
-    a separate PKA/modexp block (`rsa_pubkey_load 0x4768`, `pka_modexp_run 0x54ab`) used elsewhere.
-    Confidence in the reconciliation is medium: nobody in the archive stated it in exactly these
-    terms.
+> [!WARNING]
+> **Two different verification schemes, do not conflate them**
+>
+> The immutable boot ROM's check of the HS booter image is described in the corpus as an RSA-3K
+> check, and a 384-byte signature blob does ship alongside the image at `PATCH_LOC = 0x8900`.
+> Separately, the booter's *own* verification of the GSP image it loads was traced to
+> `_acrVerifySignature_TU10X` to `_acrCalculateDmhash_TU10X` to
+> `_acrDeriveLsVerifKeyAndEncryptDmHash_TU10X` to `_acrMemcmp`, which is a Davies-Meyer hash plus
+> an AES key derivation keyed from a `csecret`, with no RSA on that path. The booter does contain
+> a separate PKA/modexp block (`rsa_pubkey_load 0x4768`, `pka_modexp_run 0x54ab`) used elsewhere.
+> Confidence in the reconciliation is medium: nobody in the archive stated it in exactly these
+> terms.
 
 Neither scheme is broken by the unlock.
 
@@ -106,12 +110,14 @@ Neither scheme is broken by the unlock.
 
 ## 3. Harvard architecture: two address spaces that must never be mixed
 
-!!! danger "IMEM addresses and DMEM addresses look identical and are not interchangeable"
-    The SEC2 Falcon is a **Harvard-architecture** core with separate 16-bit instruction memory
-    (IMEM) and 16-bit data memory (DMEM) spaces. `0x6340` as an IMEM address is meaningless code;
-    `0x6340` as a DMEM address is the stack-canary guard global. Several circulating documents mix
-    the two into a single "memory map" and are wrong. Every address on this wiki is labelled IMEM,
-    DMEM, CSB (Falcon I/O) or BAR0.
+> [!CAUTION]
+> **IMEM addresses and DMEM addresses look identical and are not interchangeable**
+>
+> The SEC2 Falcon is a **Harvard-architecture** core with separate 16-bit instruction memory
+> (IMEM) and 16-bit data memory (DMEM) spaces. `0x6340` as an IMEM address is meaningless code;
+> `0x6340` as a DMEM address is the stack-canary guard global. Several circulating documents mix
+> the two into a single "memory map" and are wrong. Every address on this wiki is labelled IMEM,
+> DMEM, CSB (Falcon I/O) or BAR0.
 
 | Property | IMEM | DMEM |
 |---|---|---|
@@ -209,22 +215,16 @@ instruction there is:
 89 fc ff 00    mov $r9 0xfffc
 ```
 
-!!! note "Superseded"
-    An early claim that the encrypted region starts at byte 760, "where entropy rises", was an
-    artefact of the extractor still prepending a synthesised `nvfw_bin_hdr` and `nvfw_hs_header_v2`
-    plus the signature block. Once those were stripped the boundary was exactly `0x100`. A related
-    early observation that the pad pattern sat on an 8-byte rather than 16-byte boundary was the
-    same artefact. Decrypting from decimal byte 100 instead of hex `0x100` produces gibberish and
-    caught at least one tester.
-
 ### 5.2 The crypto break
 
 The finding that made a plaintext disassembly possible without any leaked source:
 
-!!! abstract "The debug and production booter images contain exactly the same cleartext code"
-    Only the AES key differs. The debug image is encrypted with a non-secret numbered test key, so
-    the production HS code can be read by decrypting the debug image. The underlying cryptography
-    discovery was made in May 2026; it was applied to GA100 on 2026-07-01.
+> [!NOTE]
+> **The debug and production booter images contain exactly the same cleartext code**
+>
+> Only the AES key differs. The debug image is encrypted with a non-secret numbered test key, so
+> the production HS code can be read by decrypting the debug image. The underlying cryptography
+> discovery was made in May 2026; it was applied to GA100 on 2026-07-01.
 
 Practical markers:
 
@@ -285,10 +285,12 @@ The published paper's cross-version corpus spans branches 450, 460, 470, 510 (tw
 DMA lengths with no metadata-sized copy; the 580 booter exhibits the unbounded copy; the 525 image
 could not be recovered because booter packaging changed.
 
-!!! question "Open problem: first affected driver branch"
-    The overflow is **absent in 510** and **present in 580**. Branches 515 through 570 are
-    **indeterminate**. Settled by recovering and analysing the 515, 535, 560 and 570 GA100 booters
-    for the metadata-sized copy.
+> [!NOTE]
+> **Open problem: first affected driver branch**
+>
+> The overflow is **absent in 510** and **present in 580**. Branches 515 through 570 are
+> **indeterminate**. Settled by recovering and analysing the 515, 535, 560 and 570 GA100 booters
+> for the metadata-sized copy.
 
 ### 5.5 Lineage naming
 
@@ -385,21 +387,17 @@ per-function banners.
 | `0x8264` | `csb_read` | |
 | `0x8307` | `fbif_set_bit800` | Sets bit `0x800` in `0x001fa814`/`0x001fa818` under mask `0x0ffff8ff` |
 
-!!! note "Superseded labels"
-    Community payloads widely labelled `0x8137` as `main`; it is `booter_load_wrap`, and `main` is
-    at `0x7f82`. Similarly `0x27fa` was labelled `booter_load_wpr_main`; that function is `0x22ba`.
-    Both corrections date to 2026-07-09 and both matter, because chains built on the wrong labels
-    land at the wrong stack depth.
-
-!!! note "Resolved: `0x815a` is inside `booter_load_wrap`"
-    One catalogue called it "the main canary-check tail"; another annotated it as "a stack-eater in
-    `booter_load_wrap` that checks the canary and does nothing". The annotated v2 listing settles
-    it. `main` runs `0x7f82` to `0x8134`, where its own canary check ends in `mpopaddret $r0 0x10`.
-    `booter_load_wrap` runs `0x8137` to `0x8173`, ending in `mpopaddret $r0 0x4`, and the next
-    function banner is `nibble_rmw` at `0x8176`. `0x815a` therefore lies inside `booter_load_wrap`,
-    reached by the `bra b32 $r10 0x0 e 0x815a` at `0x8150` that skips the `boot_mode_dispatch
-    (0x683f)` call. It is that wrapper's canary-check tail; `main`'s own tail is the separate block
-    at `0x811d`. The second catalogue was right.
+> [!NOTE]
+> **Resolved: `0x815a` is inside `booter_load_wrap`**
+>
+> One catalogue called it "the main canary-check tail"; another annotated it as "a stack-eater in
+> `booter_load_wrap` that checks the canary and does nothing". The annotated v2 listing settles
+> it. `main` runs `0x7f82` to `0x8134`, where its own canary check ends in `mpopaddret $r0 0x10`.
+> `booter_load_wrap` runs `0x8137` to `0x8173`, ending in `mpopaddret $r0 0x4`, and the next
+> function banner is `nibble_rmw` at `0x8176`. `0x815a` therefore lies inside `booter_load_wrap`,
+> reached by the `bra b32 $r10 0x0 e 0x815a` at `0x8150` that skips the `boot_mode_dispatch
+> (0x683f)` call. It is that wrapper's canary-check tail; `main`'s own tail is the separate block
+> at `0x811d`. The second catalogue was right.
 
 ---
 
@@ -522,21 +520,6 @@ staged in low DMEM" was ruled out.
 | `0x8e08` | register descriptor table | Also smashed |
 | ~`0xFF3C`-`0xFFFF` | the live call stack | Grows downward from the top |
 
-!!! note "Superseded"
-    A widely circulated LLM-generated "DMEM map" places a 32-byte signature buffer at
-    `0x5c00`..`0x5c1f`, lists IMEM code regions inside a DMEM map, and lists CSB addresses such as
-    `0x9100`, `0xd000`..`0xd500`, `0x10100`, `0x14000`..`0x14b00` and `0x30000+` as DMEM offsets.
-    All of that is wrong. The entries confirmed by working exploits are exactly `0x0600`,
-    `0x0700`, `0x0800`, `0x6330`..`0x633f` and `0x6340`. A related mislabel to watch for in the same
-    family of documents is "Signature buffer: BAR0[0x0800]": it is DMEM `0x0800`, not BAR0.
-
-!!! note "Superseded"
-    `builder.py` documented the DMA destination as `$r10 = 0x0900 (g_bounceBufferB)`. Every working
-    payload, including the shipping one, uses base `0x0800` with length `0xF800`, and the arithmetic
-    proves it: the shipping payload's fake canary sits at payload offset `0x5b40`, and
-    `0x5b40 + 0x800 = 0x6340`, the independently established guard address. The `g_bounceBufferB`
-    symbol naming at `0x0900` remains unexplained.
-
 ### The stack canary
 
 A fresh random value is generated each boot and held in the global at DMEM `0x6340`. Every protected
@@ -552,12 +535,6 @@ Thesis 1: the Falcon stack canary fails on *reference-word integrity*, not entro
 the toolchain emits the guard at the tail of the read-only-data section, which in the flat
 MPU-mapped image lies inside the writable data span. There is no RELRO equivalent, no guard page and
 no MPU read-only mapping.
-
-!!! note "Superseded"
-    One message gave the boot-time canary initialisation address as `0x6440`. Treat it as a one-off
-    slip; `0x6340` appears as a literal in multiple disassembled functions and in the shipping
-    payload. A tidy but unrelied-upon explanation: `0x5b40 + 0x900 = 0x6440`, which is what you get
-    from the older, wrong DMA base of `0x0900`.
 
 ---
 
@@ -579,15 +556,6 @@ The booter uses this path for its own work: `0x29b8 -> 0x10aa` writes the WPR2 r
 finalize routine's write to `0x001180f8` is literally `1c4b: r10=0x1180f8 ; lcall 0x10aa`. A
 corresponding read appears as `1c35: r10=0x1180f8 ; lcall 0x1196`.
 
-!!! note "Superseded"
-    Two persistent wrong models. First, that `0x8224` is `Bar0RegWrite`: it is `csb_write`, a
-    Falcon-local I/O write (`iowrs I[$r10] $r11` at `0x8232`), and a real PRI write needs the
-    three-step master sequence. Second, that the indirect engine truncates 32-bit addresses to 16
-    bits (`0x009A0204` to `BAR0[0x0204]`): every tool that has landed writes passes full 32-bit
-    addresses and reads them back at the full address, and the truncation model cannot explain
-    per-FBPA writes at `0x00900204 + n*0x4000`, where every fourth FBPA repeats the same low 16 bits
-    and FBPA 0 collides with the broadcast register `0x009a0204` as well.
-
 ### 9.2 Fail-closed CSB access
 
 **Every CSB access in the booter is fail-closed.** After each access the code samples CSB error
@@ -608,10 +576,6 @@ masks returned data with `0xffff0000` and tests for the PRI poison sentinel `0xb
 whitelist (`reg_whitelist_40f00` at `0x208c`, covering `[0x40f00, 0x41f00)` step `0x100`) and a retry
 path for registers `0x1c200`, `0xc00`, `0xb00` and `0xd500`.
 
-!!! note "Superseded"
-    `I[0x9100]` bit 31 was originally glossed as a busy/completion poll. It is a fault flag. Some
-    constant tables in circulation still carry the old gloss.
-
 ### 9.3 MAILBOX0 semantics
 
 Falcon I/O `0x1000` is the Falcon's own MAILBOX0 and is host-visible at BAR0 `0x00840040`, with
@@ -620,24 +584,19 @@ host at PL0 returns `0xbadf5040`, which resolved a long-running confusion.
 
 MAILBOX0 is the only observable channel during exploitation, and the unifying rule is:
 
-!!! abstract "MAILBOX0 equals `$r0` on any return path that passes through `report_status`"
-    MAILBOX0 reading `0x31` simply means `report_status` was never executed. The booter itself
-    stamps `0x31` at ucode offset `0x7a` (`mov $r15 0x31 / mov $r9 0x1000 / iowrs I[$r9] $r15`) as
-    its very first liveness marker, overwriting the driver's planted WprMeta physical-address
-    argument.
+> [!NOTE]
+> **MAILBOX0 equals `$r0` on any return path that passes through `report_status`**
+>
+> MAILBOX0 reading `0x31` simply means `report_status` was never executed. The booter itself
+> stamps `0x31` at ucode offset `0x7a` (`mov $r15 0x31 / mov $r9 0x1000 / iowrs I[$r9] $r15`) as
+> its very first liveness marker, overwriting the driver's planted WprMeta physical-address
+> argument.
 
 Measured: return address `0x8117` (raw exit, skips `report_status`) gives MB0 `0x31`; `0x810d` gives
 MB0 `0x0` when `r0 = 0` and `0xcafe` when `0xcafe` was planted; `0x8d4` gives `0x0b`.
 
 Practical taxonomy: `0x47` = stack-canary check failed and the Falcon is in the `panic()` self-loop;
 `0x31` = `report_status` never ran; `0x96` = booted normally with the canary intact.
-
-!!! note "Superseded"
-    `0x31` was read successively as an `IMEM_MISS_INS` / `excause = 0xa` fault, a driver-planted
-    value, "canary passed, PC hijacked", and an "HS-entered" PHASE-3 stall marker. All four are
-    superseded by the liveness-marker reading above, located at a fixed disassembly address on
-    2026-07-17 and corroborated on 2026-07-20 by a kernel core dump printing
-    `kflcnCoreDumpNondestructive_IMPL: PRI: falconMailbox : 0:00000031 1:00000000`.
 
 ### 9.4 Status codes
 
@@ -678,11 +637,13 @@ Host-side, for contrast: `NV_ERR_TIMEOUT = 0x00000065`, `NV_ERR_MEMORY_ERROR = 0
 `NV_ERR_GENERIC = 0xffff`. Composite `RmInitAdapter` failures observed include `0x62:0x40:2028`,
 `0x62:0x55` and `0x62:0x65:2674`.
 
-!!! question "Open problem: Booter status `0x54`"
-    Applying a modified cmpunlocker to a PG199 board failed with
-    `s_executeBooterUcode_TU102: Booter failed 0x54` even though the CFG1 and LMR writes landed and
-    the PLMs opened. Every other status code was pinned by locating its write site in the
-    disassembly; the same method should work for `0x54`, and the disassembly is in hand.
+> [!NOTE]
+> **Open problem: Booter status `0x54`**
+>
+> Applying a modified cmpunlocker to a PG199 board failed with
+> `s_executeBooterUcode_TU102: Booter failed 0x54` even though the CFG1 and LMR writes landed and
+> the PLMs opened. Every other status code was pinned by locating its write site in the
+> disassembly; the same method should work for `0x54`, and the disassembly is in hand.
 
 ---
 
@@ -722,22 +683,15 @@ instruction: static analysis found zero instruction references to `0x8403C4` in 
 HS makes the hardware re-protect every HS-gated PLM to the secure default. Measured: taking the raw
 exit at `0x8117` leaves resetPLM `0xff`; letting `secure_teardown` run re-latches it to `0x8f`.
 
-!!! note "Superseded"
-    On 2026-07-12 the position was that `0x8f` at HS exit is an absolute wall, from which followed
-    the conclusion that software delivery of the memory unlock is architecturally impossible and the
-    only usable path is a physical re-strap of resistors R1004/R1005. Both were overturned: on
-    2026-07-13 a Hello-World ucode proved SEC2 still runs code at `0x8f`, and on 2026-07-15 a
-    terminator that spin-parks in HS (never running teardown) with an explicit `0x8403C4 = 0xff`
-    written earlier in the write list exited with resetPLM `0xff`. The mechanism held; the
-    conclusion did not.
-
-!!! question "Open problem: does `resetPLM = 0x8f` block loading new SEC2 ucode?"
-    One report says SEC2 is re-loadable at `0x8f` (Hello World fired, MAILBOX0 went `0x0` to
-    `0x31`); another says loading a new ucode requires SFTRESET, which the reset PLM gates, and
-    reports `NS load mismatch (HS-locked, needs --flr)`. The likely reconciliation, that NS reload
-    works and HS-signed reload does not, was proposed but never settled. One controlled experiment
-    loading an NS ucode and an HS-signed ucode back to back at a known `0x8f`, logging `CPUCTL` and
-    the loader error string for each, would answer it.
+> [!NOTE]
+> **Open problem: does `resetPLM = 0x8f` block loading new SEC2 ucode?**
+>
+> One report says SEC2 is re-loadable at `0x8f` (Hello World fired, MAILBOX0 went `0x0` to
+> `0x31`); another says loading a new ucode requires SFTRESET, which the reset PLM gates, and
+> reports `NS load mismatch (HS-locked, needs --flr)`. The likely reconciliation, that NS reload
+> works and HS-signed reload does not, was proposed but never settled. One controlled experiment
+> loading an NS ucode and an HS-signed ucode back to back at a known `0x8f`, logging `CPUCTL` and
+> the loader error string for each, would answer it.
 
 The shipping driver sidesteps this whole discipline: it **never reads or writes `0x008403C4`**. A
 grep of the shipping repository finds zero references to `0x008403c4`, `0x001180f8`, `0x001fa81c`
@@ -767,13 +721,15 @@ register descriptor tables at DMEM `0x2383` and `0x8E08` intact.
 The DMA target `0x800` is set by `mov $r10 0x800` at IMEM `0x37ad`, followed by `lcall 0x4d4` at
 `0x37b3`. See [The ROP chain](rop-chain.md) for what happens next.
 
-!!! note "Not a conflict"
-    `kernel_gsp_booter.c:329` computes `pUcode->hsSigDmemAddr = patchLoc - pUcode->dataOffset`,
-    which with `patchLoc = 0x8900` and `dataOffset = 0x8700` puts a signature at DMEM `0x200`. That
-    is the **booter's own HS signature**, patched into the booter image before load. DMEM `0x800` is
-    where the **GSP-RM LS signature** the booter DMAs from sysmem lands, and that is the one that
-    overflows. Two different buffers. Confidence: medium, in that this reconciliation is consistent
-    with every observation but nobody stated it explicitly.
+> [!NOTE]
+> **Not a conflict**
+>
+> `kernel_gsp_booter.c:329` computes `pUcode->hsSigDmemAddr = patchLoc - pUcode->dataOffset`,
+> which with `patchLoc = 0x8900` and `dataOffset = 0x8700` puts a signature at DMEM `0x200`. That
+> is the **booter's own HS signature**, patched into the booter image before load. DMEM `0x800` is
+> where the **GSP-RM LS signature** the booter DMAs from sysmem lands, and that is the one that
+> overflows. Two different buffers. Confidence: medium, in that this reconciliation is consistent
+> with every observation but nobody stated it explicitly.
 
 One more property matters for the unlock's persistence story: **the stock AES-MAC signature stays
 valid after geometry changes**, because it covers the static GSP firmware image at rest, not runtime
@@ -901,31 +857,19 @@ Exactly **one** arbitrary BAR0 write is performed per fire.
 
 ### 12.6 Reading the logs
 
-!!! warning "Register readback is the only valid success criterion"
-    Every payload execution logs
-    `s_executeBooterUcode_TU102: Booter failed with non-zero error code: 0x31` and
-    `kgspExecuteBooterLoad_TU102: failed to execute Booter Load: 0xffff`, **and the register writes
-    still land**. In `s_executeBooterUcode_TU102` the seccode error sits in MAILBOX0 after every run
-    and `mailbox0 != 0` returns `NV_ERR_GENERIC` (`0xffff`). The shipping loop's success test is
-    exact readback equality, which is the right test. The project README says the same thing:
-    Booter status codes such as `0x31` / `0xffff` during the early PLM passes are often harmless if
-    the final boot succeeds.
+> [!WARNING]
+> **Register readback is the only valid success criterion**
+>
+> Every payload execution logs
+> `s_executeBooterUcode_TU102: Booter failed with non-zero error code: 0x31` and
+> `kgspExecuteBooterLoad_TU102: failed to execute Booter Load: 0xffff`, **and the register writes
+> still land**. In `s_executeBooterUcode_TU102` the seccode error sits in MAILBOX0 after every run
+> and `mailbox0 != 0` returns `NV_ERR_GENERIC` (`0xffff`). The shipping loop's success test is
+> exact readback equality, which is the right test. The project README says the same thing:
+> Booter status codes such as `0x31` / `0xffff` during the early PLM passes are often harmless if
+> the final boot succeeds.
 
 See [verify](../procedures/verify.md) and [troubleshooting](../procedures/troubleshooting.md).
-
-### 12.7 The `dmem.bin` hook
-
-!!! note "Superseded: `dmem.bin` is vestigial on the released path"
-    The hook is real and works, but in the shipping boot flow no Booter Load runs between the
-    `dmem.bin` load and the first `kgspSec2PostblTimingRefillPayload()` call, which overwrites the
-    whole buffer with the built-in template. Dropping a file at
-    `/lib/firmware/nvidia/ga100/gsp/dmem.bin` therefore has no effect on the released path. It is a
-    vestige of the 580-era workflow, which injected the payload into the `.fwsignature_ga100`
-    section of `/lib/firmware/nvidia/580.159.03/gsp_tu10x.bin` on disk. The shipping `install.sh`
-    does not patch the GSP blob at all; the only survivor of that era is `remove.sh`, which iterates
-    `/lib/firmware/nvidia/*/gsp_tu10x.bin` to delete leftover `.cmpunlocker.*` files.
-
----
 
 ## 13. Driverless invocation, for contrast
 
@@ -986,58 +930,70 @@ reports `0xffff` regardless of outcome.
 
 ## 14. Open problems on this page
 
-!!! question "Can a driverless fire hand off to a stock driver at all?"
-    The stock driver's booter rejects post-fire SEC2 state via the classic two-load "mutex horns":
-    `0x31` (mutex held), `0x62` (WPR2 up) and `0x29` (a `0x001180f8` error, because the `mutexfree`
-    terminator leaves `0xf0000000` and the `0xf` top nibble trips the check). This fails even at
-    10 GB with consistent geometry, proving it is the SEC2 / `0x001180f8` handoff state the fire
-    perturbs, not the geometry and not the write count. Two fixes were proposed: make the terminator
-    leave the `0x001180f8` top nibble zero, or stage geometry from inside a patched driver. **The
-    shipping unlocker took the second.**
+> [!NOTE]
+> **Can a driverless fire hand off to a stock driver at all?**
+>
+> The stock driver's booter rejects post-fire SEC2 state via the classic two-load "mutex horns":
+> `0x31` (mutex held), `0x62` (WPR2 up) and `0x29` (a `0x001180f8` error, because the `mutexfree`
+> terminator leaves `0xf0000000` and the `0xf` top nibble trips the check). This fails even at
+> 10 GB with consistent geometry, proving it is the SEC2 / `0x001180f8` handoff state the fire
+> perturbs, not the geometry and not the write count. Two fixes were proposed: make the terminator
+> leave the `0x001180f8` top nibble zero, or stage geometry from inside a patched driver. **The
+> shipping unlocker took the second.**
 
-!!! question "Crossing the RmInitDone wall without an FLR"
-    The `whole_stack_rejoin` terminator restarts SEC2 after the exploit with no FLR and gets the
-    booter to complete and the GSP-RM RISC-V core to start, but init never completes. This is the
-    same `0x65` boot wall. `0x001180f8` is `NV_PGC6_BSI_SECURE_SCRATCH_14`, bit 26 is
-    `BOOT_STAGE_3_HANDOFF` (INIT = 0, DONE = 1), and only SEC2 in HS sets it. Pre-writing DONE does
-    not help: the read path is PLM-poisoned so `0x001180f8` reads back `0xdead5ec1`, and on a
-    poisoned read bit 26 already reads as 1, producing a false DONE that kills GSP-RM later instead.
-    The two candidate root fixes are to preserve the booter success path so SEC2 primes its RTOS and
-    sets DONE itself, or to restore the AON `SECURE_SCRATCH` PLM/priv state, which today only a
-    power-domain reset achieves.
+> [!NOTE]
+> **Crossing the RmInitDone wall without an FLR**
+>
+> The `whole_stack_rejoin` terminator restarts SEC2 after the exploit with no FLR and gets the
+> booter to complete and the GSP-RM RISC-V core to start, but init never completes. This is the
+> same `0x65` boot wall. `0x001180f8` is `NV_PGC6_BSI_SECURE_SCRATCH_14`, bit 26 is
+> `BOOT_STAGE_3_HANDOFF` (INIT = 0, DONE = 1), and only SEC2 in HS sets it. Pre-writing DONE does
+> not help: the read path is PLM-poisoned so `0x001180f8` reads back `0xdead5ec1`, and on a
+> poisoned read bit 26 already reads as 1, producing a false DONE that kills GSP-RM later instead.
+> The two candidate root fixes are to preserve the booter success path so SEC2 primes its RTOS and
+> sets DONE itself, or to restore the AON `SECURE_SCRATCH` PLM/priv state, which today only a
+> power-domain reset achieves.
 
-!!! question "Porting to other CMP cards"
-    The CMP 50HX is TU102 and uses a completely different memory access-control register set. The
-    CMP 90HX is GA102 with 10 GB GDDR6X and no extra physical memory, so only a compute unlock would
-    be meaningful. The stated rule is that the same Turing booter, script and exploit apply to any
-    card whose SEC2 accepts the Turing-generation AES and RSA keys. One tester reported the TU10x
-    `booter_load` loading on a GA102 CMP 90HX with SS0/SS1 PLM writes succeeding, while
-    self-qualifying that the written values "were not right" and warning that one positive test is
-    not enough. A separate static analysis of a GA102 booter concluded there is no overflow point
-    because the size is strictly validated. Nobody ran the decisive test: load the TU10x booter on a
-    GA102 and attempt a known-good single PLM write with readback.
+> [!NOTE]
+> **Porting to other CMP cards**
+>
+> The CMP 50HX is TU102 and uses a completely different memory access-control register set. The
+> CMP 90HX is GA102 with 10 GB GDDR6X and no extra physical memory, so only a compute unlock would
+> be meaningful. The stated rule is that the same Turing booter, script and exploit apply to any
+> card whose SEC2 accepts the Turing-generation AES and RSA keys. One tester reported the TU10x
+> `booter_load` loading on a GA102 CMP 90HX with SS0/SS1 PLM writes succeeding, while
+> self-qualifying that the written values "were not right" and warning that one positive test is
+> not enough. A separate static analysis of a GA102 booter concluded there is no overflow point
+> because the size is strictly validated. Nobody ran the decisive test: load the TU10x booter on a
+> GA102 and attempt a known-good single PLM write with readback.
 
-!!! question "Windows and non-Linux"
-    The vulnerability is in GPU firmware and is not OS-dependent. Current implementations are Linux,
-    and neither a Unix host nor the open driver is a hard requirement, but a Windows port was
-    described as far more than a few lines of work.
+> [!NOTE]
+> **Windows and non-Linux**
+>
+> The vulnerability is in GPU firmware and is not OS-dependent. Current implementations are Linux,
+> and neither a Unix host nor the open driver is a hard requirement, but a Windows port was
+> described as far more than a few lines of work.
 
-!!! question "Recovering a `csecret`"
-    Three indices map to three capabilities: `secret(6)` decrypts the ECB firmware blobs (would
-    yield 121.7 KB of plaintext firmware plus Booter code); `secret(2)` forges the content MAC
-    (prerequisite for both the CFG1 memory unlock and the PCIe speed unlock by that route);
-    `secret(0)` is the debug bypass enabling a HULK cert with `SKIP_VBIOS_SIG`. **No csecret has
-    been recovered.** All three remain differential-fault-analysis targets requiring voltage-glitch
-    hardware. Without the **Booter decryption key** the encrypted booter cannot be rebuilt (only
-    read, via the debug-key route); without the **VBIOS debug key** the VBIOS cannot be re-signed or
-    run in debug mode. The current unlock works around both by reusing the stock signed booter as an
-    execution engine.
+> [!NOTE]
+> **Recovering a `csecret`**
+>
+> Three indices map to three capabilities: `secret(6)` decrypts the ECB firmware blobs (would
+> yield 121.7 KB of plaintext firmware plus Booter code); `secret(2)` forges the content MAC
+> (prerequisite for both the CFG1 memory unlock and the PCIe speed unlock by that route);
+> `secret(0)` is the debug bypass enabling a HULK cert with `SKIP_VBIOS_SIG`. **No csecret has
+> been recovered.** All three remain differential-fault-analysis targets requiring voltage-glitch
+> hardware. Without the **Booter decryption key** the encrypted booter cannot be rebuilt (only
+> read, via the debug-key route); without the **VBIOS debug key** the VBIOS cannot be re-signed or
+> run in debug mode. The current unlock works around both by reusing the stock signed booter as an
+> execution engine.
 
-!!! question "A second instance of the same bug class"
-    The paper (section 5.5) notes that GSP-RM's own resident blob carries a second instance of the
-    same bug class, where the guard global is a **public hardcoded constant** rather than
-    RNG-seeded. No address is published, no exploit was built on it, and nobody in the archive
-    verified it.
+> [!NOTE]
+> **A second instance of the same bug class**
+>
+> The paper (section 5.5) notes that GSP-RM's own resident blob carries a second instance of the
+> same bug class, where the guard global is a **public hardcoded constant** rather than
+> RNG-seeded. No address is published, no exploit was built on it, and nobody in the archive
+> verified it.
 
 ### Documented negative results
 

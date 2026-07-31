@@ -40,12 +40,14 @@ shipping length  = 0xF800  (63,488 bytes)
 0x0800 + 0xF800  = 0x10000 = the top of DMEM
 ```
 
-!!! abstract "The single most important conversion on this page"
-    **DMEM address = payload offset + `0x800`.** Equivalently, payload offset = DMEM address minus
-    `0x800`. Payload offset `0xf754` **is** DMEM `0xFF54`. Payload offset `0x5b40` **is** DMEM
-    `0x6340`. Documents that quote `0xF7xx` offsets and documents that quote `0xFFxx` DMEM addresses
-    are describing the same bytes in different units, not two different booter builds. A provenance
-    review that read the difference as evidence of divergence was mistaken.
+> [!NOTE]
+> **The single most important conversion on this page**
+>
+> **DMEM address = payload offset + `0x800`.** Equivalently, payload offset = DMEM address minus
+> `0x800`. Payload offset `0xf754` **is** DMEM `0xFF54`. Payload offset `0x5b40` **is** DMEM
+> `0x6340`. Documents that quote `0xF7xx` offsets and documents that quote `0xFFxx` DMEM addresses
+> are describing the same bytes in different units, not two different booter builds. A provenance
+> review that read the difference as evidence of divergence was mistaken.
 
 Two independent internal cross-checks confirm the base. First, the shipping payload writes its fake
 canary at offset `0x5b40`, and `0x5b40 + 0x800 = 0x6340`, the independently established guard
@@ -53,12 +55,14 @@ global. Second, offset `0x1100` maps to DMEM `0x1900`, the documented `f100` fie
 writeups' "highest tail slot 63448 (DMEM `0xFFD8`)" and "SP at `0xFF3C` for payload offset 63292"
 reproduce exactly under the same mapping.
 
-!!! danger "The overflow does not give code execution"
-    Instructions live in IMEM and data in DMEM, in separate 16-bit address spaces. The signature DMA
-    lands in DMEM only. What the attacker controls is the set of return addresses on the Falcon call
-    stack, so every instruction executed is a fragment of the already-signed, already-authenticated
-    `booter_load` image. No unsigned code runs at any point. An early "overwrites IMEM" model was
-    corrected on 2026-06-30.
+> [!CAUTION]
+> **The overflow does not give code execution**
+>
+> Instructions live in IMEM and data in DMEM, in separate 16-bit address spaces. The signature DMA
+> lands in DMEM only. What the attacker controls is the set of return addresses on the Falcon call
+> stack, so every instruction executed is a fragment of the already-signed, already-authenticated
+> `booter_load` image. No unsigned code runs at any point. An early "overwrites IMEM" model was
+> corrected on 2026-06-30.
 
 Because the corruption happens *after* the image has passed its own verification, the vulnerable
 booter cannot be revoked by a driver update: NVIDIA signed and released the blob, and the validating
@@ -93,17 +97,6 @@ size check in the booter. There is no length validation at all: the booter accep
 once the write passes DMEM `0x6340` the random guard is destroyed and every returning function
 panics. Because DMEM is a 16-bit space, almost 64 kB can be written before reaching the end of the
 stack.
-
-!!! note "Superseded"
-    Some sources and an old script claimed the fake signature should be `0xf700` bytes. Rejected:
-    `0x800 + 0xF800 = 0x10000` exactly fills DMEM, and `0xf700` stops `0x100` bytes (64 dwords)
-    short of the top at base `0x800`; it only reached the top when paired with the superseded
-    `0x0900` base. Other superseded values from the same era: `DMA_TARGET = 0x0900`,
-    `CANARY_ADDR = 0x2C20`, `GADGET_BAR0_WRITE = 0x0F40`, `CANARY = 0x000700A6`,
-    `SP_DMA_INNER = 0xFF40`. A byte-level search showed `0x0F40`, `0x5889`, `0x2C20`, `0xFF40` and
-    `0x000700A6` do not appear in 580.159.03 at all; the file they came from was based on an
-    unknown, older driver version. Also superseded: DMEM `0x200` and DMEM `0x1800` as the signature
-    buffer, both plausible readings of nearby code, both refuted by the measured `0x800`.
 
 ### 1.3 The paper's emulator trace
 
@@ -154,24 +147,28 @@ basis of every debug ROP built during the project.
 
 The guard global lives in writable data memory reachable by the same overflow it is meant to detect.
 
-!!! abstract "Defeat by uniformity, not by prediction"
-    The payload overwrites both the guard global at DMEM `0x6340` **and** every saved-canary slot
-    on the stack with the same value `V`. Every epilogue then computes `V == V`, passes, and returns
-    into the chain. The value is arbitrary; secrecy and entropy are irrelevant. Reseeding the guard
-    from the hardware RNG every boot provides zero protection, because the adversary never has to
-    learn it.
+> [!NOTE]
+> **Defeat by uniformity, not by prediction**
+>
+> The payload overwrites both the guard global at DMEM `0x6340` **and** every saved-canary slot
+> on the stack with the same value `V`. Every epilogue then computes `V == V`, passes, and returns
+> into the chain. The value is arbitrary; secrecy and entropy are irrelevant. Reseeding the guard
+> from the hardware RNG every boot provides zero protection, because the adversary never has to
+> learn it.
 
 There is no RELRO equivalent, no guard page and no MPU read-only mapping. In the paper's emulator
 the seed appears as a fixed constant only because the crypto coprocessor is stubbed.
 
 ### 2.3 Which value
 
-!!! danger "The shipping guard value is `0xc0deca7e`. It is NOT `0xFACEB13D`."
-    `0xc0deca7e` occurs exactly five times in the shipping payload, at payload offsets `0x5b40`,
-    `0xf758`, `0xf794`, `0xf7a0` and `0xf7c4` (DMEM `0x6340`, `0xFF58`, `0xFF94`, `0xFFA0`,
-    `0xFFC4`). The string `FACEB13D` appears **nowhere** in the shipping tree or in any of the 12
-    archived branches. Any document that presents `0xFACEB13D` as "the" canary value is describing
-    the clean-room research chains, not the released unlocker.
+> [!CAUTION]
+> **The shipping guard value is `0xc0deca7e`. It is NOT `0xFACEB13D`.**
+>
+> `0xc0deca7e` occurs exactly five times in the shipping payload, at payload offsets `0x5b40`,
+> `0xf758`, `0xf794`, `0xf7a0` and `0xf7c4` (DMEM `0x6340`, `0xFF58`, `0xFF94`, `0xFFA0`,
+> `0xFFC4`). The string `FACEB13D` appears **nowhere** in the shipping tree or in any of the 12
+> archived branches. Any document that presents `0xFACEB13D` as "the" canary value is describing
+> the clean-room research chains, not the released unlocker.
 
 | Value | Where it is correct |
 |---|---|
@@ -208,10 +205,6 @@ overwritten. `0x4a7` is not arbitrary: IMEM `0x000004a7` is a self-loop.
 If the hijacked PC lands anywhere unintended, the Falcon parks in an observable heavy-secure
 self-loop rather than wandering into a fault. It is a diagnostic, not a functional requirement, but
 the shipping driver keeps it for exactly that reason.
-
-!!! note "Superseded"
-    A claim that the buffer is "zero everywhere else" is true of the earlier driverless chain and
-    false of the shipping payload, which is `0x4a7` everywhere else.
 
 ---
 
@@ -271,14 +264,6 @@ The hijacked return address was proven by a controlled experiment on the mailbox
 overfill that normally yields MB0 = `0x31`, replacing payload bytes 63324-63327 with the `panic()`
 address changed the mailbox to `0x47`. Offset 63324 = `0xF75C`, and `0xF75C + 0x800 = 0xFF5C`.
 
-!!! note "Superseded"
-    An early answer named DMEM `0xFFE4` as *the* return address. It is not; `0xFF5C` is. `0xFFE4` is
-    the far end of the payload that is still useful to a chain that also wants to rejoin normal flow,
-    which makes it the hard budget for a rejoin chain rather than the entry point. Separately, a
-    claim that the ROP entry point is `0xFF48` is also wrong: `0xFF48` is the r3 slot in the `0x4d4`
-    pop block. The usable region from `0xFF5C` to `0xFFFC` inclusive is `0xA4` = 164 bytes = 41
-    words.
-
 ### 3.2 The five words that must be patched per boot
 
 Five stack words hold live `WprMeta` values that the overflow destroys and that nothing on the
@@ -303,20 +288,12 @@ the `0x800` DMA target, and the resume path does re-read it: the pop slot at `0x
 `0x600`, and immediately after the return `0x37b7` does `ld $r9 D[$r1+0x50]`. Only r2-r6 are
 frame-restored copies that cannot be re-derived.
 
-!!! note "Superseded: live WprMeta injection is a clean-room artefact"
-    The "live WprMeta inject" was the change that first made GSP-RM boot in the clean-room driver
-    patch of 2026-07-10. Without it the booter finalizes against the wrong memory map and
-    `0x001180f8` reads `0xf0000000`; with it the map is correct at `0x11000000` and GSP-RM comes up.
-    The patch overwrote five slots just before the Booter DMAs the payload
-    (`*(_sv + 63292) = sizeOfRadix3Elf;` and the four siblings, guarded by
-    `memdescGetSize >= 0xF800`). **It is not in cmpunlocker master or in any of the 12 archived
-    branches.** The shipping design does not need it, because it never tries to rejoin the booter's
-    success path.
-
-!!! question "Open problem: register assignment of the WprMeta spill"
-    Two of three sources give `0xFF3C` = saved r6 = `sizeOfRadix3Elf 0x01d09ea0` and `0xFF4C` =
-    saved r2 = `gspFwWprStart 0xf7700000`. A third gives the reverse and is internally muddled. The
-    majority reading is used above. Settled by re-reading the pop order in the `0x22ba` prologue.
+> [!NOTE]
+> **Open problem: register assignment of the WprMeta spill**
+>
+> Two of three sources give `0xFF3C` = saved r6 = `sizeOfRadix3Elf 0x01d09ea0` and `0xFF4C` =
+> saved r2 = `gspFwWprStart 0xf7700000`. A third gives the reverse and is internally muddled. The
+> majority reading is used above. Settled by re-reading the pop order in the `0x22ba` prologue.
 
 ---
 
@@ -387,14 +364,6 @@ Multi-pop entry points extracted from the binary:
 | `$r7` | `0x38c3`, `0x7977`, `0x84cd` |
 | `$r8` | `0x071a`, `0x22b7`, `0x3743`, `0x3c8c`, `0x4484`, `0x5ccb`, and 2 more |
 
-!!! note "Superseded"
-    An initial belief that `mpopaddret` stored registers in reverse order was corrected on
-    2026-07-05/07: r0 sits at the *highest* address of the popped block. This also corrected an
-    emulator bug that had r10 two words too low; the silicon sweep put r10's real slot at +8.
-    Getting it backwards puts the canary address in the wrong register and kills the chain in
-    `__stack_chk_fail`. ROP v3 as originally written had exactly this bug: the register block was
-    written r4..r0 ascending.
-
 One further mechanical property, tested and confirmed: **the ROP stack can legally extend past DMEM
 `0xFFFF` and wrap to `0x0000`**, so chain length is not capped by the top of DMEM. It did not fix
 the `0x65` error it was proposed for. A competing later analysis holds that when a geometry write
@@ -444,13 +413,15 @@ Entering at `0x10b9` skips the `mov r0,r10` / `mov r1,r11` copies at `0x10b5`/`0
 can supply the operands directly off the stack. Both reach the same `iowrs I[0x1c…]` store. Both
 descriptions in the source material are correct for their own entry point.
 
-!!! danger "The shipping payload uses `0x000010aa`, not `0x10b9`"
-    The value `0x000010aa` is written at payload offset `0xf788` (DMEM `0xFF88`) in
-    `driver/patches/0001-sec2-postbl-plm-ss-cfg.patch`, and the string `10b9` appears **nowhere** in
-    the shipping tree or in any of the 12 branches. Any claim that `0x10b9` is "used by every
-    working payload including the one compiled into the shipping driver patch" is self-contradictory
-    and is corrected here. The `0x10b9` self-chain is a clean-room and driverless-tool construct
-    only.
+> [!CAUTION]
+> **The shipping payload uses `0x000010aa`, not `0x10b9`**
+>
+> The value `0x000010aa` is written at payload offset `0xf788` (DMEM `0xFF88`) in
+> `driver/patches/0001-sec2-postbl-plm-ss-cfg.patch`, and the string `10b9` appears **nowhere** in
+> the shipping tree or in any of the 12 branches. Any claim that `0x10b9` is "used by every
+> working payload including the one compiled into the shipping driver patch" is self-contradictory
+> and is corrected here. The `0x10b9` self-chain is a clean-room and driverless-tool construct
+> only.
 
 ### 5.3 Costs
 
@@ -483,11 +454,6 @@ fail-closed idiom:
 
 The correct elevator gadgets for calling `0x8224` from a chain are `0x1fb9` and `0x1fbd`.
 
-!!! note "Superseded"
-    `0x30bb` / `0x30be` were proposed as elevators for `0x8224`. They sit at the start of the long
-    function `0x2e80 image_auth_decrypt()`, where `$r10`/`$r11` are overwritten many times. The chain
-    that used them was structurally broken.
-
 ### 5.4 First demonstration
 
 Arbitrary BAR0 register write from an HS ROP chain was first demonstrated on real 8 GB silicon on
@@ -496,38 +462,28 @@ because the chain deliberately terminated in `panic()`. A second researcher inde
 writing arbitrary bytes to arbitrary I/O addresses, verified by writing to `0x1000` and observing it
 in the mailbox.
 
-!!! warning "Read-back is not free"
-    The host at PL0 cannot read many of these registers back, returning `0xbadf5040` / `0xbadf50xx`.
-    That is a priv-blocked read indication, **not** a stored poison value. Read-back verification of
-    an HS write needs the in-Falcon read gadget `0x1196` or the host-visible mailbox alias. Once the
-    relevant PLM is open, the host can read normally, which is what the shipping driver relies on.
-
-!!! note "Superseded"
-    Two wrong models, both refuted. First: "`0x10aa` only writes predefined BAR0 registers, the
-    addresses cannot be changed, it is of no use even as gadget parts." `0x1c100`/`0x1c200` are the
-    master's address and data ports, not final targets, and the booter itself routes
-    `0x29b8 -> 0x10aa` to write its own WPR2 registers. Second: "a BAR0-master ownership mutex at
-    `0x1c300` is silently dropping our writes." The Falcon is single-core and single-thread and needs
-    no mutex for its own operation; the reconciliation analysis found the write frames byte-perfect
-    and concluded "the writes DO issue; the tail throws them away." A third, larger dead end: a tidy
-    table showing writes at BAR0 offsets below `0xA800` succeeding and above failing
-    (PLM `0xFFFFFFFF` reading back `0xFFFFFF8F`, STRAP `0x02779000` reading back `0x02449000`, LMR
-    `0x0000020B` reading back `0x00000208`). Those read-backs are precisely the documented **stock**
-    values of registers that were never written, because `0x8224` is `csb_write` and never touched
-    external BAR0 at all.
+> [!WARNING]
+> **Read-back is not free**
+>
+> The host at PL0 cannot read many of these registers back, returning `0xbadf5040` / `0xbadf50xx`.
+> That is a priv-blocked read indication, **not** a stored poison value. Read-back verification of
+> an HS write needs the in-Falcon read gadget `0x1196` or the host-visible mailbox alias. Once the
+> relevant PLM is open, the host can read normally, which is what the shipping driver relies on.
 
 ### 5.5 Which registers the primitive can reach
 
 Confirmed working: FEAT PLM `0x00823804`; WPR2 `0x001FA824`; and in the shipping driver, WPR_CFG
 `0x001fa7cc` opened to the partial value `0xfffff0ff`, FBPA `0x009a0148` and WPR `0x001fa7c4`.
 
-!!! question "Open problem: reported failures on neighbouring WPR registers"
-    One single-source list reports the write confirmed *not* working for WPR1_HI `0x001FA820`,
-    WPR1_LO `0x001FA81C` and WPR_Mask `0x001FA7CC` at the time of that test, yet the shipping driver
-    successfully opens `0x001fa7cc` through the same primitive. Either the earlier test used a
-    different value or a different chain, or the `0xfffff0ff` partial open succeeds where a full
-    `0xffffffff` open does not. Confidence in the failure list: medium. Settled by a fire that
-    attempts `0x001fa7cc = 0xffffffff` with read-back, alongside the earlier test's exact payload.
+> [!NOTE]
+> **Open problem: reported failures on neighbouring WPR registers**
+>
+> One single-source list reports the write confirmed *not* working for WPR1_HI `0x001FA820`,
+> WPR1_LO `0x001FA81C` and WPR_Mask `0x001FA7CC` at the time of that test, yet the shipping driver
+> successfully opens `0x001fa7cc` through the same primitive. Either the earlier test used a
+> different value or a different chain, or the `0xfffff0ff` partial open succeeds where a full
+> `0xffffffff` open does not. Confidence in the failure list: medium. Settled by a fire that
+> attempts `0x001fa7cc = 0xffffffff` with read-back, alongside the earlier test's exact payload.
 
 A separate structural limit is real and independent of the primitive: the SEC2 ROP only opens PLMs
 whose `SOURCE_ENABLE` field whitelists sec2-HS. `0x00823b00` was observed rejecting the chain for
@@ -573,15 +529,17 @@ Every address below is **IMEM**, and every one is a fragment of the same signed 
 | `0x8e18` | clean-tail unwind gadget | |
 | `0xffbc` | intermediate unwind gadget | |
 
-!!! question "Open problem: what several shipping-tail words actually do"
-    `0x00000cbd` (twice), `0x00008e18`, `0x0000ffbc`, `0x0000582d`, `0x00000003` at DMEM `0xFFD8`,
-    and the two `0x0000815a` entries have no published gadget annotation. On address range alone,
-    `0x0000ffbc` and probably `0x00008e18` look like DMEM pointer operands rather than IMEM code
-    addresses, since the booter image runs to roughly `0x8200`; that is an inference, not
-    established. Also unexplained: `0x00000007` at DMEM `0x1900` beyond its resetPLM effect, and the
-    fill dword `0x000004a7`. Next step: run the existing `register_gadget_atlas.md` generator over
-    these addresses, since the atlas format already records preconditions and terminators. A single
-    pass over the annotated listing should resolve all of them.
+> [!NOTE]
+> **Open problem: what several shipping-tail words actually do**
+>
+> `0x00000cbd` (twice), `0x00008e18`, `0x0000ffbc`, `0x0000582d`, `0x00000003` at DMEM `0xFFD8`,
+> and the two `0x0000815a` entries have no published gadget annotation. On address range alone,
+> `0x0000ffbc` and probably `0x00008e18` look like DMEM pointer operands rather than IMEM code
+> addresses, since the booter image runs to roughly `0x8200`; that is an inference, not
+> established. Also unexplained: `0x00000007` at DMEM `0x1900` beyond its resetPLM effect, and the
+> fill dword `0x000004a7`. Next step: run the existing `register_gadget_atlas.md` generator over
+> these addresses, since the atlas format already records preconditions and terminators. A single
+> pass over the annotated listing should resolve all of them.
 
 A minimal debug ROP that was confirmed working on silicon, printing DMEM `0x800`-`0x804` to the
 mailbox and then hanging (gadgets `0x0bc6`, `0x0bb9`, `0x7de9`):
@@ -634,13 +592,15 @@ Generated by `_kgspSec2PostblTimingFillPayload()` in
 Thirteen distinct non-canary, non-operand words appear: `0x4a7`, `0x7`, `0xcbd` (×2), `0x1fbd` (×3),
 `0x0` (×2), `0x10aa`, `0x815a` (×2), `0x8e18`, `0xffbc`, `0x582d`, `0x3`, `0xccb`, `0x7f2f`.
 
-!!! abstract "Byte-identical everywhere"
-    This payload is identical across shipping `master` and all 12 archived branches: the same 24
-    `PutU32` calls, the same offsets, the same values, verified by checksum and by grepping
-    `0xc0deca7eU`, which occurs exactly 5 times in every copy. It is also byte-identical across the
-    580, 590, 595 and 610 ported patch sets on the `clanker_driver-port` branch. Only the PLM table
-    differs between branches, and the `80` branch changes only the 10 GB card's CFG1 and
-    `targetFbBytes`.
+> [!NOTE]
+> **Byte-identical everywhere**
+>
+> This payload is identical across shipping `master` and all 12 archived branches: the same 24
+> `PutU32` calls, the same offsets, the same values, verified by checksum and by grepping
+> `0xc0deca7eU`, which occurs exactly 5 times in every copy. It is also byte-identical across the
+> 580, 590, 595 and 610 ported patch sets on the `clanker_driver-port` branch. Only the PLM table
+> differs between branches, and the `80` branch changes only the 10 GB card's CFG1 and
+> `targetFbBytes`.
 
 ### 7.1 The control flow
 
@@ -689,15 +649,17 @@ ending at 63,484: four bytes inside the 63,488-byte buffer. The slots the toolin
 This tail is labelled HW-PROVEN in the driverless tooling, is identical between
 `refire_chain_v6.py` and `refire_chain_v9.py`, and matches the shipping payload exactly.
 
-!!! note "Lineage, precisely"
-    The *tail* is byte-identical to `refire_chain_v6._TAIL`, and `p(0x1100, 0x7)` matches too. The
-    *head* is not: v6 plants value and address adjacently at payload `0xF750`/`0xF754` with RA
-    `0x10b9` at `0xF75C`, whereas shipping plants value at `0xf754`, RA `0x00000cbd` at `0xf75c`,
-    address at `0xf76c` and `0x1fbd` at `0xf774`. Lineage is real; "byte-for-byte the same chain" is
-    overstated. Separately, two of the shipping payload's gadget addresses (`0x10aa` and `0x0ccb`)
-    appear in a community ROP writeup published three days before the patch, with matching roles.
-    Whether the shipping payload was derived from the community chain or independently produced
-    cannot be settled from the artifacts alone.
+> [!NOTE]
+> **Lineage, precisely**
+>
+> The *tail* is byte-identical to `refire_chain_v6._TAIL`, and `p(0x1100, 0x7)` matches too. The
+> *head* is not: v6 plants value and address adjacently at payload `0xF750`/`0xF754` with RA
+> `0x10b9` at `0xF75C`, whereas shipping plants value at `0xf754`, RA `0x00000cbd` at `0xf75c`,
+> address at `0xf76c` and `0x1fbd` at `0xf774`. Lineage is real; "byte-for-byte the same chain" is
+> overstated. Separately, two of the shipping payload's gadget addresses (`0x10aa` and `0x0ccb`)
+> appear in a community ROP writeup published three days before the patch, with matching roles.
+> Whether the shipping payload was derived from the community chain or independently produced
+> cannot be settled from the artifacts alone.
 
 ### 7.3 Why the exit is clean
 
@@ -708,41 +670,39 @@ of register `0xf100` bits [4:6] where `r0 == 0` saves the field to DMEM `0x1900`
 `r0 != 0` restores it from `0x1900`. Register `0xf100` reads `0xbadf5040` at PL0 because it is only
 reachable inside the HS teardown context.
 
-!!! note "Superseded: three successive theories of the clean exit"
-    (1) `secure_teardown` gives a clean exit. (2) Refuted: `secure_teardown` is hardware-arbitrated
-    and comes out `0x8f`, so the working exit must skip teardown and write `0x8403C4 = 0xff` as the
-    final ROP action. (3) The shipping route: exit through `0x7f2f` inside `secure_teardown` but
-    plant `0x7` at DMEM `0x1900` so teardown reaches `0x1d3b` and leaves resetPLM clean with no
-    explicit `0x8403C4` write at all. A third-party repository and the clean room had both converged
-    on `3 × 0x10B9 + 0x810D`, which is safe **if and only if** `D[0x1900]` carries `0x7`.
+> [!NOTE]
+> **Open problem: is `secure_teardown`'s body actually executed?**
+>
+> `0x7f2f` is described as "the exit gadget inside `secure_teardown`, never returned to". Whether
+> the full teardown body (SCP wipe, 64 KB DMEM zero, GPR clear) executes before the `exit`, or
+> whether `0x7f2f` lands past most of it, is not established anywhere in the archive. It matters
+> because a full DMEM zero between fires changes what state can carry over. Settled by the byte
+> offset of `0x7f2f` within `secure_teardown`'s body relative to the SCP-wipe and DMEM-zero loops.
 
-!!! question "Open problem: is `secure_teardown`'s body actually executed?"
-    `0x7f2f` is described as "the exit gadget inside `secure_teardown`, never returned to". Whether
-    the full teardown body (SCP wipe, 64 KB DMEM zero, GPR clear) executes before the `exit`, or
-    whether `0x7f2f` lands past most of it, is not established anywhere in the archive. It matters
-    because a full DMEM zero between fires changes what state can carry over. Settled by the byte
-    offset of `0x7f2f` within `secure_teardown`'s body relative to the SCP-wipe and DMEM-zero loops.
-
-!!! question "Open problem: `0x00000ccb` in the shipping payload"
-    Two readings of the same call coexist: "the release call at `0xccb`", paired with the `0xd66`
-    acquire, versus "bit 24 set by authenticate". Independently, a hard constraint was stated that
-    no ROP exit path may route through `regtable_rw_indexed (0x0ccb)`, because the `0xF800` payload
-    linearly smashes the register descriptor tables at DMEM `0x2383` and `0x8e08` that it indexes,
-    and a 2026-07-06 isolation matrix showed every write-carrying rejoin chain dying at `0xccb`. Yet
-    the shipping payload plants `0x00000ccb` at DMEM `0xFFF4` and works. Settled by tracing whether
-    DMEM `0xFFF4` is ever loaded into PC during the shipping chain's unwind, or whether it is a
-    dead saved slot in a frame that is never returned through. This is the most tractable open item
-    in the domain, because both the payload and the disassembly are in hand.
+> [!NOTE]
+> **Open problem: `0x00000ccb` in the shipping payload**
+>
+> Two readings of the same call coexist: "the release call at `0xccb`", paired with the `0xd66`
+> acquire, versus "bit 24 set by authenticate". Independently, a hard constraint was stated that
+> no ROP exit path may route through `regtable_rw_indexed (0x0ccb)`, because the `0xF800` payload
+> linearly smashes the register descriptor tables at DMEM `0x2383` and `0x8e08` that it indexes,
+> and a 2026-07-06 isolation matrix showed every write-carrying rejoin chain dying at `0xccb`. Yet
+> the shipping payload plants `0x00000ccb` at DMEM `0xFFF4` and works. Settled by tracing whether
+> DMEM `0xFFF4` is ever loaded into PC during the shipping chain's unwind, or whether it is a
+> dead saved slot in a frame that is never returned through. This is the most tractable open item
+> in the domain, because both the payload and the disassembly are in hand.
 
 ---
 
 ## 8. Writes per fire
 
-!!! abstract "The shipping driver does exactly ONE arbitrary BAR0 write per Booter Load fire"
-    The payload carries exactly one `(writeAddr, writeValue)` pair, at payload offsets `0xf76c` and
-    `0xf754`. The driver re-fires Booter Load once per register it wants to touch, with up to two
-    attempts per register, and verifies by read-back. That is 4 to 8 exploit fires per driver load
-    plus the one normal boot. See [falcon-and-booter.md](falcon-and-booter.md#125-how-many-times-the-booter-runs).
+> [!NOTE]
+> **The shipping driver does exactly ONE arbitrary BAR0 write per Booter Load fire**
+>
+> The payload carries exactly one `(writeAddr, writeValue)` pair, at payload offsets `0xf76c` and
+> `0xf754`. The driver re-fires Booter Load once per register it wants to touch, with up to two
+> attempts per register, and verifies by read-back. That is 4 to 8 exploit fires per driver load
+> plus the one normal boot. See [falcon-and-booter.md](falcon-and-booter.md#125-how-many-times-the-booter-runs).
 
 The write count is a property of the *tail*, not of the mechanism. This is why the source material
 carries five different answers.
@@ -768,26 +728,17 @@ Supporting arithmetic:
   (5 × 24 B + 64 B) and does not fit the 180-byte budget from DMEM `0xFF48`. The shipping
   five-stanza layout uses a 15-word (60-byte) tail: 120 B + 60 B = 180 B exactly.
 
-!!! question "Open problem: is the mutexfree cap really 4 or really 2?"
-    The slot formula derives ≤ 4; the v2 engine hard-codes ≤ 2 with the comment "full mutex tail
-    caps DMEM at stock SP". An independently posted 5-write poke layout places writes 2-5 at DMEM
-    `0xFF60`, `0xFF78`, `0xFF90`, `0xFFA8`, has the last `0x10aa` pop `0xFFC0`..`0xFFD0` and runs a
-    fixed 12-dword tail from `0xFFD4` to `0xFFFC`, which is arithmetically self-consistent and fits.
-    The three numbers use three different tails, so they may all be correct for their own tail, but
-    no source states the reconciliation and the exact tail bytes for the 5-write variant are not
-    given. Settled by computing the highest occupied slot for the exact tail each engine emits, or
-    by firing a five-write and a six-write chain and reading all writes back.
-
-!!! note "Superseded: a proposed minimal tail"
-    A 2026-07-25 review observed that the shipping tail uses ten different gadgets where three
-    should suffice (write + mutex free + exit), and that the `0x1fbd` elevators are pure
-    stack-eaters that check a canary and do nothing. The proposed replacement is
-    `_TAIL = {0x00: 0x1b44, 0x10: 0x7f2f}` with `_TAIL_END = 0x14`, which would leave five useful
-    writes per fire instead of one. **Never tested.** The implementer declined to change a working
-    chain because re-firing had removed the pressure on per-fire write count. Verified still absent
-    from master. It is a self-contained experiment: the shipping payload is a flat table of 24 word
-    stores, so a variant tail could in principle be tested by dropping a `dmem.bin` file, except
-    that the `dmem.bin` hook is vestigial on the released path.
+> [!NOTE]
+> **Open problem: is the mutexfree cap really 4 or really 2?**
+>
+> The slot formula derives ≤ 4; the v2 engine hard-codes ≤ 2 with the comment "full mutex tail
+> caps DMEM at stock SP". An independently posted 5-write poke layout places writes 2-5 at DMEM
+> `0xFF60`, `0xFF78`, `0xFF90`, `0xFFA8`, has the last `0x10aa` pop `0xFFC0`..`0xFFD0` and runs a
+> fixed 12-dword tail from `0xFFD4` to `0xFFFC`, which is arithmetically self-consistent and fits.
+> The three numbers use three different tails, so they may all be correct for their own tail, but
+> no source states the reconciliation and the exact tail bytes for the 5-write variant are not
+> given. Settled by computing the highest occupied slot for the exact tail each engine emits, or
+> by firing a five-write and a six-write chain and reading all writes back.
 
 ---
 
@@ -817,29 +768,6 @@ operationally by repeated Booter passes.
 load2-recoverable way. Tail shape:
 `0x1fca -> 0x1fb9 (r10 <- fail_code) -> 0x1fca -> 0x814e -> 0x8173 -> main`. Write order is preserved
 and `FUSE_SS_PLM` must be `writes[0]`.
-
-!!! note "Superseded"
-    Three terminator dead ends worth knowing. (1) **`0x814e` cannot boot GSP-RM**, because it skips
-    the `0x37b7` image validation that both authenticates the image and zeroes `$r10`. The check at
-    `0x8150` is `bra b32 $r10 0x0 e 0x815a`, and the `0x10b9` write gadget only touches r0-r3, so
-    r10 keeps the `0x800` the signature copy left in it and the check fails. Routing the last write's
-    terminator to `0x37b7` instead runs validation and returns `r10 == 0`, but that requires the
-    `0x3747`/`0x2740` frames reconstructed below `0xFFD4`, which collide with the write blocks at
-    `0xFF60`-`0xFF98`. (2) **`0xFFD4 = 0x8119`** as the `0x22ba` frame return address is wrong; the
-    correct value is `0x814e`. (3) **Returning into `main` at `0x8103`** to release the mutex faulted
-    on hardware with `EXCI cause=0x9 INV_INS` at `PC 0x100`, because the ROP arrives with the
-    ROP-landing SP, about `0xc` below `main`'s real `0x8103` SP of `0xFFDC`, so the `lcall` push
-    corrupts control. The fix is to land at `0x1c0e`'s own entry with `r10 = nibble` and plant
-    `0x1c0e`'s own epilogue return address.
-
-!!! note "Superseded: rejoining at `0x27fa` to release WPR2"
-    ROP v3 was built on the belief that `0x27fa` sits inside `booter_load_wpr_main` and would
-    release WPR2. Disassembly showed `0x27fa` is mid-image-load WprMeta scratch that writes
-    `D[0x6f8]`, `D[0x6fc]` and `D[0x648]` and touches **no** WPR2 register. There is no WPR2 teardown
-    in `booter_load` at all; that lives in `booter_unload`. Worse, returning to `0x2740` on the
-    success path *carves* WPR2 rather than clearing it, and `wpr_region_program` rejects an empty
-    region (end < start gives error `0x5`), so the booter cannot be coaxed into programming an empty
-    WPR2. The direct HS write `0x1FA824 = 0x1FFFFE00` was used instead.
 
 Two mechanical payload bugs are worth remembering as a class, because in both cases the chain
 "worked" but silently dropped a write: a slot typo of `0xFF45` for `0xFF54` (offset 63316, write 1's

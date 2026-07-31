@@ -33,18 +33,22 @@ Four things to know before you wire anything:
 | Per-pin capability | roughly 70-80 W per good-quality pin |
 | PCIe slot contribution | `SlotPowerLimit 75 W` (DevCap) |
 
-!!! danger "Never plug a PCIe 8-pin cable into the card's EPS socket"
-    The two connectors are keyed differently and can only be forced together. **If forced, the
-    12 V and ground lines are swapped on some pins between the two connector types and the card
-    will be damaged.** Use the supplied 2 x PCIe-to-EPS adapter, or a proper EPS cable for your
-    PSU. Practical guidance from
-    builders: at 150 W use one leg of the supplied adapter, at 300 W use both legs or source
-    proper cables.
+> [!CAUTION]
+> **Never plug a PCIe 8-pin cable into the card's EPS socket**
+>
+> The two connectors are keyed differently and can only be forced together. **If forced, the
+> 12 V and ground lines are swapped on some pins between the two connector types and the card
+> will be damaged.** Use the supplied 2 x PCIe-to-EPS adapter, or a proper EPS cable for your
+> PSU. Practical guidance from
+> builders: at 150 W use one leg of the supplied adapter, at 300 W use both legs or source
+> proper cables.
 
-!!! danger "Do not reuse a modular PSU cable across PSU brands"
-    Modular cables are vendor-specific with no standard modular-side pinout. Reusing one
-    across brands can destroy hardware. A modular EPS12V cable must carry 4 x 12 V and
-    4 x GND on **both** ends.
+> [!CAUTION]
+> **Do not reuse a modular PSU cable across PSU brands**
+>
+> Modular cables are vendor-specific with no standard modular-side pinout. Reusing one
+> across brands can destroy hardware. A modular EPS12V cable must carry 4 x 12 V and
+> 4 x GND on **both** ends.
 
 Two mechanical gotchas reported first-hand:
 
@@ -54,13 +58,6 @@ Two mechanical gotchas reported first-hand:
 - The supplied adapter expects **two** PCIe 8-pin (6+2) feeds. At least one build failed
   because the PSU provided 1 x PCIe 6+2 and 1 x 6-pin instead of two 6+2 connectors. Count
   your PSU's actual PCIe connectors before ordering cards.
-
-!!! note "Superseded"
-    TechPowerUp's board-design section lists "Power Connectors 2x 8-pin". The teardown says
-    one 8-pin EPS socket carrying two logical 12 V rails, which explains where the "2x"
-    reading came from and matches the A100 PCIe design. The database has not been corrected,
-    so the conflict stands on the record. **For any wiring or PSU-cable decision, plan for
-    one 8-pin EPS socket.**
 
 Note also that several 3D-printed shrouds **block access to the EPS plug**. Test-fit with the
 cable installed. See [Cooling](cooling.md).
@@ -120,9 +117,11 @@ Three confounders explain the spread, and they have never been varied one at a t
 3. **Resident CUDA context.** Holding a model in VRAM raises core clocks and costs roughly
    +12 W, enough to spin system fans up.
 
-!!! question "Open problem: nobody has isolated the idle-power variables"
-    What would settle it: one card, one host, `nvidia-smi` idle draw logged at three
-    controlled die temperatures, with and without a resident CUDA context.
+> [!NOTE]
+> **Open problem: nobody has isolated the idle-power variables**
+>
+> What would settle it: one card, one host, `nvidia-smi` idle draw logged at three
+> controlled die temperatures, with and without a resident CUDA context.
 
 ### There is no idle P-state, and no tool fixes that
 
@@ -140,25 +139,31 @@ Three confounders explain the spread, and they have never been varied one at a t
   reason idle power stays high. The 10 GB figure is 1215 MHz; the 8 GB figure is unresolved (see
   below).
 
-!!! question "Open problem: the stock 8 GB memory clock is unresolved"
-    The stock 8 GB memory clock is unresolved: 1458 MHz (one sweep and TechPowerUp), 1728 MHz
-    (`nvidia-smi -q` Supported Clocks, noted as "432 MHz x 4"), 1890 MHz (`nvtop` during an
-    unlocked 64 GB `gpu_burn` at 300 W). 1215 MHz is the 10 GB card and is solid. The plausible
-    reconciliation (1458 stock, 1728 OC VBIOS, 1890 overclocked OC VBIOS) is unproven; a raw
-    FBPA PLL read would settle it.
+> [!NOTE]
+> **Open problem: the stock 8 GB memory clock is unresolved**
+>
+> The stock 8 GB memory clock is unresolved: 1458 MHz (one sweep and TechPowerUp), 1728 MHz
+> (`nvidia-smi -q` Supported Clocks, noted as "432 MHz x 4"), 1890 MHz (`nvtop` during an
+> unlocked 64 GB `gpu_burn` at 300 W). 1215 MHz is the 10 GB card and is solid. The plausible
+> reconciliation (1458 stock, 1728 OC VBIOS, 1890 overclocked OC VBIOS) is unproven; a raw
+> FBPA PLL read would settle it.
 
-!!! danger "Do not install `nvidia-pstated` as a systemd service on an unlocked 170HX host"
-    The unlock scripts require all NVIDIA services to be killed, and the interaction with a
-    resident pstate daemon is untested. Run it from a launcher instead, if you run it at
-    all.
+> [!CAUTION]
+> **Do not install `nvidia-pstated` as a systemd service on an unlocked 170HX host**
+>
+> The unlock scripts require all NVIDIA services to be killed, and the interaction with a
+> resident pstate daemon is untested. Run it from a launcher instead, if you run it at
+> all.
 
-!!! question "Open problem: would an A100 PCIe VBIOS expose more P-states?"
-    This is the one untried lead after `nvidia-pstated` and the clock-fallback fork both
-    failed: "the pci-e a100 bios has several p-states so I'm fairly certain p-stated would
-    work on that". The PCIe A100 is documented with several performance states and a claimed
-    5 W idle. Nobody has attempted the flash. It should only be tried on a spare card with a
-    hardware programmer available for recovery (GPU EEPROMs are 1.8 V, so a CH341A needs a
-    1.8 V adapter).
+> [!NOTE]
+> **Open problem: would an A100 PCIe VBIOS expose more P-states?**
+>
+> This is the one untried lead after `nvidia-pstated` and the clock-fallback fork both
+> failed: "the pci-e a100 bios has several p-states so I'm fairly certain p-stated would
+> work on that". The PCIe A100 is documented with several performance states and a claimed
+> 5 W idle. Nobody has attempted the flash. It should only be tried on a spare card with a
+> hardware programmer available for recovery (GPU EEPROMs are 1.8 V, so a CH341A needs a
+> 1.8 V adapter).
 
 ---
 
@@ -182,13 +187,15 @@ Three confounders explain the spread, and they have never been varied one at a t
 | Peak field draw on stock air | 254 W at 60 C (8-card rental) |
 | 30-minute `gpu_burn` at a 300 W limit, unlocked 64 GB | **278 / 300 W** |
 
-!!! warning "Never validate stability or cooling with a conventional FP32 burn-in"
-    A healthy 170HX legitimately reports **under 75 W** in an FP32 stress test, because so
-    much of the die is fused off and FP32 throughput is what the CMP lockdown targeted. Use
-    an **integer or memory** benchmark, or a real inference workload, to load the card. In
-    2023 this exact behaviour was misread as a hardware fault before an independent AIDA64
-    run on a separate card on Windows showed the same low draw: the FP32 lockdown is the
-    cause and the low power is the effect.
+> [!WARNING]
+> **Never validate stability or cooling with a conventional FP32 burn-in**
+>
+> A healthy 170HX legitimately reports **under 75 W** in an FP32 stress test, because so
+> much of the die is fused off and FP32 throughput is what the CMP lockdown targeted. Use
+> an **integer or memory** benchmark, or a real inference workload, to load the card. In
+> 2023 this exact behaviour was misread as a hardware fault before an independent AIDA64
+> run on a separate card on Windows showed the same low draw: the FP32 lockdown is the
+> cause and the low power is the effect.
 
 The cleanest full-envelope evidence is a 30-minute `gpu_burn` on an unlocked 8 GB card at a
 300 W limit:
@@ -250,14 +257,16 @@ The 300 W ceiling is real on cards that carry that VBIOS: a 30-minute `gpu_burn`
 `POW 278 / 300 W`. This resolves the apparent contradiction between the driver reporting a
 250 W maximum and the many `-pl 300` reports in circulation.
 
-!!! warning "Experimental: the 300 W VBIOS on a 10 GB card"
-    The 300 W OC VBIOS applies to the **8 GB** card. After the memory unlock, 10 GB cards
-    were confirmed to still have both the core-clock-offset lock and the memory-clock lock
-    in place, pinned at 1215 MHz. A separate 300 W VBIOS recommendation for 10 GB cards
-    circulates, and one owner acquired cards on an unverified compatibility claim, but
-    **nobody in this corpus has verified a 300 W VBIOS combined with the
-    unlock on a 10 GB card.** Note that the unlocker itself contains no power-management
-    code at all, so the only risk surface is the flash. See [VBIOS](../hardware/vbios.md).
+> [!WARNING]
+> **Experimental: the 300 W VBIOS on a 10 GB card**
+>
+> The 300 W OC VBIOS applies to the **8 GB** card. After the memory unlock, 10 GB cards
+> were confirmed to still have both the core-clock-offset lock and the memory-clock lock
+> in place, pinned at 1215 MHz. A separate 300 W VBIOS recommendation for 10 GB cards
+> circulates, and one owner acquired cards on an unverified compatibility claim, but
+> **nobody in this corpus has verified a 300 W VBIOS combined with the
+> unlock on a 10 GB card.** Note that the unlocker itself contains no power-management
+> code at all, so the only risk surface is the flash. See [VBIOS](../hardware/vbios.md).
 
 ---
 
@@ -310,13 +319,15 @@ power limit, is where the efficiency lives. Efficiency at a 1650 ceiling runs 10
 faulted (1650/+375 reads 1205 GFLOP/W but took a device fault). See [Tuning](tuning.md) for the
 full sweep.
 
-!!! danger "The 1390 GFLOP/W peak is not an operating point"
-    The 1400/+350 row above is a single efficiency reading that was never gated on a full-VRAM
-    pattern sweep, and it sits between two recorded failures at the same ceiling: **1400/+325
-    silently corrupted memory** (6 errors, then 3, then 0 across three sweeps) and **1400/+375
-    took a CUDA device fault**. This card has no ECC and no error telemetry, so a run that
-    completes is not evidence the setting was safe. The highest validated offset at a 1400 MHz
-    ceiling is **+300** (138.5 W, 4 sweeps, 0 errors).
+> [!CAUTION]
+> **The 1390 GFLOP/W peak is not an operating point**
+>
+> The 1400/+350 row above is a single efficiency reading that was never gated on a full-VRAM
+> pattern sweep, and it sits between two recorded failures at the same ceiling: **1400/+325
+> silently corrupted memory** (6 errors, then 3, then 0 across three sweeps) and **1400/+375
+> took a CUDA device fault**. This card has no ECC and no error telemetry, so a run that
+> completes is not evidence the setting was safe. The highest validated offset at a 1400 MHz
+> ceiling is **+300** (138.5 W, 4 sweeps, 0 errors).
 
 ### What actually breaks: clock offset, not power
 
@@ -334,15 +345,6 @@ limit:
 | 1700 / +375 | HANG |
 
 ### Power limiting does not fix the 80 GB configuration
-
-!!! note "Superseded"
-    "Power-limiting to 100 W fixes the 80 GB memory instability" was proposed and abandoned
-    within two minutes by the person who proposed it ("hmm nevermind. it's hanging again"),
-    then independently by a second tester the same hour ("even with 100 W limit that llm
-    load failed for me again"), and decisively by the observation that the cards **never
-    drew above about 80 W during the failing load**, so a 100 W ceiling was never binding.
-    The 80 GB failure is a memory address-decode problem, not a power problem. See
-    [80 GB](../frontier/80gb.md).
 
 The same evidence retired the theory that the depopulated VRM causes 80 GB instability: the
 8 GB card has identical power delivery and is entirely stable at 64 GB. See

@@ -11,13 +11,15 @@ reports no ECC state, no correctable-error counters and no volatile/aggregate EC
 capacity and stability claim about this hardware, including the
 [64 GB and 40 GB unlocks](../unlock/memory-geometry.md), is made on non-ECC memory.
 
-!!! question "Open problem"
-    ECC was named as the candidate target immediately after PCIe Gen 2, and then nothing
-    happened. Beyond reading `OPT_ECC_EN` across the comparison cohort and dumping the four
-    `FEATURE_OVERRIDE` ECC words, **nothing has been tried.** The prior question, whether the HBM
-    stacks carry ECC provisioning at all, has one partial answer rather than none: the A100
-    capacity differential below reads as ECC being a slice of the same stacks, not separate
-    storage. That was stated in-channel and never checked against a datasheet.
+> [!NOTE]
+> **Open problem**
+>
+> ECC was named as the candidate target immediately after PCIe Gen 2, and then nothing
+> happened. Beyond reading `OPT_ECC_EN` across the comparison cohort and dumping the four
+> `FEATURE_OVERRIDE` ECC words, **nothing has been tried.** The prior question, whether the HBM
+> stacks carry ECC provisioning at all, has one partial answer rather than none: the A100
+> capacity differential below reads as ECC being a slice of the same stacks, not separate
+> storage. That was stated in-channel and never checked against a datasheet.
 
 ---
 
@@ -52,12 +54,14 @@ looked reachable.
 Confidence on those values: medium. They come from PLM range scans and post-unlock probes rather
 than from a repeated multi-card sweep, and the A100 comparison column is a single card.
 
-!!! warning "Do not confuse `0x00823800` with `0x00823804`"
-    `FEAT_OVR_ECC_PLM` at `0x00823800` and `FEAT_OVR_PLM` at `0x00823804` are distinct
-    registers. The shipping unlock opens `0x00823804` (stock `0xffffff8f`, opened to
-    `0xffffffff`) to reach SS0 and SS1. `0x00823800` also reads `0xffffff8f` stock, which makes
-    the two easy to mix up in a dump. The Gen2-family branches open `0x00823800` too, but only
-    as one of eighteen PLM opens in the PCIe sequence, not for any ECC purpose.
+> [!WARNING]
+> **Do not confuse `0x00823800` with `0x00823804`**
+>
+> `FEAT_OVR_ECC_PLM` at `0x00823800` and `FEAT_OVR_PLM` at `0x00823804` are distinct
+> registers. The shipping unlock opens `0x00823804` (stock `0xffffff8f`, opened to
+> `0xffffffff`) to reach SS0 and SS1. `0x00823800` also reads `0xffffff8f` stock, which makes
+> the two easy to mix up in a dump. The Gen2-family branches open `0x00823800` too, but only
+> as one of eighteen PLM opens in the PCIe sequence, not for any ECC purpose.
 
 ---
 
@@ -89,10 +93,6 @@ compute and memory unlock works at all.
 Layer 2 is the one that closes the route. It is not a "we could not make the write stick"
 failure; it is a "the write is not the thing that decides" failure.
 
-!!! note "Superseded"
-    Any guide that suggests enabling ECC by opening `0x823800` and writing the `FEAT_OVR_ECC`
-    words is describing a route refuted on 2026-07-16. There is no replacement route.
-
 ---
 
 ## The `ecc` branch contains no ECC code
@@ -110,21 +110,6 @@ complete diff against `master`:
 intention, not work.
 
 Two related corrections to the record:
-
-!!! note "Superseded: where `| ECC | Planned |` actually lives"
-    A widely repeated claim places the feature-table rows `| ECC | Planned |` and
-    `| NVLink | Planned |` in the `ecc` branch README. A code check says otherwise: the `ecc`
-    branch README carries the same three-row feature table as `master`. Those two rows, plus
-    `| PCIe Gen2 x4 | Platform-dependent (no separate Root-port patch) |`, appear only in the
-    `memory` and `housekeeping` branch READMEs. The substance of the original claim (ECC never
-    implemented, branch name misleading) is correct.
-
-!!! note "Superseded: the `ecc` branch README device-ID line"
-    It reads "NVIDIA CMP 170HX (`10de:20c2` preferred; `20b0` / `2082` detected but unlock is
-    `0x20C2`-gated)". That is wrong as of shipping `master`: the in-driver unlock is gated on
-    **both** `0x20C2` and `0x2082`, in every one of the six patches and in `install.sh`. Only
-    `20b0` is detected-but-not-unlocked. See
-    [identify your card](../start/identify-your-card.md).
 
 For completeness: the `PG199` branch snapshot is byte-identical to the `ecc` snapshot except for
 `_COMMITS.txt` (`ecc` lists `bb4d669`; `PG199`'s is zero bytes). Their `_DIFF_vs_master.patch`
@@ -165,16 +150,6 @@ This is the honest part of the page, and it is longer than the part with results
 ---
 
 ## The origin story that is not evidence
-
-!!! note "Superseded: the ECC-reject-batch theory"
-    A recurring explanation holds that the 170HX population consists of A100 dies rejected for
-    ECC memory errors, and points at research papers mentioning memory errors and at the
-    frequency of ECC faults on fielded A100s. Nothing ever tested it. A competing and
-    better-supported mechanism was offered in the same discussion: soldering HBM2 stacks to the
-    interposer is error-prone, and a stack that does not work is fused off. That mechanism
-    explains the observed floorsweep pattern (see [memory subsystem](../hardware/memory-subsystem.md))
-    without requiring an ECC-specific reject pipeline. Recorded as a dead end only in the sense
-    that no test was ever proposed or run.
 
 The fuse evidence leans toward the defect reading rather than deliberate segmentation, at
 least on the memory side: on one 10 GB card, `FBP_DEFECTIVE` (`0x8205CC`) and `FBP_DISABLE` (`0x820364`)
@@ -236,10 +211,12 @@ Ranked most tractable first. All are unstarted.
 3. **Find a consumer of `0x00823814` that is not POR-latched.** This is the only route that
    could revive the register attack, and no candidate has been named.
 
-!!! danger "Do not treat an unlocked card as ECC-protected"
-    Nothing on this page describes a working ECC path. An unlocked 170HX running 40 GB or 64 GB
-    is running unprotected HBM at a geometry the factory never validated. For workloads where a
-    silent bit flip is unacceptable, this is not the right hardware.
+> [!CAUTION]
+> **Do not treat an unlocked card as ECC-protected**
+>
+> Nothing on this page describes a working ECC path. An unlocked 170HX running 40 GB or 64 GB
+> is running unprotected HBM at a geometry the factory never validated. For workloads where a
+> silent bit flip is unacceptable, this is not the right hardware.
 
 ---
 

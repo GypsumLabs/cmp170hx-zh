@@ -71,10 +71,12 @@ Useful because it tells you where to probe when a card is dead on the bus.
 
 Documented on schematics page 48; the MP1475DJ itself is on page 18.
 
-!!! tip "Diagnostic consequence"
-    If the card is dead on the PCIe bus, **check the 12 V input filter inductors and the
-    5 V rail switching node first, not the core rail.** This sequence was used successfully
-    to guide a real repair.
+> [!TIP]
+> **Diagnostic consequence**
+>
+> If the card is dead on the PCIe bus, **check the 12 V input filter inductors and the
+> 5 V rail switching node first, not the core rail.** This sequence was used successfully
+> to guide a real repair.
 
 ---
 
@@ -120,19 +122,13 @@ This has been refuted from several directions and should be treated as settled:
 - **The 80 GB failures were never power-related:** the failing cards never drew above about
   80 W during the crashing workload, against a 250 W limit.
 
-!!! note "Superseded"
-    "The trimmed VRM is why the 10 GB to 80 GB unlock is unstable" was the leading hardware
-    theory in June 2026. It was superseded through July 2026 by the evidence above. Nobody
-    ever repopulated a VRM to test it directly, so it is not formally refuted, but every
-    piece of power evidence points away from it. The in-channel verdict: "the VRM and any
-    other missing component on the board is not the reason". See
-    [80 GB](../frontier/80gb.md).
-
-!!! danger "Missing capacitors are a different matter from missing phases"
-    An LC filter on a MOSFET output with its capacitors missing turns a chopped switching
-    waveform into unfiltered output. Best case the card does not boot; **overvolt is
-    possible.** If you are adding parts back, do not add MOSFETs and inductors without their
-    filter capacitors.
+> [!CAUTION]
+> **Missing capacitors are a different matter from missing phases**
+>
+> An LC filter on a MOSFET output with its capacitors missing turns a chopped switching
+> waveform into unfiltered output. Best case the card does not boot; **overvolt is
+> possible.** If you are adding parts back, do not add MOSFETs and inductors without their
+> filter capacitors.
 
 An overload counter-argument also stands on the record: the 8 GB card already has an
 overclock VBIOS raising the limit to 300 W (the same as A100 PCIe), and an overloaded PWM
@@ -159,20 +155,22 @@ to clock higher. See [Power and PSU](../operations/power-and-psu.md) and
 
 ## VRM registers: a dead end with a hazard attached
 
-!!! danger "`0x20340` / `0x20344` and runtime devinit can overvolt the card"
-    A proposal to change VRM duty cycle directly through registers `0x20340` / `0x20344` was
-    posted as a shot in the dark: "Not sure if 0x20340/0x20344 changing the duty cycle on
-    VRMs directly would give the clock increase on its own. I don't think there's a PLL
-    controlling clocks. If there is, then just changing the duty cycle should work on its
-    own." The reasoning is self-contradictory as written: if there is no PLL, a duty-cycle
-    change alone should not set a clock. **It was never tested.**
-
-    The same registers were separately flagged as an **overvolt hazard**: re-executing
-    devinit through the PMU at runtime could push the VRM **past 1.3 V** with a wrong value,
-    because the devinit region containing timing and MRS programming is part of the training
-    section that also covers clocks, PLLs and VID-PWM. Recorded here only because the
-    addresses may be useful later, and because anyone poking at runtime devinit should know
-    what is adjacent to it.
+> [!CAUTION]
+> **`0x20340` / `0x20344` and runtime devinit can overvolt the card**
+>
+> A proposal to change VRM duty cycle directly through registers `0x20340` / `0x20344` was
+> posted as a shot in the dark: "Not sure if 0x20340/0x20344 changing the duty cycle on
+> VRMs directly would give the clock increase on its own. I don't think there's a PLL
+> controlling clocks. If there is, then just changing the duty cycle should work on its
+> own." The reasoning is self-contradictory as written: if there is no PLL, a duty-cycle
+> change alone should not set a clock. **It was never tested.**
+>
+> The same registers were separately flagged as an **overvolt hazard**: re-executing
+> devinit through the PMU at runtime could push the VRM **past 1.3 V** with a wrong value,
+> because the devinit region containing timing and MRS programming is part of the training
+> section that also covers clocks, PLLs and VID-PWM. Recorded here only because the
+> addresses may be useful later, and because anyone poking at runtime devinit should know
+> what is adjacent to it.
 
 These addresses appear **nowhere** in the shipping unlocker or in any of the 12 unreleased
 branches, verified by keyword sweep.
@@ -187,13 +185,6 @@ A keyword sweep of the shipping tree and all 12 unreleased branch snapshots for 
 touches privilege-level masks, SS0/SS1, CFG1, LMR and the GSP framebuffer/PMA description
 and nothing else.
 
-!!! note "Superseded"
-    The project's `docs` branch expands PMA as "Power Management Array". **This is wrong.**
-    `driver/patches/0003-late-pma.patch` is pure memory-manager code: PMA is the Resource
-    Manager's **Physical Memory Allocator**, and the "late PMA" step extends the high PMA
-    region to cover the newly exposed framebuffer. It has nothing to do with power
-    management. See [Driver patches](../unlock/driver-patches.md).
-
 Every power and thermal characteristic of an unlocked card is therefore a property of the
 **stock VBIOS and stock board**, and cannot be fixed, or broken, by the unlocker.
 
@@ -204,41 +195,47 @@ Every power and thermal characteristic of an unlocked card is therefore a proper
 An unpopulated 4-pin pad on the PCB was measured carrying **12 V** and is suspected to be a
 fan header.
 
-!!! question "Open problem: is it a fan header, and is it PWM-controllable?"
-    One participant reported "it has 12v and gnd", which is power only: no tachometer, no
-    PWM, meaning any fan attached would run at fixed full speed with no RPM reporting. A
-    skeptic in the same thread said the connector "doesn't look like a fan con". **No
-    photo-confirmed pinout, no mating receptacle part number, and no working fan install
-    has ever been posted.** Next step: scope the remaining two pins while the card idles and
-    loads, and trace them on the leaked schematic. This matters because it would enable
-    standalone per-card fan control with no external controller. See
-    [Cooling](../operations/cooling.md).
+> [!NOTE]
+> **Open problem: is it a fan header, and is it PWM-controllable?**
+>
+> One participant reported "it has 12v and gnd", which is power only: no tachometer, no
+> PWM, meaning any fan attached would run at fixed full speed with no RPM reporting. A
+> skeptic in the same thread said the connector "doesn't look like a fan con". **No
+> photo-confirmed pinout, no mating receptacle part number, and no working fan install
+> has ever been posted.** Next step: scope the remaining two pins while the card idles and
+> loads, and trace them on the leaked schematic. This matters because it would enable
+> standalone per-card fan control with no external controller. See
+> [Cooling](../operations/cooling.md).
 
 ---
 
 ## Open and unresolved
 
-!!! question "Open problem: do power-raised cards blow a rear-board capacitor after prolonged mining?"
-    One owner relayed that the supplier of their cards had this happen repeatedly and
-    showed a blown board: "literally goes poof and lets out black smoke", described as
-    cheap and repairable, with the suspected parts narrowed to two components on the rear of
-    an 8 GB board believed to be capacitors. That same operator ran cards at around 56 C,
-    raising the suspicion that the wrong sensor was being monitored and the VRM was
-    overheating under bandwidth-bound mining loads. An experienced long-time owner said they
-    had never seen this failure and doubted it, arguing the components can handle far more
-    than the BIOS allows. No photograph of the failed component and no measurement were
-    produced. **What would settle it:** a photograph of a failed board with the designator
-    readable, plus a thermocouple reading on the VRM under a bandwidth-bound load.
+> [!NOTE]
+> **Open problem: do power-raised cards blow a rear-board capacitor after prolonged mining?**
+>
+> One owner relayed that the supplier of their cards had this happen repeatedly and
+> showed a blown board: "literally goes poof and lets out black smoke", described as
+> cheap and repairable, with the suspected parts narrowed to two components on the rear of
+> an 8 GB board believed to be capacitors. That same operator ran cards at around 56 C,
+> raising the suspicion that the wrong sensor was being monitored and the VRM was
+> overheating under bandwidth-bound mining loads. An experienced long-time owner said they
+> had never seen this failure and doubted it, arguing the components can handle far more
+> than the BIOS allows. No photograph of the failed component and no measurement were
+> produced. **What would settle it:** a photograph of a failed board with the designator
+> readable, plus a thermocouple reading on the VRM under a bandwidth-bound load.
 
-!!! question "Open problem: are the medium rear-side SMD capacitors near the core needed?"
-    Raised from a photo by someone who had previously seen an RTX 2070 with two of these
-    broken off, which wrecked its voltages: roughly two per MOSFET on the left and right
-    capacitor rows, dual-placed for redundancy, but at least one of each pair must be
-    present and working. Flagged explicitly as a hypothesis, not a finding, and specifically
-    as a possible 80 GB stability factor. This concerns local decoupling rather than VRM
-    phases, so it is not covered by the phase-repopulation refutation above. **Next step:**
-    photograph the rear of a working 8 GB and a working 10 GB card and compare against the
-    schematic's C-designator list.
+> [!NOTE]
+> **Open problem: are the medium rear-side SMD capacitors near the core needed?**
+>
+> Raised from a photo by someone who had previously seen an RTX 2070 with two of these
+> broken off, which wrecked its voltages: roughly two per MOSFET on the left and right
+> capacitor rows, dual-placed for redundancy, but at least one of each pair must be
+> present and working. Flagged explicitly as a hypothesis, not a finding, and specifically
+> as a possible 80 GB stability factor. This concerns local decoupling rather than VRM
+> phases, so it is not covered by the phase-repopulation refutation above. **Next step:**
+> photograph the rear of a working 8 GB and a working 10 GB card and compare against the
+> schematic's C-designator list.
 
 ---
 

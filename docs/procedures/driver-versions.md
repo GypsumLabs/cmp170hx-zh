@@ -58,10 +58,12 @@ https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${VERSION}.t
 It is cached under `driver/.build/` and re-extracted clean on every run. No NVIDIA code ships in
 the cmpunlocker repository itself.
 
-!!! note "No checksum on the download"
-    `build.sh` fetches the tarball with `curl -L --fail` and verifies nothing. There is no
-    recorded SHA-256 anywhere in the tree. Recording an expected hash per version in
-    `driver/VERSION` or `common/constants.yaml` is an obvious, unimplemented improvement.
+> [!NOTE]
+> **No checksum on the download**
+>
+> `build.sh` fetches the tarball with `curl -L --fail` and verifies nothing. There is no
+> recorded SHA-256 anywhere in the tree. Recording an expected hash per version in
+> `driver/VERSION` or `common/constants.yaml` is an obvious, unimplemented improvement.
 
 ---
 
@@ -94,12 +96,14 @@ GCC version:  gcc version 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1)
 kernel:       6.8.0-136-generic
 ```
 
-!!! warning "That capture is from a rig where the unlock did not fire"
-    Read it as evidence that `610.43.02` exists and installs, not that it unlocked. The
-    `dvs-builder` build string is NVIDIA's own, so the module loaded there was the **stock** one,
-    not the patched one; on the same rig `verify.sh` reported every GPU `MISSING` and no
-    `SEC2_DEBUG` lines in `dmesg`. Do not read the gcc or kernel version in this block as a
-    known-good build environment.
+> [!WARNING]
+> **That capture is from a rig where the unlock did not fire**
+>
+> Read it as evidence that `610.43.02` exists and installs, not that it unlocked. The
+> `dvs-builder` build string is NVIDIA's own, so the module loaded there was the **stock** one,
+> not the patched one; on the same rig `verify.sh` reported every GPU `MISSING` and no
+> `SEC2_DEBUG` lines in `dmesg`. Do not read the gcc or kernel version in this block as a
+> known-good build environment.
 
 and, separately, `NVIDIA-SMI 610.43.03 / KMD Version: 610.43.03 / CUDA UMD Version: 13.3`. A
 packaged NixOS module in circulation hard-asserts
@@ -112,13 +116,15 @@ lists only `610.43.03` and `610.43.02`. The backport branch is the sole exceptio
 
 ## `610.43.02` or `610.43.03`?
 
-!!! question "Open problem"
-    Nobody has answered this. The question "is 610.43.02 or 610.43.03 more reliable?" was asked
-    directly in-channel on 2026-07-24 and never answered. Successful unlocks exist on both.
-    `610.43.03` is the default only because it is the first line of `driver/VERSION`.
-
-    The experiment is trivial and nobody has run it: collect the `driver_version` metadata file
-    plus the `SEC2_DEBUG` PLM-open success rate from the existing installed base and compare.
+> [!NOTE]
+> **Open problem**
+>
+> Nobody has answered this. The question "is 610.43.02 or 610.43.03 more reliable?" was asked
+> directly in-channel on 2026-07-24 and never answered. Successful unlocks exist on both.
+> `610.43.03` is the default only because it is the first line of `driver/VERSION`.
+>
+> The experiment is trivial and nobody has run it: collect the `driver_version` metadata file
+> plus the `SEC2_DEBUG` PLM-open success rate from the existing installed base and compare.
 
 Practical guidance: **take `610.43.03`, the default.** If a card refuses to unlock cleanly on one
 of the two, trying the other is a cheap and legitimate diagnostic step, but there is no evidence
@@ -128,12 +134,14 @@ either way that it will help.
 
 ## Pinning
 
-!!! warning "Reasoned advice, not a measured result"
-    The recommended long-term mitigation against a future NVIDIA driver closing the hole is to
-    **pin the driver at 610**, the same way P100 and V100 operators pin around 580. At least one
-    operator had already pinned the package as a precaution. This is unchallenged reasoning
-    rather than a demonstrated need: no blocking driver exists, and the open kernel modules
-    already published on GitHub cannot be recalled.
+> [!WARNING]
+> **Reasoned advice, not a measured result**
+>
+> The recommended long-term mitigation against a future NVIDIA driver closing the hole is to
+> **pin the driver at 610**, the same way P100 and V100 operators pin around 580. At least one
+> operator had already pinned the package as a precaution. This is unchallenged reasoning
+> rather than a demonstrated need: no blocking driver exists, and the open kernel modules
+> already published on GitHub cannot be recalled.
 
 ---
 
@@ -166,16 +174,18 @@ See [Install](install.md) for the full procedure and [Uninstall](uninstall.md) f
 
 ## The backport branch: `clanker/driver-port`
 
-!!! warning "Experimental: source-verified, never boot-tested"
-    The 595, 590 and 580 support is an unreleased branch. Its own README states verbatim:
-
-    > `595.71.05, 590.48.01, and 580.105.08 are source-verified (patches apply cleanly and the
-    > unlock logic matches the 610.43.0x path) but have not yet been boot-tested on physical CMP
-    > 170HX hardware.`
-
-    The branch was announced on 2026-07-21 with an explicit request for testers. **No
-    confirmation of success appears anywhere in the record through 2026-07-28.** Treat a
-    successful build as evidence of nothing until a card boots.
+> [!WARNING]
+> **Experimental: source-verified, never boot-tested**
+>
+> The 595, 590 and 580 support is an unreleased branch. Its own README states verbatim:
+>
+> > `595.71.05, 590.48.01, and 580.105.08 are source-verified (patches apply cleanly and the
+> > unlock logic matches the 610.43.0x path) but have not yet been boot-tested on physical CMP
+> > 170HX hardware.`
+>
+> The branch was announced on 2026-07-21 with an explicit request for testers. **No
+> confirmation of success appears anywhere in the record through 2026-07-28.** Treat a
+> successful build as evidence of nothing until a card boots.
 
 Branch tip `153cd6d`, 2026-07-21.
 
@@ -239,32 +249,34 @@ trees slightly more permissive rather than less.
 
 ### The version list is internally inconsistent
 
-!!! danger "Seven of twelve whitelisted versions have no verified patch anchor"
-    The branch's `driver/VERSION` lists **twelve** versions:
-
-    ```text
-    610.43.03  610.43.02
-    595.71.05  595.58.03  595.45.04
-    590.48.01
-    580.105.08 580.95.05  580.82.09  580.82.07  580.76.05  580.65.06
-    ```
-
-    but only **four** patch directories exist, and `build.sh` selects one by
-    `BRANCH="${VERSION%%.*}"`, that is, by **major version alone**. So `595.45.04` is patched
-    with `595.71.05` hunks and `580.65.06` with `580.105.08` hunks. Five of the twelve carry
-    some evidence: `610.43.03` and `610.43.02` are boot-tested, and `595.71.05`, `590.48.01`
-    and `580.105.08` are the three the branch README calls source-verified. The remaining
-    seven (`595.58.03`, `595.45.04`, `580.95.05`, `580.82.09`, `580.82.07`, `580.76.05`,
-    `580.65.06`) rely entirely on `patch -p1` fuzz matching.
-
-    Meanwhile `common/constants.yaml` on the same branch lists only **five** versions
-    (`610.43.03`, `610.43.02`, `595.71.05`, `590.48.01`, `580.105.08`), disagreeing with
-    `VERSION`. `install.sh` accepts any of the twelve, so a user can reach the unverified state
-    without doing anything unusual.
-
-    The failure risk here is reasoned inference from reading the code, not an observed patch
-    reject. The test is purely offline and mechanical: download each of the seven extra tarballs
-    and run `patch -p1 --dry-run` against the major-version patch directory. No hardware needed.
+> [!CAUTION]
+> **Seven of twelve whitelisted versions have no verified patch anchor**
+>
+> The branch's `driver/VERSION` lists **twelve** versions:
+>
+> ```text
+> 610.43.03  610.43.02
+> 595.71.05  595.58.03  595.45.04
+> 590.48.01
+> 580.105.08 580.95.05  580.82.09  580.82.07  580.76.05  580.65.06
+> ```
+>
+> but only **four** patch directories exist, and `build.sh` selects one by
+> `BRANCH="${VERSION%%.*}"`, that is, by **major version alone**. So `595.45.04` is patched
+> with `595.71.05` hunks and `580.65.06` with `580.105.08` hunks. Five of the twelve carry
+> some evidence: `610.43.03` and `610.43.02` are boot-tested, and `595.71.05`, `590.48.01`
+> and `580.105.08` are the three the branch README calls source-verified. The remaining
+> seven (`595.58.03`, `595.45.04`, `580.95.05`, `580.82.09`, `580.82.07`, `580.76.05`,
+> `580.65.06`) rely entirely on `patch -p1` fuzz matching.
+>
+> Meanwhile `common/constants.yaml` on the same branch lists only **five** versions
+> (`610.43.03`, `610.43.02`, `595.71.05`, `590.48.01`, `580.105.08`), disagreeing with
+> `VERSION`. `install.sh` accepts any of the twelve, so a user can reach the unverified state
+> without doing anything unusual.
+>
+> The failure risk here is reasoned inference from reading the code, not an observed patch
+> reject. The test is purely offline and mechanical: download each of the seven extra tarballs
+> and run `patch -p1 --dry-run` against the major-version patch directory. No hardware needed.
 
 ---
 
@@ -279,12 +291,14 @@ trees slightly more permissive rather than less.
 | You are pinned to 595, 590 or 580 by another application | The backport is your only option, and you would be the first person to boot it. Do this on a machine you can afford to break, and report the `POST-BooterLoad verify` line either way. |
 | You want to keep a 170HX alongside Volta or Maxwell cards | This is exactly the motivation for the 580 backport: 580 covers everything from a 980 Ti to an A100. The port answers it in source form and nowhere else. |
 
-!!! danger "Driver-patch development on bare metal is destructive"
-    One developer reported needing to reinstall the OS after every botched `nvidia.ko` deploy.
-    The accepted remedy is to test modified drivers in a VM or container. For Proxmox
-    passthrough specifically, use **SeaBIOS, not UEFI/OVMF**: UEFI produces RM init and adapter
-    failures that look exactly like the exploit simply not working, and that misdiagnosis cost at
-    least two people significant time.
+> [!CAUTION]
+> **Driver-patch development on bare metal is destructive**
+>
+> One developer reported needing to reinstall the OS after every botched `nvidia.ko` deploy.
+> The accepted remedy is to test modified drivers in a VM or container. For Proxmox
+> passthrough specifically, use **SeaBIOS, not UEFI/OVMF**: UEFI produces RM init and adapter
+> failures that look exactly like the exploit simply not working, and that misdiagnosis cost at
+> least two people significant time.
 
 ---
 
@@ -324,17 +338,19 @@ read `cat /proc/driver/nvidia/version` (it should **not** say `dvs-builder`) and
 
 ## Open questions on this page
 
-!!! question "Open problem"
-    1. **Is 610.43.02 or 610.43.03 more reliable?** Asked repeatedly, never answered.
-    2. **Do the 595 / 590 / 580 ports boot at all?** One tester per branch reporting
-       `dmesg | grep SEC2_DEBUG` and the `POST-BooterLoad verify` line settles it.
-    3. **Do the seven non-verified point releases in the port branch's `VERSION` even apply?**
-       Answerable offline with `patch -p1 --dry-run`.
-    4. **Whether the port branch and the Gen2 or multi-card lineages will ever merge.** They were
-       developed independently. Choosing one currently means giving up the other. The merge is
-       structurally simple, since the port only changes `PATCH_DIR` computation, but it requires
-       regenerating the Gen2 patches `0007` and `0008` against 580, 590 and 595 sources.
-    5. **WSL and HiveOS support.** Both asked about, both unanswered, no evidence either way.
+> [!NOTE]
+> **Open problem**
+>
+> 1. **Is 610.43.02 or 610.43.03 more reliable?** Asked repeatedly, never answered.
+> 2. **Do the 595 / 590 / 580 ports boot at all?** One tester per branch reporting
+>    `dmesg | grep SEC2_DEBUG` and the `POST-BooterLoad verify` line settles it.
+> 3. **Do the seven non-verified point releases in the port branch's `VERSION` even apply?**
+>    Answerable offline with `patch -p1 --dry-run`.
+> 4. **Whether the port branch and the Gen2 or multi-card lineages will ever merge.** They were
+>    developed independently. Choosing one currently means giving up the other. The merge is
+>    structurally simple, since the port only changes `PATCH_DIR` computation, but it requires
+>    regenerating the Gen2 patches `0007` and `0008` against 580, 590 and 595 sources.
+> 5. **WSL and HiveOS support.** Both asked about, both unanswered, no evidence either way.
 
 ---
 

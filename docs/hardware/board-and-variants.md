@@ -48,11 +48,13 @@ A third device ID, `10de:20b0`, is detected by the installer but is **not** unlo
 in-driver gate accepts `0x20C2` and `0x2082` only, so a `20b0` card installs the tool without
 unlocking anything. `10de:20b0` is the A100 SXM4 40 GB ID.
 
-!!! danger "Getting the variant wrong is the single most consequential identification error"
-    The shipping driver picks geometry from the PCI device ID at runtime, so it will do the right
-    thing on its own. But a human who assumes "8 GB means 40 GB" or "10 GB means 64 GB" will
-    misread every register capture, every capacity report and every troubleshooting thread. Read
-    the device ID first, every time.
+> [!CAUTION]
+> **Getting the variant wrong is the single most consequential identification error**
+>
+> The shipping driver picks geometry from the PCI device ID at runtime, so it will do the right
+> thing on its own. But a human who assumes "8 GB means 40 GB" or "10 GB means 64 GB" will
+> misread every register capture, every capacity report and every troubleshooting thread. Read
+> the device ID first, every time.
 
 ---
 
@@ -107,7 +109,7 @@ These are read-only probes over BAR0. See [fuses and OTP](fuses-and-otp.md) for 
 
 | Signal | 8 GB | 10 GB |
 |---|---|---|
-| PCB silkscreen above the gold fingers | `180-11001-DAAA-B15` (also seen `180-11001-DAAA-045`) | same board family |
+| PCB silkscreen above the gold fingers | `180-11001-DAAA-B15` (also seen `180-11001-DAAA-B35`, `180-11001-DAAA-045`) | same board family |
 | ASIC marking | `GA100-105F-A1` | `GA100-105A-A1` |
 | HBM vendor (GPU-Z, or stack markings) | SK Hynix HBM2e | Samsung HBM2 |
 | Board PN sticker / InfoROM `BRD` | `900-11001-0108-000` | `900-11001-0105-000` |
@@ -129,25 +131,27 @@ discriminator short of reading the HBM stack markings.
 | `GA100-105F-A1` | ASIC marking on the 170HX | The cut-down bin. The `105` matches the GPU PN suffix `-105-A1` on both SKUs |
 | `PG199` | The NVIDIA DRIVE A100 (A100D) **SXM2** module, PCI `10DE:20BB` | **Not a 170HX board.** A different part entirely |
 
-!!! warning "PG199 is a recurring source of confusion, in three different ways"
-    1. **PG199 is not the 170HX board code.** It is the DRIVE A100 SXM2 module. It was repeatedly
-       floated as an unlock candidate because it shares the 170HX's memory topology (4-stack
-       Hynix HBM2e, 4096-bit, sold as 32 GB, some sources listing a 40 GB SKU) and would need no
-       PCIe soldering. A first-hand owner reported 96 SMs rather than 108, supported core clocks
-       of only 1140-1260 MHz, PCIe 3.0 x16, brutal to cool, and difficult to run training loads on
-       under water. TechPowerUp's 6144-bit listing for it was called wrong. No PG199 unlock exists.
-       One attempt is on record: a modified cmpunlocker was applied to a PG199 board on
-       2026-07-26, the intended CFG1 and LMR writes landed and the PLMs opened, but boot failed
-       with `Booter failed 0x54` and GSP never finished init.
-    2. **The unlocker branch named `PG199` does not implement PG199 support.** Its diff against
-       master touches only `README.md`, `common/constants.yaml` (comments only), `driver/build.sh`,
-       `install.sh`, `remove.sh` and `requirements.txt`, and deletes the PR template. Its profiles
-       are byte-identical to master's 8 GB and 10 GB profiles, no driver patch is changed, and
-       `0x20BB` appears nowhere in the repository. It makes no device-detection change at all:
-       master's own `install.sh` already greps for `10de:20b0` alongside `10de:20c2` and
-       `10de:2082`, and the branch only rewords the README requirement line to say so.
-    3. **TechPowerUp entry 283106 is a DRIVE-PG199-PROD image and must never be flashed to a
-       170HX.** See [VBIOS](vbios.md).
+> [!WARNING]
+> **PG199 is a recurring source of confusion, in three different ways**
+>
+> 1. **PG199 is not the 170HX board code.** It is the DRIVE A100 SXM2 module. It was repeatedly
+>    floated as an unlock candidate because it shares the 170HX's memory topology (4-stack
+>    Hynix HBM2e, 4096-bit, sold as 32 GB, some sources listing a 40 GB SKU) and would need no
+>    PCIe soldering. A first-hand owner reported 96 SMs rather than 108, supported core clocks
+>    of only 1140-1260 MHz, PCIe 3.0 x16, brutal to cool, and difficult to run training loads on
+>    under water. TechPowerUp's 6144-bit listing for it was called wrong. No PG199 unlock exists.
+>    One attempt is on record: a modified cmpunlocker was applied to a PG199 board on
+>    2026-07-26, the intended CFG1 and LMR writes landed and the PLMs opened, but boot failed
+>    with `Booter failed 0x54` and GSP never finished init.
+> 2. **The unlocker branch named `PG199` does not implement PG199 support.** Its diff against
+>    master touches only `README.md`, `common/constants.yaml` (comments only), `driver/build.sh`,
+>    `install.sh`, `remove.sh` and `requirements.txt`, and deletes the PR template. Its profiles
+>    are byte-identical to master's 8 GB and 10 GB profiles, no driver patch is changed, and
+>    `0x20BB` appears nowhere in the repository. It makes no device-detection change at all:
+>    master's own `install.sh` already greps for `10de:20b0` alongside `10de:20c2` and
+>    `10de:2082`, and the branch only rewords the README requirement line to say so.
+> 3. **TechPowerUp entry 283106 is a DRIVE-PG199-PROD image and must never be flashed to a
+>    170HX.** See [VBIOS](vbios.md).
 
 ---
 
@@ -165,27 +169,31 @@ discriminator short of reading the HBM stack markings.
 
 The package legend on the 170HX also reads `NVIDIA / B KR 2120A1 / TBSG42.M0W e1`.
 
-!!! question "Open problem"
-    Whether the main-area thermal pad is 1.5 mm or 2 mm. The 1.5 mm and 3 mm figures came from an
-    owner with the card open and a photograph; a "2 mm" figure came from a different participant
-    prefaced with "I think". The T10/T15 bits are corroborated by both. A caliper measurement of a
-    stock pad would settle it.
+> [!NOTE]
+> **Open problem**
+>
+> Whether the main-area thermal pad is 1.5 mm or 2 mm. The 1.5 mm and 3 mm figures came from an
+> owner with the card open and a photograph; a "2 mm" figure came from a different participant
+> prefaced with "I think". The T10/T15 bits are corroborated by both. A caliper measurement of a
+> stock pad would settle it.
 
 Cooling, teardown order and waterblock fitment are covered on [cooling](../operations/cooling.md).
 The one board-specific hazard worth repeating here, because it is a property of the *depopulated
 PCB* rather than of any particular cooler:
 
-!!! danger "Cover every unpopulated IC footprint before lowering a waterblock"
-    All unpopulated IC footprints within reach of the block's contact pillars must be covered with
-    thermal pad, or the block's metal pillars can short across the exposed copper pads and
-    permanently kill the card. **Because the 170HX is a depopulated A100 board it has far more
-    bare footprints than a real A100 and is correspondingly more dangerous to waterblock.** Pad
-    placement: the DrMOS positions left and right of the ASIC; bottom-left and bottom-right of the
-    ASIC; the PMIC to the right of the die between an inductor and a capacitor; and the two PMICs
-    to the left of the die below the 3.3 µH inductor. Confidence is high for the instruction and
-    the mechanism; the causal attribution rests on one card that died about an hour after a
-    waterblock install, competing with a pre-existing mining-wear fault, and was never definitively
-    isolated.
+> [!CAUTION]
+> **Cover every unpopulated IC footprint before lowering a waterblock**
+>
+> All unpopulated IC footprints within reach of the block's contact pillars must be covered with
+> thermal pad, or the block's metal pillars can short across the exposed copper pads and
+> permanently kill the card. **Because the 170HX is a depopulated A100 board it has far more
+> bare footprints than a real A100 and is correspondingly more dangerous to waterblock.** Pad
+> placement: the DrMOS positions left and right of the ASIC; bottom-left and bottom-right of the
+> ASIC; the PMIC to the right of the die between an inductor and a capacitor; and the two PMICs
+> to the left of the die below the 3.3 µH inductor. Confidence is high for the instruction and
+> the mechanism; the causal attribution rests on one card that died about an hour after a
+> waterblock install, competing with a pre-existing mining-wear fault, and was never definitively
+> isolated.
 
 ---
 
@@ -214,12 +222,14 @@ the board can move at all, and the PCB cannot be lifted vertically because the P
 slides into a slot in the backplane. That step is documented as having confused a well-known
 hardware channel on its first attempt.
 
-!!! question "Open problem"
-    Are the 4-pin fan-header pads live and PWM-controllable? One pin was measured at 12 V. The
-    mating receptacle part number is unknown and nobody has established whether a tachometer or
-    PWM signal is present. Scoping the remaining two pins at idle and under load, and tracing them
-    on the leaked schematic, would answer it. It matters because it would enable standalone
-    per-card fan control with no external controller.
+> [!NOTE]
+> **Open problem**
+>
+> Are the 4-pin fan-header pads live and PWM-controllable? One pin was measured at 12 V. The
+> mating receptacle part number is unknown and nobody has established whether a tachometer or
+> PWM signal is present. Scoping the remaining two pins at idle and under load, and tracing them
+> on the leaked schematic, would answer it. It matters because it would enable standalone
+> per-card fan control with no external controller.
 
 ### Memory apertures
 
@@ -258,20 +268,22 @@ only 12 of the 24 yields x8. The mod is purely physical: it works with no softwa
 | Package | 0402 |
 | Value | 220 nF (0.22 µF) |
 | Dielectric | **X7R** (frequently miswritten as "XR7") |
-| Voltage rating | ≥ 16 V canonical; ≥ 10 V is the loosest floor anyone reported |
-| Manufacturer part | Samsung Electro-Mechanics `CL05B224KO5NNNC` (220 nF, 16 V, X7R, 0402) |
+| Voltage rating | ≥ 6.3 V. The x16 mod that is known to have worked used 6.3 V parts |
+| Manufacturer part | Taiyo Yuden `MAASJ105SB7224KFCA01` (220 nF, 6.3 V, X7R, 0402). Samsung `CL05B224KO5NNNC` (16 V) also reported working |
 | Designators | roughly C1100-C1350, from schematic page 3 "IO: PCIe CONNECTOR" |
 | Distributor numbers | Digi-Key `3886834` and Digi-Key `1276-1176-1-ND` are both cited; neither is verified against the other. Quote the manufacturer part |
 | Reported substitute | 100 nF 16 V X7R worked for one tester; another desoldered equivalents from a dead motherboard |
 
-!!! danger "The capacitor mod changes lane WIDTH only. It never changes PCIe GENERATION."
-    A cap-modded card with no unlocker reports **x16 at PCIe 1.0**. Conversely, Gen2 (5 GT/s) has
-    been reached in software on completely unmodded **x4** cards. The two axes are independent.
-    This is settled from source code: no file in the shipping repository or in any of the twelve
-    unreleased branches contains the strings "capacitor", "AC coupling", "solder" or any
-    lane-width register, and a grep over the full history returns nothing. The experimental `Gen2`
-    branch manipulates link **speed** only. See [PCIe subsystem](pcie-subsystem.md) and
-    [PCIe Gen2](../unlock/pcie-gen2.md).
+> [!CAUTION]
+> **The capacitor mod changes lane WIDTH only. It never changes PCIe GENERATION.**
+>
+> A cap-modded card with no unlocker reports **x16 at PCIe 1.0**. Conversely, Gen2 (5 GT/s) has
+> been reached in software on completely unmodded **x4** cards. The two axes are independent.
+> This is settled from source code: no file in the shipping repository or in any of the twelve
+> unreleased branches contains the strings "capacitor", "AC coupling", "solder" or any
+> lane-width register, and a grep over the full history returns nothing. The experimental `Gen2`
+> branch manipulates link **speed** only. See [PCIe subsystem](pcie-subsystem.md) and
+> [PCIe Gen2](../unlock/pcie-gen2.md).
 
 Partial or bridged solder work negotiates down to the next legal width (16 to 8 to 4 to 1) rather
 than failing outright, which makes the reported lane count a direct diagnostic of solder quality.
@@ -287,20 +299,6 @@ rejected; the dominant beginner failure mode is over-preheating with an IR stove
 which bends the PCB, breaks internal traces and cooks ICs, producing defects that are extremely
 hard to diagnose afterwards.
 
-!!! note "Superseded"
-    "An iron is not enough for the 0402 caps, you need hot air" was explicitly retracted by the
-    person who held it, with the qualification that all the lead-free solder must be wicked away
-    first and leaded solder used.
-
-!!! note "Superseded"
-    A widely quoted claim that the distributed unlock README documents the x4 limitation ("missing
-    AC coupling capacitors on lanes 4-15") is **false as an attribution**. The shipping
-    `README.md` contains no such text, and neither does any branch or any point in the history.
-    The nearest historical text, removed before the current README, was a table row reading
-    `| PCIe Gen2 x4 | Platform-dependent (no separate Root-port patch) |`, which is about link
-    speed, not width. The capacitor claim itself is true and well evidenced; only the attribution
-    is wrong. It probably originates from a different community guide.
-
 ### VRM phases
 
 The card uses **MP86957 smart power stages, rated 70 A output each**. Several DrMOS positions and
@@ -308,28 +306,32 @@ their output inductors are unpopulated. The in-channel conclusion is that the st
 about 500 W and that the unpopulated phases are redundancy rather than necessity. Measured
 full-load draw is about 250 W, the stock limit.
 
-!!! note "Populating the missing VRM phases does not help anything"
-    Refuted from three directions. (a) The 8 GB card has *identical* power delivery and is
-    entirely stable at 64 GB, while the 10 GB card at 80 GB is not. (b) The failing 80 GB cards
-    never drew above about 80 W during the crashing workload, against a 250 W stock limit. (c)
-    Electrically, the GPU does not sense VRM phase count, a VRM runs correctly under full load with
-    half its MOSFETs fitted (the rest simply run hotter), and the PWM controller would additionally
-    have to be reconfigured to drive any added phases, so soldering parts alone would not even
-    raise the effective phase count. The 500 W figure is datasheet reasoning and has never been
-    validated by an actual 500 W run.
+> [!NOTE]
+> **Populating the missing VRM phases does not help anything**
+>
+> Refuted from three directions. (a) The 8 GB card has *identical* power delivery and is
+> entirely stable at 64 GB, while the 10 GB card at 80 GB is not. (b) The failing 80 GB cards
+> never drew above about 80 W during the crashing workload, against a 250 W stock limit. (c)
+> Electrically, the GPU does not sense VRM phase count, a VRM runs correctly under full load with
+> half its MOSFETs fitted (the rest simply run hotter), and the PWM controller would additionally
+> have to be reconfigured to drive any added phases, so soldering parts alone would not even
+> raise the effective phase count. The 500 W figure is datasheet reasoning and has never been
+> validated by an actual 500 W run.
 
 Restoring full A100 TDP is expected to be a simple shunt mod rather than a firmware change, but
 nobody has performed or measured one. A software or VBIOS route to a 400-500 W limit was proposed
 as the alternative and also never achieved.
 
-!!! question "Open problem"
-    Does the 170HX need the medium SMD capacitors on the rear of the PCB near the core, roughly two
-    per MOSFET on the left and right cap rows? Raised from a photograph by someone who had
-    previously seen an RTX 2070 with two of them broken off, which wrecked its voltages; the dual
-    placement is redundant but at least one must be present and working. This concerns local
-    decoupling rather than VRM phases, so it is in tension with, not refuted by, the phase-count
-    result above. Never checked on a 170HX. Next step: photograph the rear of a working 8 GB and a
-    working 10 GB card and compare against the schematic's C-designator list.
+> [!NOTE]
+> **Open problem**
+>
+> Does the 170HX need the medium SMD capacitors on the rear of the PCB near the core, roughly two
+> per MOSFET on the left and right cap rows? Raised from a photograph by someone who had
+> previously seen an RTX 2070 with two of them broken off, which wrecked its voltages; the dual
+> placement is redundant but at least one must be present and working. This concerns local
+> decoupling rather than VRM phases, so it is in tension with, not refuted by, the phase-count
+> result above. Never checked on a 170HX. Next step: photograph the rear of a working 8 GB and a
+> working 10 GB card and compare against the schematic's C-designator list.
 
 ### NVLink
 
@@ -345,13 +347,15 @@ block, and no NVLink code exists in any branch. `PTOP_SCAL_NUM_NVLINK` `0x000224
 By contrast the CMP 90HX shroud has an opening for an NVLink connector but the PCB lacks the
 connector entirely, so the 170HX is comparatively generous here: the traces exist.
 
-!!! question "Open problem"
-    Can NVLink be brought up? The expectation in-channel was "will require PCB mods most likely,
-    add missing components". It is complicated by the hypothesis that the GA100 interposer can
-    itself carry eFuses, meaning the NVLink disconnect may be physical and unreachable by any laser
-    or any solder. Nobody has imaged or probed an interposer. This is the least tractable hardware
-    question on the card: it plausibly requires BGA-class rework on top of an unknown. See
-    [NVLink](../frontier/nvlink.md) and [NVLink hardware](nvlink-hardware.md).
+> [!NOTE]
+> **Open problem**
+>
+> Can NVLink be brought up? The expectation in-channel was "will require PCB mods most likely,
+> add missing components". It is complicated by the hypothesis that the GA100 interposer can
+> itself carry eFuses, meaning the NVLink disconnect may be physical and unreachable by any laser
+> or any solder. Nobody has imaged or probed an interposer. This is the least tractable hardware
+> question on the card: it plausibly requires BGA-class rework on top of an unknown. See
+> [NVLink](../frontier/nvlink.md) and [NVLink hardware](nvlink-hardware.md).
 
 ### The missing security module
 
@@ -403,15 +407,17 @@ HBM2 8 Gb 8Hi; `H, H, H` = `00111` = Hynix HBM2E 16 Gb 8Hi; `L, M, H` = `01010` 
 16 Gb 8Hi, where M is a mid-level tri-state. Confidence medium: this is derived from VBIOS strap
 tables and the A100 schematic rather than measured on a CMP.
 
-!!! danger "Moving the memory strap resistors does not unlock VRAM, and one pattern bricks the card"
-    Settled from four independent directions. (a) One tester permuted all 8 combinations of the last
-    three straps on a 10 GB card with stock VBIOS and saw no change in reported VRAM; the pattern
-    `LLHHH` bricked the system with no POST; physically removing three straps also changed nothing.
-    (b) A second tester independently reported a strap flip "did not change a thing". (c) A 10 GB
-    card re-strapped to `HHLLH`, the 8 GB stock pattern, still read
-    `FBPA_CFG1_BROADCAST @ 0x009a0204 = 0x02449000`, the unmodified 10 GB value. (d) An unmodified
-    10 GB card reached the same 80 GB state as a re-strapped one, so no resistor change was ever a
-    prerequisite. The maintainers accepted the debunk the same day it was demonstrated.
+> [!CAUTION]
+> **Moving the memory strap resistors does not unlock VRAM, and one pattern bricks the card**
+>
+> Settled from four independent directions. (a) One tester permuted all 8 combinations of the last
+> three straps on a 10 GB card with stock VBIOS and saw no change in reported VRAM; the pattern
+> `LLHHH` bricked the system with no POST; physically removing three straps also changed nothing.
+> (b) A second tester independently reported a strap flip "did not change a thing". (c) A 10 GB
+> card re-strapped to `HHLLH`, the 8 GB stock pattern, still read
+> `FBPA_CFG1_BROADCAST @ 0x009a0204 = 0x02449000`, the unmodified 10 GB value. (d) An unmodified
+> 10 GB card reached the same 80 GB state as a re-strapped one, so no resistor change was ever a
+> prerequisite. The maintainers accepted the debunk the same day it was demonstrated.
 
 The reason it cannot work is in the source code: the shipping unlock selects memory geometry from
 the **PCI device ID at driver runtime**, not from any strap. The patch computes
@@ -421,38 +427,34 @@ and `lmrValue = 0x0000020B`, otherwise `0x02669000` and `0x0000028A`, via
 Re-strapping `RAMCFG` to the 8 GB pattern therefore cannot make the 64 GB path apply to a 10 GB
 card. Only a device-ID change could, and the device ID is not on the `RAMCFG` straps.
 
-!!! note "Superseded"
-    An early belief, seeded by an LLM suggestion and labelled a hallucination by the maintainers,
-    held that the stock 10 GB configuration `LLLLH` could be switched to `LLLHL` for 40 GB or
-    `LLLHH` for 80 GB. Debunked 2026-06-23. A later claim that a physical re-strap to `HHLLH`
-    enabled the L2 decode change from `0x60000300` to `0x10000300` and hence the 80 GB result was
-    retired within a day, on 2026-07-25, when the probe showed CFG1 unchanged at `0x02449000` and
-    an unmodified card reproduced the same state.
-
 One recorded oddity worth knowing when reading old captures: a mismatched strap change on a 10 GB
 card produced `CFG1 = 0x4266a000` where `0x02669000` was expected, with only the first four FBPAs
 active and one stack.
 
-!!! question "Open problem"
-    What do Strap3 (`VGA_DEVICE`, R993/R994) and Strap4 (`PCIE_CFG`, R999/R1000) actually do? The
-    question was posed on 2026-07-26 after the strap map had been posted twice and went unanswered.
-    A `VGA_DEVICE` strap could bear on display-output enablement and a `PCIE_CFG` strap on link
-    configuration, both open problems. One accidental data point exists: a tester who intended to
-    move R1004 in fact moved Strap4, taking the pattern from `LLLLH` to `LLLHH`, and reported no
-    memory effect. Whether PCIe capability negotiation changed was never measured. Next step:
-    repeat that experiment deliberately and capture `lspci -vv` LnkCap and LnkSta before and after.
+> [!NOTE]
+> **Open problem**
+>
+> What do Strap3 (`VGA_DEVICE`, R993/R994) and Strap4 (`PCIE_CFG`, R999/R1000) actually do? The
+> question was posed on 2026-07-26 after the strap map had been posted twice and went unanswered.
+> A `VGA_DEVICE` strap could bear on display-output enablement and a `PCIE_CFG` strap on link
+> configuration, both open problems. One accidental data point exists: a tester who intended to
+> move R1004 in fact moved Strap4, taking the pattern from `LLLLH` to `LLLHH`, and reported no
+> memory effect. Whether PCIe capability negotiation changed was never measured. Next step:
+> repeat that experiment deliberately and capture `lspci -vv` LnkCap and LnkSta before and after.
 
-!!! question "Open problem"
-    Locate R240/R241 (`DEVID_SEL`) on the physical board. It matters because the device ID is what
-    the shipping driver keys geometry off, and because `OPT_DEVID_SW_OVERRIDE_DIS` `0x00820584` = 1
-    closes every software route. Tried and rejected: visual search near the R986-R1005 group,
-    photographic search of the front side, and asking a commercial AI assistant, which fabricated a
-    confident answer and then reversed itself when challenged. One researcher argues from designator
-    numbering that R240/R241 cannot be near R986-R1005 and may be on the opposite PCB side, noting
-    that A100 and 170HX front-side designators run below 500 while a Tesla V100 rear side runs above
-    500. Another insists the M-marked resistors they photographed are the right ones. Never settled.
-    Best next step: a systematic high-resolution scan of the sub-500-designator side, cross-referenced
-    against the leaked schematic's `DEVID_SEL` net rather than against designator adjacency.
+> [!NOTE]
+> **Open problem**
+>
+> Locate R240/R241 (`DEVID_SEL`) on the physical board. It matters because the device ID is what
+> the shipping driver keys geometry off, and because `OPT_DEVID_SW_OVERRIDE_DIS` `0x00820584` = 1
+> closes every software route. Tried and rejected: visual search near the R986-R1005 group,
+> photographic search of the front side, and asking a commercial AI assistant, which fabricated a
+> confident answer and then reversed itself when challenged. One researcher argues from designator
+> numbering that R240/R241 cannot be near R986-R1005 and may be on the opposite PCB side, noting
+> that A100 and 170HX front-side designators run below 500 while a Tesla V100 rear side runs above
+> 500. Another insists the M-marked resistors they photographed are the right ones. Never settled.
+> Best next step: a systematic high-resolution scan of the sub-500-designator side, cross-referenced
+> against the leaked schematic's `DEVID_SEL` net rather than against designator adjacency.
 
 ---
 
@@ -474,25 +476,21 @@ screenshot, and consistent with the observed stability split.
 The full die would be 6144-bit across 24 FBPAs. That configuration has never been available on a
 170HX.
 
-!!! note "Superseded"
-    "The 170HX 8 GB and 10 GB both use Samsung HBM2" was self-corrected on 2026-06-29 by the
-    researcher who held it, after seeing a GPU-Z screenshot. Consequential: it is why the reference
-    vulnerability research targeted the 10 GB SKU even though the 8 GB SKU is the better unlock
-    target.
-
-!!! question "Open problem"
-    Does the 8 GB card carry five stacks of 16 GB, or six stacks with four of twelve FBPs disabled?
-    The circulating unlock guide states "HBM2e: 5 stacks × 16 GB = 64 GB physically (Hynix),
-    software-locked to 8 GB". The proof-of-concept team states every GA100 package carries six
-    physical stacks, 96 GB of Hynix HBM2e on the 8 GB variant, with two of the twelve FBPs fused off
-    as defective and four total marked disabled, spread so that two stacks run a full 1024-bit
-    interface and four run only 512 bits. Both agree the addressable target is 64 GB and both agree
-    the memory is Hynix HBM2e. **Leaning to the six-stack account:** the measured 8 GB fuse mask
-    leaves 16 of 24 FBPAs across 8 of 12 FBPs, and the 5 × 16 = 64 arithmetic conveniently matches
-    the unlock target in a way that looks back-derived. But the "two stacks at 1024-bit, four at
-    512-bit" split does not obviously reconcile with the measured contiguous per-FBPA dead indices
-    (2, 3, 8, 9, 12, 13, 22, 23), which read as four *whole* stacks lost. Decapping, an X-ray, or a
-    per-stack bandwidth measurement would settle it.
+> [!NOTE]
+> **Open problem**
+>
+> Does the 8 GB card carry five stacks of 16 GB, or six stacks with four of twelve FBPs disabled?
+> The circulating unlock guide states "HBM2e: 5 stacks × 16 GB = 64 GB physically (Hynix),
+> software-locked to 8 GB". The proof-of-concept team states every GA100 package carries six
+> physical stacks, 96 GB of Hynix HBM2e on the 8 GB variant, with two of the twelve FBPs fused off
+> as defective and four total marked disabled, spread so that two stacks run a full 1024-bit
+> interface and four run only 512 bits. Both agree the addressable target is 64 GB and both agree
+> the memory is Hynix HBM2e. **Leaning to the six-stack account:** the measured 8 GB fuse mask
+> leaves 16 of 24 FBPAs across 8 of 12 FBPs, and the 5 × 16 = 64 arithmetic conveniently matches
+> the unlock target in a way that looks back-derived. But the "two stacks at 1024-bit, four at
+> 512-bit" split does not obviously reconcile with the measured contiguous per-FBPA dead indices
+> (2, 3, 8, 9, 12, 13, 22, 23), which read as four *whole* stacks lost. Decapping, an X-ray, or a
+> per-stack bandwidth measurement would settle it.
 
 HBM stacks are bonded to the **silicon interposer**, not to the PCB. A failed stack therefore
 cannot be reflowed back into service. One member spent several hours at a range of temperatures
@@ -553,11 +551,13 @@ The die itself is a complete GA100 by every scaling register:
 | `PTOP_FS_STATUS` `0x00022470` | `0x3f` | |
 | `PMC_BOOT_0` `0x00000000` | `0x170000a1` (`0x170` = GA100, rev a1) | `0xb74000a1` |
 
-!!! note "Register-address correction of record"
-    `0x00820C14` is `STATUS_OPT_FBIO`, **not** `STATUS_OPT_FBPA`. The FBPA floorsweep status is at
-    `0x00820C18`. The Pascal-era FBPA fuse address `0x00021C14` returns BADF on GA100. The
-    clean-room `probe.sh` carries both entries with the correction annotated inline, so the tooling
-    itself preserves the history.
+> [!NOTE]
+> **Register-address correction of record**
+>
+> `0x00820C14` is `STATUS_OPT_FBIO`, **not** `STATUS_OPT_FBPA`. The FBPA floorsweep status is at
+> `0x00820C18`. The Pascal-era FBPA fuse address `0x00021C14` returns BADF on GA100. The
+> clean-room `probe.sh` carries both entries with the correction annotated inline, so the tooling
+> itself preserves the history.
 
 ---
 
@@ -586,21 +586,25 @@ strap-latched (`DEVID_SEL`), and as of 2026-07-27 no software-only way to change
 A VBIOS declaring an alternate device ID only means that VBIOS is *permitted to run* on a card with
 that ID; it cannot rebrand the card.
 
-!!! question "Open problem"
-    Device-ID fuse values on an 8 GB card. A 2026-07-19 BAR0 probe of a `0x20c2` card reports
-    DEVIDA **and** DEVIDB both `0x000020c2`. A 2026-07-22 PCIe firmware analysis states DEVIDA
-    `0x2082`, DEVIDB `0x20C2`, and 2026-07-24/25 dumps on 10 GB cards agree with the latter. Neither
-    has been retracted, and the SKU behind the second figure is not stated. Either the 8 GB card
-    genuinely has both fuses at `0x20c2`, which is what a separate source independently claims, or
-    one dump is mislabelled. Note that the first reading breaks the working `DEVIDB = DEVIDA | 0x40`
-    hypothesis, which otherwise holds on the 170HX (`0x2082`/`0x20c2`) and on a GA10x control card
-    (`0x2484`/`0x24c4`). A single dump of both fuses from one confirmed 8 GB card, with `lspci -nn`
-    in the same paste, would settle it.
+> [!NOTE]
+> **Open problem**
+>
+> Device-ID fuse values on an 8 GB card. A 2026-07-19 BAR0 probe of a `0x20c2` card reports
+> DEVIDA **and** DEVIDB both `0x000020c2`. A 2026-07-22 PCIe firmware analysis states DEVIDA
+> `0x2082`, DEVIDB `0x20C2`, and 2026-07-24/25 dumps on 10 GB cards agree with the latter. Neither
+> has been retracted, and the SKU behind the second figure is not stated. Either the 8 GB card
+> genuinely has both fuses at `0x20c2`, which is what a separate source independently claims, or
+> one dump is mislabelled. Note that the first reading breaks the working `DEVIDB = DEVIDA | 0x40`
+> hypothesis, which otherwise holds on the 170HX (`0x2082`/`0x20c2`) and on a GA10x control card
+> (`0x2484`/`0x24c4`). A single dump of both fuses from one confirmed 8 GB card, with `lspci -nn`
+> in the same paste, would settle it.
 
-!!! note "`20B2` is not a CMP 170HX device ID"
-    It appeared in an early message and was corrected in-channel on 2026-06-29 as a typo for
-    `2082`. It also appears inside a speculative re-fusing proposal as a *target* A100 ID, which is
-    a different usage. The two 170HX IDs are `0x20C2` (8 GB) and `0x2082` (10 GB).
+> [!NOTE]
+> **`20B2` is not a CMP 170HX device ID**
+>
+> It appeared in an early message and was corrected in-channel on 2026-06-29 as a typo for
+> `2082`. It also appears inside a speculative re-fusing proposal as a *target* A100 ID, which is
+> a different usage. The two 170HX IDs are `0x20C2` (8 GB) and `0x2082` (10 GB).
 
 ---
 
@@ -611,7 +615,7 @@ There is no single "revision" axis on this card. Four independent things vary.
 | Axis | Values seen | Does it matter? |
 |---|---|---|
 | Silicon revision | `rev a1` on every card (`PMC_BOOT_0` = `0x170000a1`) | No variation observed |
-| PCB silkscreen trailing field | `180-11001-DAAA-B15`, `180-11001-DAAA-045` | Same board family; no functional difference established |
+| PCB silkscreen trailing field | `180-11001-DAAA-B15`, `180-11001-DAAA-B35`, `180-11001-DAAA-045` | Same board family; no functional difference established. B15 and B35 both took the x16 capacitor mod with identical results |
 | VBIOS revision | `92.00.67.00.01` (8 GB production), `92.00.6D.00.09` (2021-11-01, 300 W, no memory OC), `92.00.6D.00.0A` (2022-04-07, 300 W, 432 MHz memory field), `92.00.66.00.02` (10 GB production) | **Not for the unlock.** Yes for power limit and memory clock |
 | Per-die floorsweep mask | FBP and GPC disable masks differ between dies of the same SKU | No: totals are constant |
 
@@ -626,16 +630,18 @@ single commercially interested source claimed to hold "two kinds of VBIOS for 17
 bandwidth", with no version strings and no figures given. It is at least consistent with both the
 364 MHz and 432 MHz memory-field images being in circulation. Unresolvable from the record.
 
-!!! question "Open problem"
-    Do power-raised "unlock BIOS" cards blow a rear-board capacitor after prolonged mining? One
-    owner relayed that the seller who supplied their cards had this happen repeatedly and showed a
-    blown board, with the suspected parts narrowed to two components on the rear of an 8 GB board
-    believed to be capacitors. The same seller ran cards at around 56 °C, raising the suspicion of
-    monitoring the wrong sensor and overheating the VRM while mining bandwidth-bound coins. An
-    experienced long-time owner said they had never seen this failure and doubted it. No photograph
-    of the failed component and no measurement were produced. A photograph of a failed board with
-    the designator readable, plus a thermocouple reading on the VRM under a bandwidth-bound load,
-    would settle it.
+> [!NOTE]
+> **Open problem**
+>
+> Do power-raised "unlock BIOS" cards blow a rear-board capacitor after prolonged mining? One
+> owner relayed that the seller who supplied their cards had this happen repeatedly and showed a
+> blown board, with the suspected parts narrowed to two components on the rear of an 8 GB board
+> believed to be capacitors. The same seller ran cards at around 56 °C, raising the suspicion of
+> monitoring the wrong sensor and overheating the VRM while mining bandwidth-bound coins. An
+> experienced long-time owner said they had never seen this failure and doubted it. No photograph
+> of the failed component and no measurement were produced. A photograph of a failed board with
+> the designator readable, plus a thermocouple reading on the VRM under a bandwidth-bound load,
+> would settle it.
 
 ---
 
@@ -661,18 +667,6 @@ written in the `0x0082xxxx` fuse space are `0x00823804` (FEAT PLM), `0x0082381C`
 `0x00820364`, `0x00820368`, `0x0082036C`, `0x008202C4`, `0x00820C1C`) is written anywhere. **The
 unlock reprograms memory geometry; it does not and cannot revive fused-off units.**
 
-!!! note "Superseded"
-    "Hardware unlock is impossible" (2026-06-29) is half right. It is true for VRAM capacity via
-    straps and false for PCIe lane width, where the capacitor mod is the *only* route and works
-    reliably. The accurate statement is that **hardware modification cannot move fused boundaries
-    but can restore depopulated PCB features.**
-
-!!! note "Superseded"
-    "80 GB requires some SMD components to be soldered on" (2026-07-19) is false, and the code
-    proves it: the experimental `80` branch reaches the 80 GB geometry by changing constants and two
-    lines of one patch file. No hardware modification is required to *reach* 80 GB, and none is
-    known to stabilise it either. What is true is that 80 GB is unstable and 40 GB ships.
-
 ### Board-level dead ends
 
 Do not retry these without new information. The full list is on
@@ -692,15 +686,17 @@ Do not retry these without new information. The full list is on
 | Preheating the whole board in an oven before the capacitor rework | Rejected as a beginner trap; over-preheating bends the PCB, breaks internal traces and cooks ICs |
 | Applying 3.3 V to a "manufacturing_mode" pin found on some cards | Observed on real hardware but never characterised, never pursued to a result |
 
-!!! warning "Fabricated board topology reads exactly like real board topology"
-    Recorded verbatim as a cautionary data point. A commercial AI assistant, asked where R240/R241
-    and the board crystals are, confidently placed R240/R241 "adjacent to the other high-value 100k
-    strap resistors (such as R985-R1016)", described them as 100 kΩ 0402 parts tied to `FS_OVERT`
-    and `PCIE_CFG`, and named Y200 (27.000 MHz) and Y201 (100.000 MHz low-jitter differential) on
-    "Page 5: CLOCK GENERATION / CRYSTALS" of a PG100/PG101 schematic. When challenged on
-    reference-designator logic it reversed itself completely. None of it was verifiable. Treat any
-    designator, page reference or net name that is not read off a photograph or the schematic itself
-    as unverified.
+> [!WARNING]
+> **Fabricated board topology reads exactly like real board topology**
+>
+> Recorded verbatim as a cautionary data point. A commercial AI assistant, asked where R240/R241
+> and the board crystals are, confidently placed R240/R241 "adjacent to the other high-value 100k
+> strap resistors (such as R985-R1016)", described them as 100 kΩ 0402 parts tied to `FS_OVERT`
+> and `PCIE_CFG`, and named Y200 (27.000 MHz) and Y201 (100.000 MHz low-jitter differential) on
+> "Page 5: CLOCK GENERATION / CRYSTALS" of a PG100/PG101 schematic. When challenged on
+> reference-designator logic it reversed itself completely. None of it was verifiable. Treat any
+> designator, page reference or net name that is not read off a photograph or the schematic itself
+> as unverified.
 
 ---
 

@@ -56,19 +56,21 @@ Notes that matter in practice:
   destructive enough that one developer reported reinstalling the OS after each botched
   `nvidia.ko` deploy. See [Risks](../start/risks.md).
 
-!!! danger "Leftover state from the firmware-patching era"
-    If this machine ever ran `cmpunlocker`'s **firmware-patching predecessor**, restore
-    `gsp_tu10x.bin` to stock *before* installing the driver patch:
-
-    ```bash
-    GSP_DIR=/lib/firmware/nvidia/610.43.03
-    sudo cp "$GSP_DIR/gsp_tu10x.bin.cmpunlocker.bak" "$GSP_DIR/gsp_tu10x.bin"
-    ```
-
-    The patched driver saves the firmware's signature as "stock" during boot. If the firmware on
-    disk is still patched, the driver saves the exploit payload instead and the clean GSP-RM boot
-    then DMAs the wrong ROP chain. The success line to look for afterwards is
-    `SEC2_DEBUG: saved stock signature (4096 bytes)`.
+> [!CAUTION]
+> **Leftover state from the firmware-patching era**
+>
+> If this machine ever ran `cmpunlocker`'s **firmware-patching predecessor**, restore
+> `gsp_tu10x.bin` to stock *before* installing the driver patch:
+>
+> ```bash
+> GSP_DIR=/lib/firmware/nvidia/610.43.03
+> sudo cp "$GSP_DIR/gsp_tu10x.bin.cmpunlocker.bak" "$GSP_DIR/gsp_tu10x.bin"
+> ```
+>
+> The patched driver saves the firmware's signature as "stock" during boot. If the firmware on
+> disk is still patched, the driver saves the exploit payload instead and the clean GSP-RM boot
+> then DMAs the wrong ROP chain. The success line to look for afterwards is
+> `SEC2_DEBUG: saved stock signature (4096 bytes)`.
 
 ---
 
@@ -93,15 +95,6 @@ other argument exits 1 with `Unknown argument: <arg>`.
 
 Everything is tee'd to `logs/install_<YYYYmmdd_HHMMSS>.log` inside the checkout, so run from a
 writable directory.
-
-!!! note "Superseded"
-    `--profile` no longer selects the unlock geometry on `master`. It did on the earlier
-    `memory` branch snapshot, and pre-2026-07-18 instructions still say so. Since commit
-    `7fe49b6` "Fixed dual geometry support" both geometries are baked into patch 0001 and chosen
-    at GSP boot from the PCI device ID. Today `--profile` affects only the printed banner, the
-    `EXPECTED_MIB` message, and the `card_profile` / `unlock_geometry` metadata files. A
-    mis-detected profile therefore writes wrong metadata but **cannot** produce the wrong
-    geometry.
 
 ---
 
@@ -157,14 +150,16 @@ The banner then prints one of:
 ==> Unlock geometry: 40GB (CFG1=0x02669000 LMR=0x0000028A)
 ```
 
-!!! warning "Auto-detection is unsafe on mixed-GPU hosts"
-    `detect_card_profile()` takes the **first GPU in `nvidia-smi` order**, which is not
-    necessarily the CMP that `lspci` found. A host with an RTX 3080 10 GB alongside an 8 GB
-    CMP 170HX was reproduced by at least two people detecting "10GB" from the 3080. A separate
-    report has other CMP SKUs (a 50HX) misdetected as a 10 GB 170HX. On current `master` the
-    consequence is only wrong metadata, but on a host with any other NVIDIA card the safe habit
-    is to **always pass `--profile` explicitly**. If the first GPU reports a size outside all
-    four windows (a 24 GB card, say), the install dies outright.
+> [!WARNING]
+> **Auto-detection is unsafe on mixed-GPU hosts**
+>
+> `detect_card_profile()` takes the **first GPU in `nvidia-smi` order**, which is not
+> necessarily the CMP that `lspci` found. A host with an RTX 3080 10 GB alongside an 8 GB
+> CMP 170HX was reproduced by at least two people detecting "10GB" from the 3080. A separate
+> report has other CMP SKUs (a 50HX) misdetected as a 10 GB 170HX. On current `master` the
+> consequence is only wrong metadata, but on a host with any other NVIDIA card the safe habit
+> is to **always pass `--profile` explicitly**. If the first GPU reports a size outside all
+> four windows (a 24 GB card, say), the install dies outright.
 
 ### Step 4/6: Secure Boot, driver version, headers
 
@@ -262,10 +257,12 @@ install log.
     `modinfo -F srcversion .../updates/cmpunlocker/nvidia.ko` and, on mismatch, warns
     `Loaded nvidia srcversion (X) != patched (Y)` and clears its own success flag.
 
-!!! warning "No integrity check on the downloaded tarball"
-    `build.sh` fetches the NVIDIA tag tarball with `curl -L --fail` and caches it with no
-    checksum or signature verification anywhere in the tree. On an untrusted network, verify the
-    cached tarball yourself before the first build.
+> [!WARNING]
+> **No integrity check on the downloaded tarball**
+>
+> `build.sh` fetches the NVIDIA tag tarball with `curl -L --fail` and caches it with no
+> checksum or signature verification anywhere in the tree. On an untrusted network, verify the
+> cached tarball yourself before the first build.
 
 ---
 
@@ -361,12 +358,14 @@ SEC2_DEBUG: late PMA extension status=0x0
 SEC2_DEBUG: POST-BooterLoad verify PLM=... SS0=0x88888888 SS1=0x00000008 CFG1=0x02779000 LMR=0x0000020b
 ```
 
-!!! note "Do not use the line count as a pass/fail test"
-    Line counts are not a reliable cross-build fingerprint. Recorded values: **29** on the archived
-    single-card 8 GB capture, **134** on the archived two-card Gen2-branch `610.43.03` log, 34
-    (Gen1 build) and 80 (Gen2 build) from the reporting tools, and `SEC2_DEBUG lines=152` printed
-    by `pcielink.sh` on two separate two-card Gen2 rigs. Do not read a mismatch as a failed
-    install. The register readback lines above are the criterion.
+> [!NOTE]
+> **Do not use the line count as a pass/fail test**
+>
+> Line counts are not a reliable cross-build fingerprint. Recorded values: **29** on the archived
+> single-card 8 GB capture, **134** on the archived two-card Gen2-branch `610.43.03` log, 34
+> (Gen1 build) and 80 (Gen2 build) from the reporting tools, and `SEC2_DEBUG lines=152` printed
+> by `pcielink.sh` on two separate two-card Gen2 rigs. Do not read a mismatch as a failed
+> install. The register readback lines above are the criterion.
 
 Three things routinely alarm first-time installers and are all normal:
 
@@ -401,21 +400,25 @@ See [Uninstalling](uninstall.md).
 
 ## Environment-specific notes
 
-!!! warning "Experimental: virtualisation"
-    Memory and compute unlock work under **Proxmox GPU passthrough**: one operator passed
-    through eight 8 GB CMP 170 cards and all unlocked. Two constraints are recorded:
+> [!WARNING]
+> **Experimental: virtualisation**
+>
+> Memory and compute unlock work under **Proxmox GPU passthrough**: one operator passed
+> through eight 8 GB CMP 170 cards and all unlocked. Two constraints are recorded:
+>
+> - Use **SeaBIOS, not UEFI/OVMF**. UEFI produces RM init and adapter failures that look
+>   exactly like the exploit simply not working. This was root-caused first-hand and
+>   immediately corroborated by a second person who had been unable to reproduce results.
+> - The PCIe Gen2 link-speed change did **not** work in a VM as of 2026-07-24, acknowledged by
+>   the maintainer as an open debugging item. See [PCIe Gen2](../unlock/pcie-gen2.md).
 
-    - Use **SeaBIOS, not UEFI/OVMF**. UEFI produces RM init and adapter failures that look
-      exactly like the exploit simply not working. This was root-caused first-hand and
-      immediately corroborated by a second person who had been unable to reproduce results.
-    - The PCIe Gen2 link-speed change did **not** work in a VM as of 2026-07-24, acknowledged by
-      the maintainer as an open debugging item. See [PCIe Gen2](../unlock/pcie-gen2.md).
-
-!!! question "Open problem: does a missing display device upset the GSP?"
-    One operator observed that GSP seemed less happy on systems with no iGPU and no BMC display
-    device, compared with systems that have one. Nobody responded with a confirmation, a
-    contradiction, or an error string. An A/B on one machine with the BMC display device disabled
-    in BIOS, capturing `dmesg`, would settle it.
+> [!NOTE]
+> **Open problem: does a missing display device upset the GSP?**
+>
+> One operator observed that GSP seemed less happy on systems with no iGPU and no BMC display
+> device, compared with systems that have one. Nobody responded with a confirmation, a
+> contradiction, or an error string. An A/B on one machine with the BMC display device disabled
+> in BIOS, capturing `dmesg`, would settle it.
 
 Windows is a dead end for this patch: the unlock is implemented against the Linux open kernel
 modules and the GSP boot path is Linux-specific. A Windows machine can *drive* a 170HX with a

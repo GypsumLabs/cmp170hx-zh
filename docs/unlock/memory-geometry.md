@@ -87,13 +87,6 @@ row-address nibbles move. GDDR6 parts read different `COL` values (`0x4266b000` 
 3090/3090 Ti, `0x4277b000` on A6000, `0x4266a000` on RTX 3080/3080 Ti), which is why the `0x9`
 nibble is a memory-type constant and not a "5 stacks" flag.
 
-!!! note "Superseded"
-    One widely circulated analysis read CFG1 as `0x02 [strap] [feature] 0x00` with bits `[15:8]` as
-    a stack-count field (`0x00` = 4 stacks, `0x90` = 5 stacks). The shipping code refutes it: it
-    writes `0x02779000` (feature byte `0x90`) to the 4096-bit, 4-stack-equivalent 8 GB card and
-    obtains 64 GB, and GDDR6 parts show `0xa`/`0xb` in that nibble, which a stack count cannot
-    explain. The derived 40 GB figure from that table happened to be right for the wrong reason.
-
 **These are not magic constants.** `0x02779000` is literally the stock CFG1 value measured on real
 A100 PCIe 80 GB silicon (PCI `0x20b5`), together with LMR `0x0000028b`. `0x02669000` is likewise the
 stock value on A100 PCIe 40 GB and A100 SXM4 40 GB. The unlock restores genuine A100 geometry.
@@ -137,19 +130,12 @@ The unlock adds **+3 to the scale nibble on the 8 GB card** and **+2 on the 10 G
 terms the delta is `+0x00330000` (bits 16, 17, 20, 21) for the 8 GB card and `+0x00220000`
 (bits 17, 21) for the 10 GB card.
 
-!!! note "Superseded"
-    `0x0000040A` and `0x0000050A` circulated as 64 GB and 80 GB encodings and both are **refuted**.
-    Under a 6-bit magnitude field, `(0x40A >> 4) & 0x3F = 0` and `(0x50A >> 4) & 0x3F = 0x10 = 16`,
-    so `0x40A` programs a geometry of zero with a stray bit 10 set, and `0x50A` decodes to 16 GB.
-    `payload_v3.py` used `0x40A` with the comment "LMR (0x40A, not 0x20B)"; it lost. A 2026-07-11
-    hardware run targeting `0x40A` on a 10 GB card moved neither register
-    (`LMR=0x288[want 0x40A] CFG1=0x2449000[want 0x2779000]`). The shipping value for 64 GB is
-    `0x0000020B`.
-
-!!! question "Open problem: is `LOWER_MAG` 6 bits at [9:4] or 7 bits at [10:4]?"
-    Everything in real use works under 6 bits. The width has never been read from `dev_fb.h`. This
-    is a header lookup, not an experiment, and it is the last thing standing between the
-    `0x28B`-versus-`0x50A` argument and a clean answer.
+> [!NOTE]
+> **Open problem: is `LOWER_MAG` 6 bits at [9:4] or 7 bits at [10:4]?**
+>
+> Everything in real use works under 6 bits. The width has never been read from `dev_fb.h`. This
+> is a header lookup, not an experiment, and it is the last thing standing between the
+> `0x28B`-versus-`0x50A` argument and a clean answer.
 
 ---
 
@@ -211,12 +197,14 @@ and **continues anyway** to the geometry writes. WPR2 LO/HI (`0x001fa824` / `0x0
 and restored only; they are never set to a new value by the shipping driver. See
 [Privilege level masks](privilege-level-masks.md) and [The ROP chain](rop-chain.md).
 
-!!! note "Naming is disputed, addresses are not"
-    Register-catalogue work names `0x001fa7c4` `NV_PFB_PRI_MMU_LOCAL_MEMORY_RANGE__PRIV_LEVEL_MASK`,
-    that is the LMR PLM, while the shipping `plmTable` labels it "WPR" and `0x001fa7cc` "WPR_CFG".
-    The addresses and values are not in dispute and the functional outcome is identical. Rely on the
-    addresses. `0x001fa7c0` is **not** the LMR PLM and appears nowhere in the shipping tree; placing
-    it first in a multiwrite chain faults the ROP chain.
+> [!NOTE]
+> **Naming is disputed, addresses are not**
+>
+> Register-catalogue work names `0x001fa7c4` `NV_PFB_PRI_MMU_LOCAL_MEMORY_RANGE__PRIV_LEVEL_MASK`,
+> that is the LMR PLM, while the shipping `plmTable` labels it "WPR" and `0x001fa7cc` "WPR_CFG".
+> The addresses and values are not in dispute and the functional outcome is identical. Rely on the
+> addresses. `0x001fa7c0` is **not** the LMR PLM and appears nowhere in the shipping tree; placing
+> it first in a multiwrite chain faults the ROP chain.
 
 ### Step 2: four host register writes
 
@@ -255,13 +243,15 @@ the 24-instance loop belong to the **separate, unreleased driverless toolchain**
 shipping installer. Keep the two paths distinct when reading any write-up. See
 [Tool lineage](../history/tool-lineage.md).
 
-!!! question "Open problem: is the broadcast a PRI priv-ring hardware mechanism?"
-    A researcher who originally believed the broadcast was a software step in GSP-RM struck that
-    belief through and proposed the priv ring instead, but it was never directly instrumented. It
-    matters because it decides whether one write is guaranteed sufficient in every context or only
-    when devinit follows. The experiment: with the FB-geo PLMs open and no devinit, write only the
-    broadcast, then read all 24 per-FBPA CFG1 mirrors to see whether the value propagates even
-    though CSTATUS does not move.
+> [!NOTE]
+> **Open problem: is the broadcast a PRI priv-ring hardware mechanism?**
+>
+> A researcher who originally believed the broadcast was a software step in GSP-RM struck that
+> belief through and proposed the priv ring instead, but it was never directly instrumented. It
+> matters because it decides whether one write is guaranteed sufficient in every context or only
+> when devinit follows. The experiment: with the FB-geo PLMs open and no devinit, write only the
+> broadcast, then read all 24 per-FBPA CFG1 mirrors to see whether the value propagates even
+> though CSTATUS does not move.
 
 ### Step 4: rebuild the stock signature and boot GSP
 
@@ -295,10 +285,12 @@ Patch `0001` also **unconditionally** downgrades the upstream "unexpected WPR2 a
 proceed with booting GSP" hard failure (`return NV_ERR_INVALID_STATE`) to a warning
 (`WPR2 already up before GSP boot; continuing for recovery`), so a card left dirty can still boot.
 
-!!! danger "That WPR2 downgrade is not gated on the CMP device IDs"
-    It applies to **every GPU the patched module drives**. On a mixed system the patched modules
-    will silently continue past a genuinely bad WPR2 state on unrelated hardware. Do not install
-    these modules on a machine whose other GPUs you care about.
+> [!CAUTION]
+> **That WPR2 downgrade is not gated on the CMP device IDs**
+>
+> It applies to **every GPU the patched module drives**. On a mixed system the patched modules
+> will silently continue past a genuinely bad WPR2 state on unrelated hardware. Do not install
+> these modules on a machine whose other GPUs you care about.
 
 ---
 
@@ -420,11 +412,13 @@ PRAMIN clamp likewise compares against `0x2000` MB. In patch `0001` the variable
 never referenced (dead code); in patch `0003` it is the split point between the stock region and the
 late-PMA extension region.
 
-!!! question "Open problem: does the 8 GiB `stockFbBytes` matter on a 10 GB card?"
-    The unlock demonstrably works on `0x2082`, so any effect is subtle. The check is a pure
-    log-reading exercise: read the `SEC2_DEBUG_LATE_PMA: region[...]` and `SEC2_DEBUG_HEAP:` dmesg
-    lines on a 40 GB-unlocked 10 GB card and confirm `publicBytes` accounts for the full 40 GiB
-    rather than losing the 8 to 10 GiB slice. Nobody has posted it.
+> [!NOTE]
+> **Open problem: does the 8 GiB `stockFbBytes` matter on a 10 GB card?**
+>
+> The unlock demonstrably works on `0x2082`, so any effect is subtle. The check is a pure
+> log-reading exercise: read the `SEC2_DEBUG_LATE_PMA: region[...]` and `SEC2_DEBUG_HEAP:` dmesg
+> lines on a 40 GB-unlocked 10 GB card and confirm `publicBytes` accounts for the full 40 GiB
+> rather than losing the 8 to 10 GiB slice. Nobody has posted it.
 
 ---
 
@@ -488,21 +482,6 @@ shipping tool opens, only FEAT (`0x00823804`) survives an FLR, so host-side CFG1
 after an FLR are blocked. The geometry writes must happen inside the same no-FLR window as the PLM
 opens.
 
-!!! note "Superseded"
-    The published `unlock-cmp-170hx` recipe was: write `FEAT_OVR_PLM 0x00823804` from ROP in HS mode,
-    do an FLR, then write the memory geometry from the host. FEAT genuinely does survive FLR, so the
-    approach looked sound. It fails on two independent grounds: CFG1 and LMR do not survive FLR, so
-    the geometry write lands after the window has closed, and a tester who ran it reported
-    "Already did, it's useless." The compute-style write-then-FLR flow does not transfer to memory.
-
-!!! note "Superseded"
-    Hunting for an always-on shadow register for memory geometry consumed hours, because the compute
-    unlock's SS0 shadow was found by exactly that method. There is no equivalent for FB geometry.
-    `0x001180f0` holding `0x050A` snapped back to `0x288` after FLR. `SECURE_SCRATCH_14` at
-    `0x001180f8` is a booter stage-3 handoff register, not an LMR shadow, and
-    `NV_PGC6_BSI_SECURE_SCRATCH_MMU_LOCAL_MEMORY_RANGE` (the register Blackwell resets LMR from)
-    does not exist on GA100 at all.
-
 ### Corollary: the driver cannot silently undo it
 
 `kmemsysReadUsableFbSize_GP102` on GA100 is read-only, and the open-source CPU-side RM computes
@@ -530,17 +509,19 @@ In order of trustworthiness, most trustworthy last:
    missing, memory folds and two addresses hold the same data, which a conventional memtest that
    writes and reads the same region will not catch.
 
-!!! danger "Do not sparse-sample the fold test"
-    A sparse probe (one word per N MB) gives **false negatives** on a folded card, because the fold
-    aliases at a channel-interleave offset rather than the identical byte offset: `LOW[0]` maps to
-    `40GiB + interleave`, not `40GiB + 0`, so a sparse test writes one partner and checks a
-    different address. The reference checker allocates all free VRAM minus 2 GiB, writes each 64 KiB
-    page's own index via a PTX kernel, reads every page back, and exits 0 for real, 1 for fold. Also
-    write all data first and then read all data back: interleaved read/write causes contention that
-    gets very slow from around 48 GB. And evict L2 as you go, or reads are served from cache. Any
-    fold result taken before the eviction methodology was adopted should be discarded.
-    `SIGKILL`ing a live CUDA kernel during this test can wedge the card with **Xid 45** and force a
-    reset cycle.
+> [!CAUTION]
+> **Do not sparse-sample the fold test**
+>
+> A sparse probe (one word per N MB) gives **false negatives** on a folded card, because the fold
+> aliases at a channel-interleave offset rather than the identical byte offset: `LOW[0]` maps to
+> `40GiB + interleave`, not `40GiB + 0`, so a sparse test writes one partner and checks a
+> different address. The reference checker allocates all free VRAM minus 2 GiB, writes each 64 KiB
+> page's own index via a PTX kernel, reads every page back, and exits 0 for real, 1 for fold. Also
+> write all data first and then read all data back: interleaved read/write causes contention that
+> gets very slow from around 48 GB. And evict L2 as you go, or reads are served from cache. Any
+> fold result taken before the eviction methodology was adopted should be discarded.
+> `SIGKILL`ing a live CUDA kernel during this test can wedge the card with **Xid 45** and force a
+> reset cycle.
 
 A successful 8 GB to 64 GB unlock presents as:
 
@@ -553,12 +534,14 @@ with CUDA via ctypes returning `cuInit` 0, `cuDeviceGetCount` 1, `cuDeviceGetNam
 `NVIDIA CMP 170HX`, `cuDeviceTotalMem` 64.0 GB, attributes 75/76 giving compute capability 8.0. The
 card name may also show as `Unknown`, which is normal.
 
-!!! warning "`clocks.max.sm = 1935 MHz` is a reported field, not an achievable clock"
-    It appears in the same `nvidia-smi` query as the capacity and is often quoted as part of the
-    64 GB signature. The VBIOS table maximum graphics clock is 1695 MHz and the practical silicon
-    ceiling is roughly 1604 to 1614 MHz at a +350 offset. Sustained SM clock is 1410 MHz nominal
-    (1470 MHz at `-pl 300`). Treat 1935 MHz as low confidence and see
-    [Compute throttle](compute-throttle.md).
+> [!WARNING]
+> **`clocks.max.sm = 1935 MHz` is a reported field, not an achievable clock**
+>
+> It appears in the same `nvidia-smi` query as the capacity and is often quoted as part of the
+> 64 GB signature. The VBIOS table maximum graphics clock is 1695 MHz and the practical silicon
+> ceiling is roughly 1604 to 1614 MHz at a +350 offset. Sustained SM clock is 1410 MHz nominal
+> (1470 MHz at `-pl 300`). Treat 1935 MHz as low confidence and see
+> [Compute throttle](compute-throttle.md).
 
 Stability verdict as of the end of the archive window: **8 GB to 64 GB is stable and in production
 use; 10 GB to 40 GB is stable; 10 GB to 80 GB reports the size but is not usable above roughly
@@ -605,9 +588,11 @@ Uninstall is `sudo ./remove.sh --yes`; there is no `uninstall.sh` in the shippin
 
 ## The 80 GB attempt, and why it is incoherent
 
-!!! danger "The `80` branch is unmerged, unstable, and internally self-contradictory"
-    It is documented here so that anyone who finds it understands what it actually programs. Do not
-    run it on a card you need.
+> [!CAUTION]
+> **The `80` branch is unmerged, unstable, and internally self-contradictory**
+>
+> It is documented here so that anyone who finds it understands what it actually programs. Do not
+> run it on a card you need.
 
 The unmerged `80` branch aims a 10 GB card at 81920 MiB. Two commits: `02ce75c` "Trying an 80GB
 unlock instead of 40GB" and `3c53aca` "Correct LMR for 80GB". Its README claims
@@ -668,22 +653,24 @@ cycle rather than a driver reload before it can be fired again.
 Note the fold boundary lands at **exactly 40 GiB**, which matches the LMR the branch actually
 programs. The driverless result below makes the match look causal rather than coincidental.
 
-!!! warning "Experimental: the coherent triple was fired, and the fold went away"
-    The coherent set was **not** reached by rebuilding the branch. It was reached by a clean-room
-    refire script between 2026-07-23 and 2026-07-27, logging
-    `CFG1=0x02779000 LMR=0x0000028b CST=20/24 resetPLM=0x00ff` with L2 decode `0x10000300` and
-    81920 MiB reported under both GSP-RM and CPU-RM. A dense tagged write/readback then returned
-    310 of 310 blocks correct across 77.5 GiB, **no fold**, and a later run reached 72 GiB at stock
-    boot timings. The limits are real: roughly one CUDA context per fire before Xid 154, about
-    79 % of peak bandwidth above the boundary, the top roughly 2 GiB untested, and only two
-    operators. It is not shipped and it is not an install path.
-
-    **Shipping master gives a 10 GB card 40 GB, and 40 GB is the supported configuration.**
-    Rebuilding the branch with `lmrValue = 0x0000028BU` in
-    `driver/patches/0001-sec2-postbl-plm-ss-cfg.patch` **and** `LMR="0x0000028B"` in
-    `driver/build.sh` (not just in `constants.yaml`, which is not read) remains untried, and is
-    what would tell you whether a driver can carry the geometry the fire script can.
-    See [The 80 GB question](../frontier/80gb.md).
+> [!WARNING]
+> **Experimental: the coherent triple was fired, and the fold went away**
+>
+> The coherent set was **not** reached by rebuilding the branch. It was reached by a clean-room
+> refire script between 2026-07-23 and 2026-07-27, logging
+> `CFG1=0x02779000 LMR=0x0000028b CST=20/24 resetPLM=0x00ff` with L2 decode `0x10000300` and
+> 81920 MiB reported under both GSP-RM and CPU-RM. A dense tagged write/readback then returned
+> 310 of 310 blocks correct across 77.5 GiB, **no fold**, and a later run reached 72 GiB at stock
+> boot timings. The limits are real: roughly one CUDA context per fire before Xid 154, about
+> 79 % of peak bandwidth above the boundary, the top roughly 2 GiB untested, and only two
+> operators. It is not shipped and it is not an install path.
+>
+> **Shipping master gives a 10 GB card 40 GB, and 40 GB is the supported configuration.**
+> Rebuilding the branch with `lmrValue = 0x0000028BU` in
+> `driver/patches/0001-sec2-postbl-plm-ss-cfg.patch` **and** `LMR="0x0000028B"` in
+> `driver/build.sh` (not just in `constants.yaml`, which is not read) remains untried, and is
+> what would tell you whether a driver can carry the geometry the fire script can.
+> See [The 80 GB question](../frontier/80gb.md).
 
 An intermediate rung has never been tried either. The per-channel tier is coarse (512 / 2048 / 4096
 MiB), so 48, 56 or 64 GB on a 10 GB card is not reachable by tier alone; it would need CFG1 pinned
@@ -734,30 +721,36 @@ See [Dead ends](../history/dead-ends.md) for the full catalogue.
 
 The shipping installer is a patched kernel module, but it is not the only demonstrated path.
 
-!!! warning "Experimental: the driverless re-fireable ROP chain"
-    A re-entrant SEC2 ROP chain was hardware-proven to leave CFG1 = `0x02669000` surviving into a
-    clean, unmodified GSP-RM driver boot with no FLR and no SBR (`BooterLoad 0x0`). Two enabling
-    tricks: every fire pairs its useful write with a WPR2_LO teardown (`0x1fa824` set to
-    `0x1ffffe00`, `0x1fa828` to `0x00000000`, that is start greater than end, an empty region),
-    because each booter run re-carves WPR2 and leaving it up taints the next overflow; and the ACR
-    mutex is released via the clean `0x7f2f` tail leaving `resetPLM = 0xff`. Readiness predicate:
-    broadcast CFG1 equals the target **and** the SEC2 reset PLM (BAR0 `0x8403c4`, falcon offset
-    `0x3c4`) reads `0xff`. In this chain, WPR2_HI must be cleared as the **final** fire, after the
-    host CFG1 writes, because `kgspIsWpr2Up_HAL` reads the WPR2_HI VAL field and a stock driver
-    would otherwise bail with `NV_ERR_INVALID_STATE`. This toolchain is not in the shipping
-    repository.
+> [!WARNING]
+> **Experimental: the driverless re-fireable ROP chain**
+>
+> A re-entrant SEC2 ROP chain was hardware-proven to leave CFG1 = `0x02669000` surviving into a
+> clean, unmodified GSP-RM driver boot with no FLR and no SBR (`BooterLoad 0x0`). Two enabling
+> tricks: every fire pairs its useful write with a WPR2_LO teardown (`0x1fa824` set to
+> `0x1ffffe00`, `0x1fa828` to `0x00000000`, that is start greater than end, an empty region),
+> because each booter run re-carves WPR2 and leaving it up taints the next overflow; and the ACR
+> mutex is released via the clean `0x7f2f` tail leaving `resetPLM = 0xff`. Readiness predicate:
+> broadcast CFG1 equals the target **and** the SEC2 reset PLM (BAR0 `0x8403c4`, falcon offset
+> `0x3c4`) reads `0xff`. In this chain, WPR2_HI must be cleared as the **final** fire, after the
+> host CFG1 writes, because `kgspIsWpr2Up_HAL` reads the WPR2_HI VAL field and a stock driver
+> would otherwise bail with `NV_ERR_INVALID_STATE`. This toolchain is not in the shipping
+> repository.
 
-!!! warning "Experimental: an unmodified-driver Python unlocker"
-    A script that runs before the driver loads was demonstrated the day after the opposite was
-    concluded impossible: no patched `.ko`, no installer. It is the cleanest known route in
-    principle. It is not present in the shipping tree or in any archived branch, so the shipping
-    product remains the patched-module path.
+> [!WARNING]
+> **Experimental: an unmodified-driver Python unlocker**
+>
+> A script that runs before the driver loads was demonstrated the day after the opposite was
+> concluded impossible: no patched `.ko`, no installer. It is the cleanest known route in
+> principle. It is not present in the shipping tree or in any archived branch, so the shipping
+> product remains the patched-module path.
 
-!!! note "How the leaked proof-of-concept differed"
-    The leaked package patches the `WprMeta` structure in host memory immediately before GSP-RM
-    loads, which is why it necessarily ships modified open kernel modules. The clean-room approach
-    instead opens the relevant PLM and writes the geometry registers directly. Medium confidence:
-    this is stated by someone holding both artefacts and was not independently re-derived.
+> [!NOTE]
+> **How the leaked proof-of-concept differed**
+>
+> The leaked package patches the `WprMeta` structure in host memory immediately before GSP-RM
+> loads, which is why it necessarily ships modified open kernel modules. The clean-room approach
+> instead opens the relevant PLM and writes the geometry registers directly. Medium confidence:
+> this is stated by someone holding both artefacts and was not independently re-derived.
 
 The historical community stage-1 poke set that preceded the driver patch was five writes:
 `0x009A0204` = `0x02669000`, `0x00100CE0` = `0x0000028A`, `0x00823804` = `0xFFFFFFFF`,

@@ -85,14 +85,16 @@ floorswept unit, an undecoded address and a privilege denial.
 | Drive | 2 × DRIVE A100 32 GB (PG199, `GA100-550F-A1`, `10de:20bb`) | Physical hardware, 2026-05-31, merged into one column |
 | ES | An Ampere engineering sample | **No data.** The column exists in the source table and is empty in all 121 rows |
 
-!!! warning "Two limits on the cohort you must know before quoting it"
-    **Both physical 170HX units in this survey are 10 GB (`0x2082`) cards.** No 8 GB (`0x20C2`)
-    card was probed. Where the 8 GB SKU differs (notably `NV_PTOP_FS4`, see
-    [Chip ID and PTOP](#chip-id-and-ptop)) this table cannot settle it.
-
-    **The `ES` column carries no values at all.** Documents that attribute a specific reading to
-    "the ES part" have miscounted the columns by one; the ES cell is empty in every row of the
-    published table. This was re-verified programmatically for this page.
+> [!WARNING]
+> **Two limits on the cohort you must know before quoting it**
+>
+> **Both physical 170HX units in this survey are 10 GB (`0x2082`) cards.** No 8 GB (`0x20C2`)
+> card was probed. Where the 8 GB SKU differs (notably `NV_PTOP_FS4`, see
+> [Chip ID and PTOP](#chip-id-and-ptop)) this table cannot settle it.
+>
+> **The `ES` column carries no values at all.** Documents that attribute a specific reading to
+> "the ES part" have miscounted the columns by one; the ES cell is empty in every row of the
+> published table. This was re-verified programmatically for this page.
 
 ### What was actually read
 
@@ -181,12 +183,14 @@ What each one means for you:
   PCI device ID. Every "flash it as an A100" plan dies here, at the fuse level, before firmware
   signing even becomes relevant.
 
-!!! danger "Do not write the fuse-programming registers"
-    `FUSE_EN_PROGRAM` reads `0x00000001` on every card and the probe catalogue annotates it
-    "do not use". `FUSECTRL`, `FUSE_EN_PROGRAM`, `FUSE_DIS_PROGRAM` and the fuse data registers
-    drive an OTP array. A successful write is permanent and unrecoverable, and a partial burn can
-    leave the card unable to sense a valid configuration at power-on. Nothing in this project has
-    ever needed a fuse write, and nothing in the shipping unlocker attempts one.
+> [!CAUTION]
+> **Do not write the fuse-programming registers**
+>
+> `FUSE_EN_PROGRAM` reads `0x00000001` on every card and the probe catalogue annotates it
+> "do not use". `FUSECTRL`, `FUSE_EN_PROGRAM`, `FUSE_DIS_PROGRAM` and the fuse data registers
+> drive an OTP array. A successful write is permanent and unrecoverable, and a partial burn can
+> leave the card unable to sense a valid configuration at power-on. Nothing in this project has
+> ever needed a fuse write, and nothing in the shipping unlocker attempts one.
 
 ---
 
@@ -217,10 +221,12 @@ The pattern across the whole Ampere line:
   fused, not driver-side.
 - **Professional and datacentre** (A100 ×3, A10, A5000, A6000, Drive A100): all nine at zero.
 
-!!! note "Correction to the survey's own headline"
-    The published key findings say "ALL 9 speed select fuses at `0x5`". Eight read `0x5`;
-    `FUSE_SS_DP` reads `0x1` because it is a 1-bit fuse, and `0x1` is its maximum. The
-    substance ("every arithmetic unit is maximally throttled, CMP-exclusive") is correct.
+> [!NOTE]
+> **Correction to the survey's own headline**
+>
+> The published key findings say "ALL 9 speed select fuses at `0x5`". Eight read `0x5`;
+> `FUSE_SS_DP` reads `0x1` because it is a 1-bit fuse, and `0x1` is its maximum. The
+> substance ("every arithmetic unit is maximally throttled, CMP-exclusive") is correct.
 
 **Are these overridable? No, but they are bypassable.** Nothing can un-blow them. The
 feature-override block at `0x8238xx` sits downstream of the fuse readout and takes precedence,
@@ -229,12 +235,14 @@ the branch source) is the shared privilege level mask for the speed-select fuses
 reads `0xffffffff` here, and **the shipping unlocker never writes it**. Full mechanism on
 [Compute throttle](../unlock/compute-throttle.md).
 
-!!! question "Open problem: what does `0x008200FC` actually read on a cold card?"
-    This survey reads `0xffffffff` on all 14 cards. A separate 2026-07-09 read on a 170HX
-    recorded `0x000003FF`. A nine-PLM branch variant that tries to write it logs
-    `status=0xffff` with no readback captured, and `0xffff` is the Booter's status for every run
-    regardless of outcome. Whether the register is writable, and what it reads before any tooling
-    has touched it, is unresolved.
+> [!NOTE]
+> **Open problem: what does `0x008200FC` actually read on a cold card?**
+>
+> This survey reads `0xffffffff` on all 14 cards. A separate 2026-07-09 read on a 170HX
+> recorded `0x000003FF`. A nine-PLM branch variant that tries to write it logs
+> `status=0xffff` with no readback captured, and `0xffff` is the Booter's status for every run
+> regardless of outcome. Whether the register is writable, and what it reads before any tooling
+> has touched it, is unresolved.
 
 ---
 
@@ -336,16 +344,18 @@ probed, so they carry no information about the 170HX at all.
   restrictions with two separate fixes and must never be conflated. See
   [PCIe subsystem](pcie-subsystem.md) and [Physical mods](../operations/physical-mods.md).
 
-!!! note "Correction: `DEVIDB` is not 'the 8 GB device ID'"
-    The survey highlights that both 10 GB units read `FUSE_PCIE_DEVIDB = 0x20C2`, the 8 GB card's
-    PCI ID, and reads significance into it. Checking all 11 parts with data,
-    **`DEVIDB = DEVIDA + 0x40` on every single one**: `0x2082`→`0x20c2`, `0x20b1`→`0x20f1`,
-    `0x20b5`→`0x20f5`, `0x2236`→`0x2276`, `0x2231`→`0x2271`, `0x2230`→`0x2270`,
-    `0x2216`→`0x2256`, `0x2208`→`0x2248`, `0x2204`→`0x2244`, `0x2203`→`0x2243`,
-    `0x20bb`→`0x20fb`. `DEVIDB` is a mechanical +0x40 alternate ID, and the coincidence that
-    `0x2082 + 0x40` lands on the other 170HX SKU's ID carries no SKU information. **Testable
-    prediction:** an 8 GB card should read `DEVIDA = 0x20c2` and `DEVIDB = 0x2102`. No 8 GB card
-    was probed, so this is unverified.
+> [!NOTE]
+> **Correction: `DEVIDB` is not 'the 8 GB device ID'**
+>
+> The survey highlights that both 10 GB units read `FUSE_PCIE_DEVIDB = 0x20C2`, the 8 GB card's
+> PCI ID, and reads significance into it. Checking all 11 parts with data,
+> **`DEVIDB = DEVIDA + 0x40` on every single one**: `0x2082`→`0x20c2`, `0x20b1`→`0x20f1`,
+> `0x20b5`→`0x20f5`, `0x2236`→`0x2276`, `0x2231`→`0x2271`, `0x2230`→`0x2270`,
+> `0x2216`→`0x2256`, `0x2208`→`0x2248`, `0x2204`→`0x2244`, `0x2203`→`0x2243`,
+> `0x20bb`→`0x20fb`. `DEVIDB` is a mechanical +0x40 alternate ID, and the coincidence that
+> `0x2082 + 0x40` lands on the other 170HX SKU's ID carries no SKU information. **Testable
+> prediction:** an 8 GB card should read `DEVIDA = 0x20c2` and `DEVIDB = 0x2102`. No 8 GB card
+> was probed, so this is unverified.
 
 **Overridable?** `OPT_GEN23` at `0x0082057c` was targeted directly, twice, from a Booter-mediated
 high-secure write and the readback stayed `0x00000001` every time. Gen2 was eventually reached
@@ -461,10 +471,12 @@ one reports one quarter of the capacity. That is the whole memory story in one l
 what the unlock reverses. See [Memory subsystem](memory-subsystem.md) and
 [Memory geometry](../unlock/memory-geometry.md).
 
-!!! note "The GA10x `0xbadf5040` on `FUSE_FBPA_DISABLE`"
-    Every GA10x part returns the privilege sentinel for `0x00820368` while returning a real value
-    for `0x0082036C` (FBIO). The floorsweep on those parts has to be read from the FBIO mask
-    instead. This is an architecture difference in PRI gating, not a measurement failure.
+> [!NOTE]
+> **The GA10x `0xbadf5040` on `FUSE_FBPA_DISABLE`**
+>
+> Every GA10x part returns the privilege sentinel for `0x00820368` while returning a real value
+> for `0x0082036C` (FBIO). The floorsweep on those parts has to be read from the FBIO mask
+> instead. This is an architecture difference in PRI gating, not a measurement failure.
 
 ---
 
@@ -507,10 +519,12 @@ expects it to work is `FUSE_EN_SW_OVERRIDE = 0`.
 
 Perfect agreement in all nine pairs, on both units.
 
-!!! note "Address correction"
-    `STATUS_OPT_FBPA` is at `0x00820C18`. `0x00820C14` is `STATUS_OPT_FBIO`. On several probed
-    dies both happen to hold the same value, which is exactly why the mislabel survived for
-    months. The probe script now carries the correction inline.
+> [!NOTE]
+> **Address correction**
+>
+> `STATUS_OPT_FBPA` is at `0x00820C18`. `0x00820C14` is `STATUS_OPT_FBIO`. On several probed
+> dies both happen to hold the same value, which is exactly why the mislabel survived for
+> months. The probe script now carries the correction inline.
 
 ---
 
@@ -541,14 +555,16 @@ Every PTOP scalability register reports the **full** GA100 configuration: 8 GPCs
 unaffected by floorsweep or disable fuses, which is precisely why they are the reference against
 which the fuse damage is measured.
 
-!!! question "Open problem: `NV_PTOP_FS4` on the 8 GB card"
-    Bit 0 of `0x0002241C` is `GEN2_PCIE` and bit 7 is `GEN2_PCIE_SPEED`. Both 10 GB units in this
-    survey read `0x00000081` (both bits set), matching every A100 and every GA10x part. A
-    separate probe reports `0x00000000` on an 8 GB (`0x20C2`) card, and the current reconciliation
-    treats it as a per-SKU split: `0x00000000` on 8 GB, `0x00000081` on 10 GB. The `0x00` reading
-    is the interesting half and it rests on one probe. What would settle it: a fresh read of
-    `0x0002241C` on a known `10de:20c2` and a known `10de:2082` card, each reported alongside
-    `lspci -nn` for the same bus address.
+> [!NOTE]
+> **Open problem: `NV_PTOP_FS4` on the 8 GB card**
+>
+> Bit 0 of `0x0002241C` is `GEN2_PCIE` and bit 7 is `GEN2_PCIE_SPEED`. Both 10 GB units in this
+> survey read `0x00000081` (both bits set), matching every A100 and every GA10x part. A
+> separate probe reports `0x00000000` on an 8 GB (`0x20C2`) card, and the current reconciliation
+> treats it as a per-SKU split: `0x00000000` on 8 GB, `0x00000081` on 10 GB. The `0x00` reading
+> is the interesting half and it rests on one probe. What would settle it: a fresh read of
+> `0x0002241C` on a known `10de:20c2` and a known `10de:2082` card, each reported alongside
+> `lspci -nn` for the same bus address.
 
 ---
 
@@ -733,16 +749,18 @@ A6000 `0x00001ffe`, RTX 3080 `0x00000800` with `fbpa03` swept, RTX 3080 Ti `0x00
 RTX 3090 `0x00001000`, RTX 3090 Ti `0x00000ffe`, and `0xbadf1100` (not decoded) for FBPAs 6
 through 23.
 
-!!! question "Open problem: the exact `CSTATUS_RAMAMOUNT` encoding"
-    The 170HX reads exactly `0x200` = 512 and 20 × 512 MiB = 10240 MiB, which is right. But the
-    A100 40 GB reads `0x7ff` = 2047 and the survey treats it as 2048 MiB per partition, while the
-    RTX 3080 reads `0x800` = 2048 for the same nominal 2048 MiB. Observationally, every part with
-    `FUSE_ECC_EN = 1` reports slightly **less** than a power of two (`0x7ff`, `0xfff`, `0xefe`,
-    `0xffe`, `0x1ffe`) and the ECC-disabled parts report an exact power of two (`0x200`, `0x800`,
-    `0x1000`), with the RTX 3090 Ti (`0xffe`, ECC fuse `0`) as the one exception. Whether the
-    field is post-ECC usable capacity, an n-minus-one encoding, or something else is not settled
-    anywhere in the corpus. It does not affect the unlock, which writes `CFG1` and the local
-    memory range rather than this register.
+> [!NOTE]
+> **Open problem: the exact `CSTATUS_RAMAMOUNT` encoding**
+>
+> The 170HX reads exactly `0x200` = 512 and 20 × 512 MiB = 10240 MiB, which is right. But the
+> A100 40 GB reads `0x7ff` = 2047 and the survey treats it as 2048 MiB per partition, while the
+> RTX 3080 reads `0x800` = 2048 for the same nominal 2048 MiB. Observationally, every part with
+> `FUSE_ECC_EN = 1` reports slightly **less** than a power of two (`0x7ff`, `0xfff`, `0xefe`,
+> `0xffe`, `0x1ffe`) and the ECC-disabled parts report an exact power of two (`0x200`, `0x800`,
+> `0x1000`), with the RTX 3090 Ti (`0xffe`, ECC fuse `0`) as the one exception. Whether the
+> field is post-ECC usable capacity, an n-minus-one encoding, or something else is not settled
+> anywhere in the corpus. It does not affect the unlock, which writes `CFG1` and the local
+> memory range rather than this register.
 
 ## Per-FBPA `CFG0`
 
@@ -764,7 +782,7 @@ per-stack override, is refuted by 20 identical reads per unit across two units.
 |---|---|---|---|---|
 | Arithmetic throughput | `FUSE_SS_*` `0x00820224`, `0x0082059C`, `0x008207D4`–`0x008207EC` | `0x5` × 8, DP `0x1` | Feature override `0x0082381C` / `0x00823820` after opening PLM `0x00823804` | **Solved and shipping.** Survives FLR |
 | Memory capacity | none directly; `FBPA_CFG1` `0x009a0204` plus the MMU local memory range | `0x02449000` | Host write after opening FBPA PLM `0x009a0148` | **Solved and shipping.** Does **not** survive FLR |
-| PCIe Gen 2 | `FUSE_PCIE_GEN23_DIS` `0x0082057C` | `0x00000001` | Fuse shadow write **fails**; Gen2 reached via `CYA_0`/`LINK_CONFIG_0`/XP3G/`PRIV_MISC_1` | Works on unreleased branches only |
+| PCIe Gen 2 | `FUSE_PCIE_GEN23_DIS` `0x0082057C` | `0x00000001` | Fuse shadow write **fails**; Gen2 reached via `CYA_0`/`LINK_CONFIG_0`/XP3G/`PRIV_MISC_1` | Shipped in `master` since 2026-07-29 |
 | PCIe Gen 3 | `FUSE_PCIE_GEN3_DIS` `0x00820580` | `0x00000001` | none found | **Open.** Assessed as needing a GSP patch |
 | PCIe Gen 4 | `FUSE_PCIE_MAGIC_D` `0x00820520` bit 25 | `0x16680000` | Writability never tested | **Open** |
 | PCIe width | none. `FUSE_PCIE_LANE_DIS` = `0` | `0x00000000` | Solder 24 × 0402 capacitors | Physical mod only |

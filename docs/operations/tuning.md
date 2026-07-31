@@ -20,13 +20,15 @@ VRAM you can actually allocate, and workload-level tuning. Measured baseline thr
 3. **Above roughly +300 MHz the failure mode is silent data corruption, not a crash.** A run
    that completes is not evidence a setting is safe.
 
-!!! danger "Silent memory corruption above +300 MHz offset at a 1400 MHz ceiling"
-    Measured with a full-VRAM pattern sweep as the gate: **+250** at 142.2 W passed 3 sweeps
-    with 0 errors; **+300** at 138.5 W passed 4 sweeps with 0 errors; **+325** at 132.7 W gave
-    **6 errors, then 3 errors, then 0 errors** across 3 sweeps; **+375** took a CUDA device
-    fault under load. The safe window at a 1400 MHz ceiling is **one 25 MHz step wide** above
-    +300, and past it you get bad data rather than a stack trace. Run four sweeps, not two, and
-    prefer margin whenever two settings measure equal.
+> [!CAUTION]
+> **Silent memory corruption above +300 MHz offset at a 1400 MHz ceiling**
+>
+> Measured with a full-VRAM pattern sweep as the gate: **+250** at 142.2 W passed 3 sweeps
+> with 0 errors; **+300** at 138.5 W passed 4 sweeps with 0 errors; **+325** at 132.7 W gave
+> **6 errors, then 3 errors, then 0 errors** across 3 sweeps; **+375** took a CUDA device
+> fault under load. The safe window at a 1400 MHz ceiling is **one 25 MHz step wide** above
+> +300, and past it you get bad data rather than a stack trace. Run four sweeps, not two, and
+> prefer margin whenever two settings measure equal.
 
 ---
 
@@ -50,19 +52,23 @@ SM 1140 MHz, Memory 1215 MHz at capture, with Max Clocks Graphics 1410 MHz, SM 1
 1215 MHz (current equals max). Core-clock offset and memory-clock locks remain in place after
 the unlock on 10 GB cards specifically.
 
-!!! question "Open problem: the stock 8 GB memory clock is unresolved"
-    The stock 8 GB memory clock is unresolved: 1458 MHz (one sweep and TechPowerUp), 1728 MHz
-    (`nvidia-smi -q` Supported Clocks, noted as "432 MHz x 4"), 1890 MHz (`nvtop` during an
-    unlocked 64 GB `gpu_burn` at 300 W). 1215 MHz is the 10 GB card and is solid. The plausible
-    reconciliation (1458 stock, 1728 OC VBIOS, 1890 overclocked OC VBIOS) is unproven; a raw
-    FBPA PLL read would settle it. This page prints 1728, 1890 and 1215 in different places for
-    that reason.
+> [!NOTE]
+> **Open problem: the stock 8 GB memory clock is unresolved**
+>
+> The stock 8 GB memory clock is unresolved: 1458 MHz (one sweep and TechPowerUp), 1728 MHz
+> (`nvidia-smi -q` Supported Clocks, noted as "432 MHz x 4"), 1890 MHz (`nvtop` during an
+> unlocked 64 GB `gpu_burn` at 300 W). 1215 MHz is the 10 GB card and is solid. The plausible
+> reconciliation (1458 stock, 1728 OC VBIOS, 1890 overclocked OC VBIOS) is unproven; a raw
+> FBPA PLL read would settle it. This page prints 1728, 1890 and 1215 in different places for
+> that reason.
 
-!!! question "Open problem: the 1470 MHz ceiling on the 8 GB OC VBIOS is unexplained"
-    VBIOS 92.00.6D.00.0A advertises Max Customer Boost Clocks of 1695 MHz graphics/SM, 1728 MHz
-    memory (noted as 432 MHz x 4) and 1545 MHz video. Under `mmapeak` the card sat at
-    **1470 MHz** with the power limit at 300 W, GPU-T reporting `PerfCap: None`, and the GPU
-    drawing only ~150 W. Neither power nor an explicit performance cap explains it.
+> [!NOTE]
+> **Open problem: the 1470 MHz ceiling on the 8 GB OC VBIOS is unexplained**
+>
+> VBIOS 92.00.6D.00.0A advertises Max Customer Boost Clocks of 1695 MHz graphics/SM, 1728 MHz
+> memory (noted as 432 MHz x 4) and 1545 MHz video. Under `mmapeak` the card sat at
+> **1470 MHz** with the power limit at 300 W, GPU-T reporting `PerfCap: None`, and the GPU
+> drawing only ~150 W. Neither power nor an explicit performance cap explains it.
 
 Memory clock locking is simply refused:
 
@@ -243,10 +249,12 @@ performance. Silicon leakage rising with temperature makes the curve worse when 
 | Diffusion | 250-260+ W |
 | `gpu_burn` at a 300 W limit | 278 / 300 W |
 
-!!! warning "Do not validate cooling or stability with an FP32 burn-in"
-    This card is hard to load. A conventional FP32 burn-in reaches only 60-75 W where an integer
-    or memory benchmark reaches 160+ W. Validate with hashcat, a memory sweep, or `gpu_burn -tc`
-    plus a real workload, not with FP32 alone.
+> [!WARNING]
+> **Do not validate cooling or stability with an FP32 burn-in**
+>
+> This card is hard to load. A conventional FP32 burn-in reaches only 60-75 W where an integer
+> or memory benchmark reaches 160+ W. Validate with hashcat, a memory sweep, or `gpu_burn -tc`
+> plus a real workload, not with FP32 alone.
 
 **Cooling the card better lowers its idle power**, which is the benign half of the leakage
 feedback loop and the most likely explanation for the 30 W-versus-44 W idle spread across
@@ -295,9 +303,11 @@ Notes on `nvidia-persistenced` itself:
   stopping the display manager and the persistence daemon, not just `modprobe -r`. See
   [troubleshooting.md](../procedures/troubleshooting.md).
 
-!!! danger "Do not install `nvidia-pstated` as a systemd service on an unlocked host"
-    The unlock scripts need every NVIDIA service killed, and the interaction with a pstate daemon
-    is untested. If you want to experiment with it, run it from a launcher instead.
+> [!CAUTION]
+> **Do not install `nvidia-pstated` as a systemd service on an unlocked host**
+>
+> The unlock scripts need every NVIDIA service killed, and the interaction with a pstate daemon
+> is untested. If you want to experiment with it, run it from a launcher instead.
 
 ---
 
@@ -312,20 +322,12 @@ community fork of `nvidia-pstated` that works on 2-P-state cards (P100, V100) wa
 This is card-specific, not a fault in the tool: `nvidia-pstated` took a **CMP 90HX from 75 W to
 5 W** idle, working across a multi-GPU setup and persisting across reboot.
 
-!!! note "Superseded: 'pstated will fix 170HX idle power'"
-    It cannot. The documented fallback for single-P-state cards is **application-clock locking**
-    (`nvidia-smi -i N -ac <mem,gpu>` to idle, `nvidia-smi -i N -acp` or `-rac` to restore),
-    implemented through `nvmlDeviceSetApplicationsClocks` rather than NvAPI. A fork added
-    `enableClockFallback` with `clockFreqMemHigh` / `clockFreqGpuHigh` / `clockFreqMemLow` /
-    `clockFreqGpuLow`. Measured savings on other hardware: ~13 W on a V100S PCIe, 16-18 W per GPU
-    on V100 SXM2 with llama.cpp holding a model. **This has not been demonstrated on the 170HX**,
-    and its single memory-clock domain is the obvious obstacle. On bare-idle V100 SXM2 the GPU
-    clock dropped from 1530 to 135 MHz with no measured power reduction at all.
-
-!!! question "Open problem: one P-state or two?"
-    One account says the 170HX has two P-states; every posted capture shows only a single
-    default P0, which is why the NvAPI call fails. The practical consequence is the same either
-    way. `nvidia-smi -q -d PERFORMANCE` listing the supported P-state set would settle it.
+> [!NOTE]
+> **Open problem: one P-state or two?**
+>
+> One account says the 170HX has two P-states; every posted capture shows only a single
+> default P0, which is why the NvAPI call fails. The practical consequence is the same either
+> way. `nvidia-smi -q -d PERFORMANCE` listing the supported P-state set would settle it.
 
 The one untried lead for idle power is flashing PCIe A100 logic, which does contain several
 P-states. Nobody has attempted it, and VBIOS work on this card is signature-constrained; see
@@ -366,25 +368,29 @@ Practical allocation guidance:
   already-unlocked card re-detects correctly. Stock windows are 7680-8704 MiB and
   9728-10752 MiB, with a ±512 MiB tolerance for reserved FB.
 
-!!! danger "The 80 GB geometry is not more VRAM, it is less"
-    A 10 GB card fired to 80 GB reports ~81920 MiB and 85,545,582,592 bytes, and `cudaMalloc` of
-    77 GiB even succeeds, but kernels touching more than roughly 40 GB cause fatal GPU loss,
-    independent of power limit. Reported Xid codes include Xid 31 (described as harmless) and
-    Xid 154 after CUDA memory tests; the dominant reported symptom is hangs. Xid 31 alone was
-    suggested by a bystander and was not corroborated as *the* signature by the operator with the
-    failing card. For one tester model loading hung after roughly 20 GB, while a second tester
-    with multiple cards saw failures in the 40 to 60 GB band; either way models
-    that previously fit the 40 GB unlock stopped loading. Physical DRAM is present (a PRAMIN
-    walk proved 80 distinct GiB), and on this branch the wall behaves like address decode. A
-    script-driven coherent register set does reach real memory past 40 GiB, but it is unshipped
-    and delivers roughly one CUDA context per fire. **8 GB cards go to 64 GB;
-    10 GB cards go to 40 GB.** See [80gb.md](../frontier/80gb.md) and
-    [memory-geometry.md](../unlock/memory-geometry.md).
+> [!CAUTION]
+> **The 80 GB geometry is not more VRAM, it is less**
+>
+> A 10 GB card fired to 80 GB reports ~81920 MiB and 85,545,582,592 bytes, and `cudaMalloc` of
+> 77 GiB even succeeds, but kernels touching more than roughly 40 GB cause fatal GPU loss,
+> independent of power limit. Reported Xid codes include Xid 31 (described as harmless) and
+> Xid 154 after CUDA memory tests; the dominant reported symptom is hangs. Xid 31 alone was
+> suggested by a bystander and was not corroborated as *the* signature by the operator with the
+> failing card. For one tester model loading hung after roughly 20 GB, while a second tester
+> with multiple cards saw failures in the 40 to 60 GB band; either way models
+> that previously fit the 40 GB unlock stopped loading. Physical DRAM is present (a PRAMIN
+> walk proved 80 distinct GiB), and on this branch the wall behaves like address decode. A
+> script-driven coherent register set does reach real memory past 40 GiB, but it is unshipped
+> and delivers roughly one CUDA context per fire. **8 GB cards go to 64 GB;
+> 10 GB cards go to 40 GB.** See [80gb.md](../frontier/80gb.md) and
+> [memory-geometry.md](../unlock/memory-geometry.md).
 
-!!! warning "There is no ECC and no ECC telemetry"
-    ECC is fused off with no known lever, so a marginal overclock has no error-counter safety
-    net. That is precisely why the qualification ladder above gates on a full-VRAM pattern sweep
-    with a compute checksum. See [ecc.md](../frontier/ecc.md).
+> [!WARNING]
+> **There is no ECC and no ECC telemetry**
+>
+> ECC is fused off with no known lever, so a marginal overclock has no error-counter safety
+> net. That is precisely why the qualification ladder above gates on a full-VRAM pattern sweep
+> with a compute checksum. See [ecc.md](../frontier/ecc.md).
 
 ---
 
@@ -419,9 +425,11 @@ flag, while tg128 was essentially unchanged. Small further gains held up to uBat
 performance collapsed. That card has 68 of 84 SMs, so the analogous tuning point on a 70-SM
 170HX would be just below 70.
 
-!!! question "Open problem: does the uBatch cliff exist on the 170HX?"
-    Nobody has run the sweep. `llama-bench` with `n_ubatch` from 48 to 80 on a compute-unlocked
-    170HX is a single afternoon of work and is the largest untested upside in the archive.
+> [!NOTE]
+> **Open problem: does the uBatch cliff exist on the 170HX?**
+>
+> Nobody has run the sweep. `llama-bench` with `n_ubatch` from 48 to 80 on a compute-unlocked
+> 170HX is a single afternoon of work and is the largest untested upside in the archive.
 
 ### Validating a tuning point
 

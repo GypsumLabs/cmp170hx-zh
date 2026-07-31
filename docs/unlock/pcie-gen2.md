@@ -3,25 +3,29 @@
 **What this page covers**: the complete register mechanism that takes a CMP 170HX from PCIe Gen1
 (2.5 GT/s) to Gen2 (5.0 GT/s) with no hardware modification, how it is split between patches
 `0007` and `0008`, the retrain procedure, the IOMMU dependency, the modprobe registry keys, and
-the four-branch lineage the work lives on. For the hardware it is defeating, see
+the branch lineage the work came from before it merged. For the hardware it is defeating, see
 [PCIe subsystem](../hardware/pcie-subsystem.md).
 
-!!! warning "Experimental: this is not in the shipping release"
-    Shipping `master` contains patches `0001` through `0006` only, has no `pcie:` block in
-    `common/constants.yaml`, and its "What Gets Unlocked" table has exactly three rows (compute,
-    memory geometry, persistence) with no PCIe row. A case-insensitive grep of master's
-    `install.sh`, `remove.sh`, `README.md` and `driver/build.sh` for
-    `gen2|gen 2|pcie|iommu|retrain|RMPcieLinkSpeed` returns **zero hits**. All Gen2 code lives on
-    four of the twelve unreleased branches. Nothing on this page has been merged, and one
-    contributor described the result as "like a script spamming stuff and hoping it sticks". A
-    dedicated issue channel was opened five hours after the announcement.
+> [!NOTE]
+> **Shipped: Gen2 merged to `master` on 2026-07-29**
+>
+> Gen2 was branch-only for its first week. It merged in commit `2e0a2c02`
+> ("PCIe Gen 2 unlock!"), and `master` now carries both `0007-pcie-gen2.patch` and
+> `0008-pcie-gen2-probe-retrain.patch` alongside `0001` through `0006`. Master's README
+> lists `PCIe Gen 2 speeds | Working`. Multiple independent rigs have reproduced it.
+>
+> Two details from the branch-only period still hold and are worth knowing: `common/constants.yaml`
+> still has no `pcie:` block, so the register data lives in the patches rather than in the
+> config; and one contributor characterised the approach as "like a script spamming stuff and
+> hoping it sticks", which is a fair description of a 25-write sequence with no readback
+> between steps. It works, and it is not elegant.
 
 ## The result, up front
 
 Gen2 doubles link **speed**. It does not touch link **width**, and no code in any branch reads or
 writes a width field. A Gen2-patched card that has not been soldered runs at Gen2 x4.
 
-| | Stock | After the Gen2 branch |
+| | Stock, no unlock | With the unlocker |
 |---|---|---|
 | `LnkCap` | `0x00456101` (Gen1 max, x16) | `0x00456102` (Gen2 max, x16) |
 | `LnkCap2` supported speeds | `0x00000002` (2.5 GT/s only) | `0x00000006` (2.5 and 5.0 GT/s) |
@@ -75,17 +79,6 @@ testers on distinct hardware.
 `far` is `Gen2` plus exactly one commit whose only content change in the entire tree is a single
 character in one line. `deced` is `far` plus one commit that re-adds BDF auto-discovery to a
 script the installer deletes.
-
-!!! note "Superseded: the Gen1 hardware-wall conclusion"
-    Through 2026-07-19 the maintainers stated flatly that "Gen 2 hasn't worked for anybody". A
-    field manual dated 2026-07-24 concluded that all four layers of the lock (runtime register
-    writes, register semantics, durable firmware, silicon fuse) were empirically closed, verified
-    across a 4032-run offline firmware fuzz sweep (126 function-register pairs drawn from 66
-    functions, each swept over 32 single-bit values) and on-silicon direct-write probing. Its own section 6 names the gap: "The
-    full community Gen2 sequence ... as a single combined write was not run: every component is
-    individually proven inert, so it is a low-odds combination." The low-odds combination worked.
-    The Gen3 half of that conclusion still stands. See
-    [Gen3 and Gen4](../frontier/pcie-gen3-gen4.md).
 
 ## Mechanism
 
@@ -147,18 +140,22 @@ override-enable base `0x0008e110`, value base `0x0008e120`, with slot *n* at bas
 is base + `0xC`. The value is always written before the enable so the override never latches stale
 data, and the enable encodings are one-hot per slot (`0x1` for slot 0, `0x4` for slot 3).
 
-!!! info "Two entries fail and Gen2 works anyway"
-    `OPT_GEN23` is a pure OTP fuse-sense reflection with no write port; every attempt from every
-    privilege level returns `status=0xffff rd=0x00000001`. `VSEC_DEVICE` also fails. The shipped
-    patch still attempts both, still fails at both, and the link still trains at Gen2. The working
-    levers are `CYA_0`, `LINK_CONFIG_0`, the XP3G overrides and `PRIV_MISC_1`.
+> [!NOTE]
+> **Two entries fail and Gen2 works anyway**
+>
+> `OPT_GEN23` is a pure OTP fuse-sense reflection with no write port; every attempt from every
+> privilege level returns `status=0xffff rd=0x00000001`. `VSEC_DEVICE` also fails. The shipped
+> patch still attempts both, still fails at both, and the link still trains at Gen2. The working
+> levers are `CYA_0`, `LINK_CONFIG_0`, the XP3G overrides and `PRIV_MISC_1`.
 
-!!! note "Counting errors in secondary documentation"
-    Three published counts are wrong and are checkable directly against the patch: the OPTB run is
-    **ten** registers (`D0, D4, D8, DC, E0, E4, E8, EC, F0, F4`), not eleven and not nine; the
-    table opens **18** PLMs inside a **23**-entry table, not 22; and the late hunk sits in
-    `kernel_gsp_tu102.c` immediately after Booter Load returns, which is *before* GSP-RM is
-    running, not after.
+> [!NOTE]
+> **Counting errors in secondary documentation**
+>
+> Three published counts are wrong and are checkable directly against the patch: the OPTB run is
+> **ten** registers (`D0, D4, D8, DC, E0, E4, E8, EC, F0, F4`), not eleven and not nine; the
+> table opens **18** PLMs inside a **23**-entry table, not 22; and the late hunk sits in
+> `kernel_gsp_tu102.c` immediately after Booter Load returns, which is *before* GSP-RM is
+> running, not after.
 
 ### Phase B: plain BAR0 writes
 
@@ -184,14 +181,16 @@ late site in `kernel_gsp_tu102.c`, `tools/retrain.sh`, and `nv_cmp170hx_retrain_
 `PCIE_GEN2_PRIV_MISC_1_GEN2_VAL = ((1U << 12) | (1U << 14))`, with the requested value
 `(misc1 | GEN2_EN) & ~GEN2_VAL`: assert both override enables, drive both value bits to zero.
 
-!!! note "`PL_LINK_RATE 0x00240036` is not required"
-    The write exists only in `0007`'s in-GSP path. Neither `tools/retrain.sh` nor patch `0008`
-    touches `0x0008c1c0`, and both of those produce Gen2. The A100 forced-generation sweep also
-    showed the whole XP_PL family (`0x8C044`, `0x8C048`, `0x8C04C`) reading `0xbadf5040` at every
-    generation on the reference card, so the family was never validated against a working link.
-    What the individual bits of `0x00240036` encode is documented nowhere. Naming caution: the
-    address is `#define`d `PCIE_GEN2_LTSSM_ADDR` for `0x0008872c` while the log string calls it
-    `XVE_OVR`; that ambiguity is in the source itself.
+> [!NOTE]
+> **`PL_LINK_RATE 0x00240036` is not required**
+>
+> The write exists only in `0007`'s in-GSP path. Neither `tools/retrain.sh` nor patch `0008`
+> touches `0x0008c1c0`, and both of those produce Gen2. The A100 forced-generation sweep also
+> showed the whole XP_PL family (`0x8C044`, `0x8C048`, `0x8C04C`) reading `0xbadf5040` at every
+> generation on the reference card, so the family was never validated against a working link.
+> What the individual bits of `0x00240036` encode is documented nowhere. Naming caution: the
+> address is `#define`d `PCIE_GEN2_LTSSM_ADDR` for `0x0008872c` while the log string calls it
+> `XVE_OVR`; that ambiguity is in the source itself.
 
 ### The late hunk
 
@@ -330,24 +329,26 @@ set PCI_EXP_LNKCTL_RL         on the UPSTREAM BRIDGE
 poll LnkSta 20 times at msleep(100)      /* 2.05 s worst case */
 ```
 
-!!! danger "0008's success test can never pass on this card"
-    The predicate is:
-
-    ```c
-    if (!ret && (link_status & PCI_EXP_LNKSTA_DLLLA) &&
-        ((link_status & PCI_EXP_LNKSTA_CLS) >= PCI_EXP_LNKSTA_CLS_5_0GB))
-    ```
-
-    `PCI_EXP_LNKSTA_DLLLA` is bit 13 (`0x2000`). A Gen2-trained 170HX reads `LnkSta = 0x1042`, and
-    `0x1042 & 0x2000 = 0`, so the predicate fails even though `0x1042 & 0xF = 2` means 5.0 GT/s.
-    The bit can **never** be set on this port: DLL Link Active Reporting Capable is `LnkCap` bit
-    20, and the GPU's `LnkCap = 0x00456102` has bit 20 clear. The upstream root port does report it
-    (`LnkCap 0x007b7905`, `LnkSta 0x7042`), but `0008` reads `LnkSta` from the **GPU**.
-
-    Consequence: on every working Gen2 170HX, patch `0008` burns the full 20 × 100 ms and then
-    prints `CMP Gen2: PCIe retrain completed without Gen2 link (status=0x1042, ret=0)` at
-    `NV_DBG_ERRORS`. The message is a false negative. It has already misled at least one downstream
-    analysis into concluding `0008` "runs too late".
+> [!CAUTION]
+> **0008's success test can never pass on this card**
+>
+> The predicate is:
+>
+> ```c
+> if (!ret && (link_status & PCI_EXP_LNKSTA_DLLLA) &&
+>     ((link_status & PCI_EXP_LNKSTA_CLS) >= PCI_EXP_LNKSTA_CLS_5_0GB))
+> ```
+>
+> `PCI_EXP_LNKSTA_DLLLA` is bit 13 (`0x2000`). A Gen2-trained 170HX reads `LnkSta = 0x1042`, and
+> `0x1042 & 0x2000 = 0`, so the predicate fails even though `0x1042 & 0xF = 2` means 5.0 GT/s.
+> The bit can **never** be set on this port: DLL Link Active Reporting Capable is `LnkCap` bit
+> 20, and the GPU's `LnkCap = 0x00456102` has bit 20 clear. The upstream root port does report it
+> (`LnkCap 0x007b7905`, `LnkSta 0x7042`), but `0008` reads `LnkSta` from the **GPU**.
+>
+> Consequence: on every working Gen2 170HX, patch `0008` burns the full 20 × 100 ms and then
+> prints `CMP Gen2: PCIe retrain completed without Gen2 link (status=0x1042, ret=0)` at
+> `NV_DBG_ERRORS`. The message is a false negative. It has already misled at least one downstream
+> analysis into concluding `0008` "runs too late".
 
 The log-level convention compounds it. In `0008`, success prints at `NV_DBG_INFO` while all four
 failure paths print at `NV_DBG_ERRORS`; `0007` by contrast emits even routine pre and post dumps at
@@ -420,48 +421,29 @@ Every implementation waits for the driver to come up first. `debug-gen2` used sy
 `Gen2`, `far` and `deced` poll `for i in $(seq 1 120)` on both `resource0` existing and
 `nvidia-smi -L`. `0008` runs inside probe so it needs only `msleep(50)` plus 20 × `msleep(100)`.
 
-!!! note "Superseded: the userspace systemd retrain"
-    `debug-gen2` shipped `/usr/local/sbin/retrain.sh` plus `cmpretrain.service`
-    (`After=multi-user.target`, `Type=oneshot`, `ExecStartPre=/bin/sleep 15`,
-    `RemainAfterExit=yes`, `WantedBy=multi-user.target`). On 2026-07-24 it was root-caused as
-    retraining only the first GPU **and** as a source of random card crashes, because it operates
-    while the driver is actively accessing the card. Symptom before the fix: "Gen2 just apply the
-    first card....2nd card still running at Gen1". Patch `0008` replaced it. From the `Gen2` branch
-    onward `install.sh` step 5b actively **uninstalls** it:
-
-    ```bash
-    for legacy_unit in cmpretrain.service cmp-gen2-retrain.service; do
-        systemctl disable --now "$legacy_unit"; systemctl reset-failed "$legacy_unit"
-    done
-    rm -f /etc/systemd/system/cmpretrain.service /etc/systemd/system/cmp-gen2-retrain.service \
-          /usr/local/sbin/retrain.sh /usr/local/sbin/cmp-gen2-retrain.sh
-    systemctl daemon-reload
-    ```
-
-    Three independent testers reported `0008` fixing multi-card Gen2 and eliminating the crashes,
-    on 2× 10 GB, 3× 10 GB and mixed 8 GB plus 10 GB systems. See [multi-GPU](../procedures/multi-gpu.md).
-
-!!! warning "Experimental: `tools/retrain.sh` is dead code on Gen2, far and deced"
-    Those branches ship a script their own installer deletes from `/usr/local/sbin`. Grepping their
-    installers for `retrain` returns only the removal block. There is no
-    `install -m 0755 tools/retrain.sh` anywhere. To use it you must run it by hand as root. Worse,
-    on `Gen2` and `far` the script hard-codes one developer's PCI addresses
-    (`SYS=/sys/bus/pci/devices/0000:0a:00.0`, `GPU, UP = "0a:00.0", "09:01.0"`,
-    `PATH = "/sys/bus/pci/devices/0000:0a:00.0/resource0"`) and silently targets the wrong device
-    on any other machine. This was a regression: `debug-gen2` auto-discovered both. `deced`
-    (`2326599`) restored discovery with
-
-    ```bash
-    find_gpu_bdf() {
-      for id in 10de:20c2 10de:2082; do
-        lspci -d "$id" -D 2>/dev/null | head -1 | cut -d' ' -f1
-      done | head -1
-    }
-    UP_BDF="$(basename "$(dirname "$(readlink -f "/sys/bus/pci/devices/$GPU_BDF")")")"
-    ```
-
-    and re-polls `find_gpu_bdf` on each of the 120 wait iterations. Script line counts:
-    `debug-gen2` 138, `Gen2` 106, `far` 106, `deced` 115.
+> [!WARNING]
+> **Experimental: `tools/retrain.sh` is dead code on Gen2, far and deced**
+>
+> Those branches ship a script their own installer deletes from `/usr/local/sbin`. Grepping their
+> installers for `retrain` returns only the removal block. There is no
+> `install -m 0755 tools/retrain.sh` anywhere. To use it you must run it by hand as root. Worse,
+> on `Gen2` and `far` the script hard-codes one developer's PCI addresses
+> (`SYS=/sys/bus/pci/devices/0000:0a:00.0`, `GPU, UP = "0a:00.0", "09:01.0"`,
+> `PATH = "/sys/bus/pci/devices/0000:0a:00.0/resource0"`) and silently targets the wrong device
+> on any other machine. This was a regression: `debug-gen2` auto-discovered both. `deced`
+> (`2326599`) restored discovery with
+>
+> ```bash
+> find_gpu_bdf() {
+>   for id in 10de:20c2 10de:2082; do
+>     lspci -d "$id" -D 2>/dev/null | head -1 | cut -d' ' -f1
+>   done | head -1
+> }
+> UP_BDF="$(basename "$(dirname "$(readlink -f "/sys/bus/pci/devices/$GPU_BDF")")")"
+> ```
+>
+> and re-polls `find_gpu_bdf` on each of the 120 wait iterations. Script line counts:
+> `debug-gen2` 138, `Gen2` 106, `far` 106, `deced` 115.
 
 ### The independent early-boot hammer
 
@@ -480,15 +462,17 @@ Retrain bit each pass. It typically succeeds around iteration 30, about 1.5 s in
 `strings /lib/modules/$(uname -r)/updates/cmpunlocker/nvidia.ko | grep -q 'SEC2_DEBUG: PCIe'`,
 logging to `/var/log/cmp170hx-gen2.log`.
 
-!!! question "Open problem: is the Gen2 window transient?"
-    The hammer's transient-window model is contradicted by an archived steady-state dump (kernel
-    6.12.0-hiveos, driver 610.43.03, two `10de:20c2` cards) which reads `LnkCap2 = 0x00000006` and
-    `LnkCap = 0x00456102` **after boot has completed**. `0007`'s own dmesg also shows the
-    `VSEC_DEVICE` write failing, so the bit RM is supposed to clear may never have been set. Both
-    sides are first-hand. What would settle it: a timestamped poll of
-    `setpci -s <bdf> CAP_EXP+0x2c.l` every 100 ms from early boot through 60 s, on both an AMD
-    CachyOS host and a HiveOS host. Until then, treat the transient window as one host's
-    observation, not a property of the card.
+> [!NOTE]
+> **Open problem: is the Gen2 window transient?**
+>
+> The hammer's transient-window model is contradicted by an archived steady-state dump (kernel
+> 6.12.0-hiveos, driver 610.43.03, two `10de:20c2` cards) which reads `LnkCap2 = 0x00000006` and
+> `LnkCap = 0x00456102` **after boot has completed**. `0007`'s own dmesg also shows the
+> `VSEC_DEVICE` write failing, so the bit RM is supposed to clear may never have been set. Both
+> sides are first-hand. What would settle it: a timestamped poll of
+> `setpci -s <bdf> CAP_EXP+0x2c.l` every 100 ms from early boot through 60 s, on both an AMD
+> CachyOS host and a HiveOS host. Until then, treat the transient window as one host's
+> observation, not a property of the card.
 
 ## Modprobe registry keys
 
@@ -504,15 +488,17 @@ NVreg_RegistryDwords=\"RmForceEnableGen2=1;RMPcieLinkSpeed=0x1\" (else the RM re
 retrain)."` Separately, the same setup script lists `RmForceEnableGen2` among things "tested and
 confirmed unnecessary", and nobody has shown that key doing anything on its own.
 
-!!! question "Open problem: `RMPcieLinkSpeed=0x1` or `0x2`?"
-    Both spellings ship. `debug-gen2` (`install.sh:191`) and `Gen2` (`install.sh:280`) write `0x1`;
-    `far` (`install.sh:280`) and `deced` (`install.sh:280`) write `0x2`, introduced by commit
-    `8854d3e` "Remove clamp link to Gen1". Note that the `Gen2` branch, the one whose README claims
-    Gen2 "Working ✓", ships `0x1`, and the on-card confirmation was made with `0x1`. Both readings
-    are internally coherent depending on whether the key means "clamp to gen N" or "enable up to
-    gen N". No A/B boot test exists. Neither value should be presented as canonical. What would
-    settle it: boot the same card and kernel three times, with no key, with `0x1`, and with `0x2`,
-    and post `LnkSta` each time. Cheap and decisive.
+> [!NOTE]
+> **Open problem: `RMPcieLinkSpeed=0x1` or `0x2`?**
+>
+> Both spellings ship. `debug-gen2` (`install.sh:191`) and `Gen2` (`install.sh:280`) write `0x1`;
+> `far` (`install.sh:280`) and `deced` (`install.sh:280`) write `0x2`, introduced by commit
+> `8854d3e` "Remove clamp link to Gen1". Note that the `Gen2` branch, the one whose README claims
+> Gen2 "Working ✓", ships `0x1`, and the on-card confirmation was made with `0x1`. Both readings
+> are internally coherent depending on whether the key means "clamp to gen N" or "enable up to
+> gen N". No A/B boot test exists. Neither value should be presented as canonical. What would
+> settle it: boot the same card and kernel three times, with no key, with `0x1`, and with `0x2`,
+> and post `LnkSta` each time. Cheap and decisive.
 
 ## IOMMU enablement
 
@@ -538,19 +524,21 @@ sudo reboot
 dmesg | grep -i iommu
 ```
 
-!!! question "Open problem: is IOMMU passthrough actually required?"
-    For: multiple testers went from "got 64GB memory, BUT still PCIe 1" to success after a single
-    grub change; the maintainers' `DEBUGGING.md` gives it as the *only* remedy for "PCIe still at
-    Gen1 after install"; the installer now does it automatically. Against: the independent setup
-    script lists `iommu=pt` and VT-d among things "tested and confirmed unnecessary", and its
-    confirmed hosts plus the AMD HiveOS success case made **no grub changes at all**. Directly
-    contradictory single-tester reports also exist for `iomem=relaxed`: one tester was stuck at
-    2.5 GT/s "until i messed with iommu configuration in grub / because mmap was failing", while
-    another ran `intel_iommu=on iommu=pt iomem=relaxed` and got nothing. A plausible but
-    undemonstrated reconciliation is that `iomem=relaxed` matters only for the userspace
-    `mmap`-based retrain and IOMMU mode matters only on some chipsets. What would settle it: a
-    matrix of {IOMMU off, on, pt} × {Intel, AMD} × {userspace hammer, in-driver 0008} on identical
-    software.
+> [!NOTE]
+> **Open problem: is IOMMU passthrough actually required?**
+>
+> For: multiple testers went from "got 64GB memory, BUT still PCIe 1" to success after a single
+> grub change; the maintainers' `DEBUGGING.md` gives it as the *only* remedy for "PCIe still at
+> Gen1 after install"; the installer now does it automatically. Against: the independent setup
+> script lists `iommu=pt` and VT-d among things "tested and confirmed unnecessary", and its
+> confirmed hosts plus the AMD HiveOS success case made **no grub changes at all**. Directly
+> contradictory single-tester reports also exist for `iomem=relaxed`: one tester was stuck at
+> 2.5 GT/s "until i messed with iommu configuration in grub / because mmap was failing", while
+> another ran `intel_iommu=on iommu=pt iomem=relaxed` and got nothing. A plausible but
+> undemonstrated reconciliation is that `iomem=relaxed` matters only for the userspace
+> `mmap`-based retrain and IOMMU mode matters only on some chipsets. What would settle it: a
+> matrix of {IOMMU off, on, pt} × {Intel, AMD} × {userspace hammer, in-driver 0008} on identical
+> software.
 
 ## Verification
 
@@ -597,17 +585,21 @@ separate two-card Gen2 rigs on 610.43.03, each carrying `OPT=00000001/00000001/1
 same output. The one archived raw two-card Gen2-branch `610.43.03` dmesg contains 134 lines, and
 the one archived single-card capture contains 29.
 
-!!! note "Line counts are not a reliable cross-build fingerprint"
-    The recorded values are 29, 34, 80, 134 and 152, depending on build, branch and card count. Do
-    not read a mismatch as a failed install.
+> [!NOTE]
+> **Line counts are not a reliable cross-build fingerprint**
+>
+> The recorded values are 29, 34, 80, 134 and 152, depending on build, branch and card count. Do
+> not read a mismatch as a failed install.
 
-!!! info "Booter run status is always `0xffff`"
-    `kgspExecuteBooterLoad_HAL` returns `0xffff` for every payload run, whether or not the write
-    landed. After each run the seccode error code sits in mailbox0, and `mailbox0 != 0` yields
-    `NV_ERR_GENERIC` from `s_executeBooterUcode_TU102`. For payload runs this is the expected
-    "invalid signature" complaint raised *after* the priv-sequencer script has already run.
-    **Register readback is the only valid success criterion.** For the real BooterLoad,
-    `mailbox0 != 0` is a genuine failure.
+> [!NOTE]
+> **Booter run status is always `0xffff`**
+>
+> `kgspExecuteBooterLoad_HAL` returns `0xffff` for every payload run, whether or not the write
+> landed. After each run the seccode error code sits in mailbox0, and `mailbox0 != 0` yields
+> `NV_ERR_GENERIC` from `s_executeBooterUcode_TU102`. For payload runs this is the expected
+> "invalid signature" complaint raised *after* the priv-sequencer script has already run.
+> **Register readback is the only valid success criterion.** For the real BooterLoad,
+> `mailbox0 != 0` is a genuine failure.
 
 ## Requirements and constraints
 
@@ -680,43 +672,53 @@ nowhere near the link ceiling. See [LLM inference](../operations/llm-inference.m
 
 ## Open problems
 
-!!! question "Open problem: fix the 0008 success predicate"
-    The most tractable item in the whole PCIe area, and a one-line change. Drop the
-    `PCI_EXP_LNKSTA_DLLLA` term, or make it conditional on `PCI_EXP_LNKCAP_DLLLARC`, or read
-    `LnkSta` from the upstream bridge instead of the endpoint. Also raise the success print to
-    `NV_DBG_ERRORS` to match `0007`'s convention.
+> [!NOTE]
+> **Open problem: fix the 0008 success predicate**
+>
+> The most tractable item in the whole PCIe area, and a one-line change. Drop the
+> `PCI_EXP_LNKSTA_DLLLA` term, or make it conditional on `PCI_EXP_LNKCAP_DLLLARC`, or read
+> `LnkSta` from the upstream bridge instead of the endpoint. Also raise the success print to
+> `NV_DBG_ERRORS` to match `0007`'s convention.
 
-!!! question "Open problem: is 0008 sufficient, unnecessary, or actively misleading?"
-    Three independent testers reported `0008` fixing multi-card Gen2 and eliminating crashes. The
-    independent setup script asserts `0008` runs at driver probe roughly three seconds after the
-    capability window has closed, and lists it among things "tested and confirmed unnecessary".
-    The DLLLA defect complicates **both** positions: `0008`'s failure message is emitted
-    unconditionally on this card, so it is not evidence the retrain failed, and equally the three
-    testers may have been reading `nvidia-smi` on cards that reached Gen2 by another route. What
-    would settle it: install the Gen2 branch with `0008` present and the hammer service absent, and
-    check `pcie.link.gen.current` after a cold boot on a host where the hammer is known to succeed.
+> [!NOTE]
+> **Open problem: is 0008 sufficient, unnecessary, or actively misleading?**
+>
+> Three independent testers reported `0008` fixing multi-card Gen2 and eliminating crashes. The
+> independent setup script asserts `0008` runs at driver probe roughly three seconds after the
+> capability window has closed, and lists it among things "tested and confirmed unnecessary".
+> The DLLLA defect complicates **both** positions: `0008`'s failure message is emitted
+> unconditionally on this card, so it is not evidence the retrain failed, and equally the three
+> testers may have been reading `nvidia-smi` on cards that reached Gen2 by another route. What
+> would settle it: install the Gen2 branch with `0008` present and the hammer service absent, and
+> check `pcie.link.gen.current` after a cold boot on a host where the hammer is known to succeed.
 
-!!! question "Open problem: why do some users get Gen2 and some do not?"
-    The `pcielink.sh` report was circulated specifically so kernel, driver, serial, board part
-    number and VBIOS could be correlated against success and failure. Two VBIOS versions are
-    already in evidence on otherwise identical `900-11001-0108-000` boards: `92.00.6D.00.0A` and
-    `92.00.67.00.01`. Next step: tabulate by VBIOS and root-port model, and test the documented
-    cold-boot dependency (one clean-room run needed 18 of 27 PCIe PLMs re-opened after a cold boot).
+> [!NOTE]
+> **Open problem: why do some users get Gen2 and some do not?**
+>
+> The `pcielink.sh` report was circulated specifically so kernel, driver, serial, board part
+> number and VBIOS could be correlated against success and failure. Two VBIOS versions are
+> already in evidence on otherwise identical `900-11001-0108-000` boards: `92.00.6D.00.0A` and
+> `92.00.67.00.01`. Next step: tabulate by VBIOS and root-port model, and test the documented
+> cold-boot dependency (one clean-room run needed 18 of 27 PCIe PLMs re-opened after a cold boot).
 
-!!! question "Open problem: merging Gen2 to master"
-    Blockers visible in the tree: `0007` is a large debug-instrumented hunk logging at
-    `LEVEL_ERROR` throughout; `tools/retrain.sh` is dead code on `Gen2` and `far`;
-    `constants.yaml` omits five of the registers the mechanism depends on; and `verify.sh` does not
-    check PCIe at all. Whether multi-card, IOMMU and Gen2 work merges, and in what order, is
-    undecided. The multi-card installer changes are self-contained and could land alone.
+> [!NOTE]
+> **Open problem: merging Gen2 to master**
+>
+> Blockers visible in the tree: `0007` is a large debug-instrumented hunk logging at
+> `LEVEL_ERROR` throughout; `tools/retrain.sh` is dead code on `Gen2` and `far`;
+> `constants.yaml` omits five of the registers the mechanism depends on; and `verify.sh` does not
+> check PCIe at all. Whether multi-card, IOMMU and Gen2 work merges, and in what order, is
+> undecided. The multi-card installer changes are self-contained and could land alone.
 
-!!! question "Open problem: an unexplained early Gen2 claim"
-    A verified clean-room exchange dated 2026-07-05 corrects a Gen3 claim with "only 2.0 was",
-    treating Gen2 as already accomplished, three weeks before the reproduced result and directly
-    contradicting a 2026-07-07 message that still says "We still need something for PCIe 2.0".
-    Either an earlier independent result never propagated, or the timestamp is mis-attributed. Only
-    the original message metadata can settle it. The technical content of that message (Gen3 is
-    fuse-gated) is consistent with everything else and can be relied on; the date cannot.
+> [!NOTE]
+> **Open problem: an unexplained early Gen2 claim**
+>
+> A verified clean-room exchange dated 2026-07-05 corrects a Gen3 claim with "only 2.0 was",
+> treating Gen2 as already accomplished, three weeks before the reproduced result and directly
+> contradicting a 2026-07-07 message that still says "We still need something for PCIe 2.0".
+> Either an earlier independent result never propagated, or the timestamp is mis-attributed. Only
+> the original message metadata can settle it. The technical content of that message (Gen3 is
+> fuse-gated) is consistent with everything else and can be relied on; the date cannot.
 
 ## See also
 

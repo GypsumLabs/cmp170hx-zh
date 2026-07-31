@@ -24,13 +24,15 @@ whatsoever for the other.
 | Does it change the other? | No. A Gen2-patched unmodded card is Gen2 x4. | No. A fully modded unpatched card is Gen1 x16. |
 
 The clearest single proof that the two are independent: a stock, never-soldered 8 GB card running
-the Gen2 branch reports `LnkCap: Port #0, Speed 5GT/s, Width x16` while `LnkSta` reads
+the Gen2 code reports `LnkCap: Port #0, Speed 5GT/s, Width x16` while `LnkSta` reads
 `Speed 5GT/s, Width x4 (downgraded)`. The capability register says x16; the trained link says x4.
 Nothing in software can close that gap, because there is no electrical path on 12 of the lanes.
 
-!!! warning "Experimental"
-    Everything on this page about Gen2 describes unreleased branch code. Shipping `master`
-    contains no PCIe patch of any kind. See [Gen2 unlock](../unlock/pcie-gen2.md).
+> [!WARNING]
+> **Experimental**
+>
+> Everything on this page about Gen2 describes unreleased branch code. Shipping `master`
+> contains no PCIe patch of any kind. See [Gen2 unlock](../unlock/pcie-gen2.md).
 
 ## Stock link state
 
@@ -69,7 +71,7 @@ All addresses below are BAR0 mirrors of XVE config space. The PCIe Express capab
 config offset `0x78` (not `0x60`), and the XVE shadow base is `0x88000`, so config `cap+0x0C`
 maps to BAR0 `0x00088084`, and so on.
 
-| Field | Config offset | BAR0 mirror | Stock (locked) | After the Gen2 branch |
+| Field | Config offset | BAR0 mirror | Stock, no unlock | With the unlocker |
 |---|---|---|---|---|
 | LnkCap | `CAP_EXP+0x0C` | `0x00088084` | `0x00456101` | `0x00456102` |
 | LnkCtl / LnkSta | `CAP_EXP+0x10` | `0x00088088` | LnkCtl `0x0140`, LnkSta `0x1041` | LnkCtl `0x0140`, LnkSta `0x1042` |
@@ -79,15 +81,17 @@ maps to BAR0 `0x00088084`, and so on.
 | DevCtl2 | | | `0x1400` | `0x0400` (one rig `0x7410`) |
 
 `nvidia-smi` reports `pcie.link.gen.current, pcie.link.gen.max, pcie.link.width.current` as
-**1, 1, 4** on a stock card and **2, 2, 4** after the Gen2 branch. Width never moves in either
-case.
+**1, 1, 4** on a card with no unlock installed and **2, 2, 4** with the unlocker. Width never
+moves in either case.
 
-!!! note "Do not repeat one published address"
-    A widely circulated field manual lists the LnkCap2 BAR0 mirror as `0x8808C`. That is
-    internally inconsistent: with the XVE mirror based at `0x88000`, config `0xA4` maps to
-    `0x880A4`, and `0x8808C` maps to config `0x8C`. Both the branch patch
-    (`#define PCIE_GEN2_LINK_CAP2_ADDR 0x000880a4U`) and the community `pcielink.sh` diagnostic
-    use `0x880A4`. Use `0x880A4`.
+> [!NOTE]
+> **Do not repeat one published address**
+>
+> A widely circulated field manual lists the LnkCap2 BAR0 mirror as `0x8808C`. That is
+> internally inconsistent: with the XVE mirror based at `0x88000`, config `0xA4` maps to
+> `0x880A4`, and `0x8808C` maps to config `0x8C`. Both the branch patch
+> (`#define PCIE_GEN2_LINK_CAP2_ADDR 0x000880a4U`) and the community `pcielink.sh` diagnostic
+> use `0x880A4`. Use `0x880A4`.
 
 ### Other stock config-space facts
 
@@ -137,10 +141,12 @@ HS-privilege driver write, and the SEC2 Booter payload. Every attempt fails with
 still `0x00000001`. It is a pure fuse-sense reflection with no write port. More on that in
 [fuses and OTP](fuses-and-otp.md) and [dead ends](../history/dead-ends.md).
 
-!!! info "The fuse is not the lever"
-    The Gen2 unlock works **while `OPT_GEN23` still reads `0x00000001`**. The shipped branch patch
-    still attempts the write, still fails, and Gen2 still trains. The working levers are the
-    CYA_0, LINK_CONFIG_0, XP3G and PRIV_MISC_1 overrides, not the fuse shadow.
+> [!NOTE]
+> **The fuse is not the lever**
+>
+> The Gen2 unlock works **while `OPT_GEN23` still reads `0x00000001`**. The shipped branch patch
+> still attempts the write, still fails, and Gen2 still trains. The working levers are the
+> CYA_0, LINK_CONFIG_0, XP3G and PRIV_MISC_1 overrides, not the fuse shadow.
 
 ### The DevInit layer
 
@@ -168,10 +174,12 @@ Editing those bytes is a closed route. All five sit **100% inside** the Davies-M
 MAC range `0x2200`-`0x43C00`, so a keyless forge is a 2^128 second-preimage, and reflashing an
 edited image fails the Ampere RSA signature check outright. See [VBIOS](vbios.md).
 
-!!! danger "Do not attempt a modified reflash"
-    An edited DevInit or VBIOS image is rejected by the signature check and the card will not
-    boot. Recovery requires an external programmer. Read [recovery](../procedures/recovery.md)
-    before touching flash.
+> [!CAUTION]
+> **Do not attempt a modified reflash**
+>
+> An edited DevInit or VBIOS image is rejected by the signature check and the card will not
+> boot. Recovery requires an external programmer. Read [recovery](../procedures/recovery.md)
+> before touching flash.
 
 The third layer is runtime: DevInit itself never reads `0x82057C` or `0x820580`. An exhaustive
 search of the CMP DevInit disassembly finds only `0x820C14`/`0x820D38` (FBIO/FBP floorsweep),
@@ -231,7 +239,7 @@ Three independent lines of evidence rule out every software explanation:
 1. **No lane fuse is set.** `OPT_PCIE_LANE_DISABLE` at `0x00820394`, `CTRL_OPT_PCIE_LANE` at
    `0x0082082C` and `STATUS_OPT_PCIE_LANE` at `0x00820C2C` all read `0x00000000` on every card in
    the cohort, both 170HX units included. The x16 electrical width is intact in silicon.
-2. **No code touches width.** An exhaustive audit of every PCIe-related write in the Gen2 branches
+2. **No code touches width.** An exhaustive audit of every PCIe-related write in the Gen2 code
    found writes only to `LINK_CTRL_2 [3:0]`, `LINK_CONFIG_0 [19:18]`, `CYA_0` bit 2, `PRIV_MISC_1`
    bits 11-14, `PL_LINK_RATE`, `OPT_GEN23`, XP3G slots 0 and 3, VSEC device and hierarchy bits,
    and `LNKCTL2` TLS in config space. `LINK_CAP` is read but only its low speed nibble is tested;
@@ -252,9 +260,9 @@ Three independent lines of evidence rule out every software explanation:
 | Package | 0402 |
 | Capacitance | 220 nF (0.22 µF) |
 | Dielectric | **X7R** (frequently mistyped "XR7") |
-| Voltage rating | 16 V or higher: the canonical guide and the confirmed Samsung part are both 16 V. One card owner gave 10 V as the floor |
+| Voltage rating | 6.3 V or higher. The x16 mod that is known to have worked used 6.3 V parts; PCIe bounds transmitter DC common mode to 3.6 V, so 6.3 V carries ample margin |
 | Reference designators | C1100 to C1350 range, for example C1120 / C1125 / C1130 / C1135 per pair |
-| Confirmed manufacturer part | Samsung `CL05B224KO5NNNC` |
+| Confirmed manufacturer part | Taiyo Yuden `MAASJ105SB7224KFCA01` (220 nF, 6.3 V, X7R, 0402). Samsung `CL05B224KO5NNNC` (16 V) is a reported-working substitute |
 | Distributor numbers seen | DigiKey `1276-1176-1-ND` and Digi-Key `3886834`. Both are plausibly the same manufacturer part in different packaging; treat them as unverified aliases and buy to the manufacturer part |
 
 The value is not guesswork: it is read off the NVIDIA A100 GA100-883 reference schematic
@@ -278,12 +286,14 @@ as technique improved; another card went x4, x8, x16 "after smaller readjustment
 after a mod means incomplete or bridged solder joints, not a distinct hardware limit. Reflow and
 inspect all 24 joints.
 
-!!! danger "This is fine-pitch rework on a card you cannot replace"
-    0402 parts on a dense high-speed differential region. A bridged pair does not merely fail to
-    widen the link, it can corrupt signalling on a lane that previously worked. Leaded solder was
-    reported to make the job "extremely easy"; solder paste applied with a needle plus a heat gun
-    lets the parts self-align. Full procedure and photographs on
-    [physical mods](../operations/physical-mods.md).
+> [!CAUTION]
+> **This is fine-pitch rework on a card you cannot replace**
+>
+> 0402 parts on a dense high-speed differential region. A bridged pair does not merely fail to
+> widen the link, it can corrupt signalling on a lane that previously worked. Leaded solder was
+> reported to make the job "extremely easy"; solder paste applied with a needle plus a heat gun
+> lets the parts self-align. Full procedure and photographs on
+> [physical mods](../operations/physical-mods.md).
 
 ## Bandwidth by configuration
 
@@ -294,14 +304,16 @@ inspect all 24 joints.
 | Gen1 x16 (cap mod, no Gen2) | 2.88 GB/s flat, error-free | Modded card; nominal ~4 GB/s, shortfall attributed to PCIe 1.1 signalling overhead | medium |
 | Gen2 x4 | 1.68 GB/s send, 1.71 GB/s receive | OpenCL-Benchmark, one archived screenshot, unmodded card; the setup script independently predicts "~0.85 to ~1.7 GB/s, exactly 2x" | medium |
 | Gen1 x8 → Gen2 x8 (A/B on one card) | 1.67 GB/s to 3.24 GB/s | OpenCL, on a cap-modded card that negotiated x8. This is a **width** result as much as a speed result; do not quote it as a Gen2 x4 figure | medium |
-| Gen2 x16 | 6.63 to 6.67 GB/s (`ocl_pcie_bw`); the same run's nvtop screenshot shows `PCIe GEN 2@16x` with TX 7.061 GiB/s | fully modded card also running the Gen2 branch; one rig, one capture, 2026-07-26 | medium |
+| Gen2 x16 | 6.63 to 6.67 GB/s (`ocl_pcie_bw`); the same run's nvtop screenshot shows `PCIe GEN 2@16x` with TX 7.061 GiB/s. A second rig reported 5.97 GB/s on each of four cards | capacitor-modded cards with the unlocker installed | medium |
 
-!!! warning "Gen2 x16 rests on a single observation"
-    Gen2 x16 has been observed **once**, on 2026-07-26, on one rig, in one screenshot, on a card
-    whose 24-capacitor mod was complete. There is no `lspci` capture bridging it to the earlier
-    survey in which every Gen2 result was x4, no burn-in, no AER counters over time, and no second
-    rig. Treat the 6.63-6.67 GB/s figure as medium confidence and treat Gen2 x16 **stability** as
-    unestablished.
+> [!WARNING]
+> **Gen2 x16 rests on a single observation**
+>
+> Gen2 x16 has been observed **once**, on 2026-07-26, on one rig, in one screenshot, on a card
+> whose 24-capacitor mod was complete. There is no `lspci` capture bridging it to the earlier
+> survey in which every Gen2 result was x4, no burn-in, no AER counters over time, and no second
+> rig. Treat the 6.63-6.67 GB/s figure as medium confidence and treat Gen2 x16 **stability** as
+> unestablished.
 
 A `0.71 GB/s` bidirectional figure circulated for a card described as Gen1 x16. It is far too low
 for that configuration (nominal ~4 GB/s) and the card's actual lane state was never established.
@@ -372,31 +384,39 @@ GPUPN `20C2-105-A1`, subsystem `0x158510DE`.
 
 ## Open problems
 
-!!! question "Open problem: Gen3 and Gen4"
-    `FUSE_PCIE_GEN23_DIS` and `FUSE_PCIE_GEN3_DIS` both read `0x00000001`, and the supported-speeds
-    vector clips at `0x00000006` even after the PHY rate is forced to a Gen3-capable
-    `0x00340036`. Whether the "vector is contiguous so Gen2/3/4 are one problem" argument simply
-    failed on this silicon, or the Gen3 fuse is enforced independently downstream, is unresolved.
-    The cheapest untried experiment: write `0x00820580 = 0` through the same `xp3g` table that
-    already *attempts* `0x0082057c`, noting that that write fails, so expect
-    `booter FAILED to set` and `rd=0x00000001`. Then request TLS = 3. Cheap, but low prior. See
-    [Gen3 and Gen4](../frontier/pcie-gen3-gen4.md).
+> [!NOTE]
+> **Open problem: Gen3 and Gen4**
+>
+> `FUSE_PCIE_GEN23_DIS` and `FUSE_PCIE_GEN3_DIS` both read `0x00000001`, and the supported-speeds
+> vector clips at `0x00000006` even after the PHY rate is forced to a Gen3-capable
+> `0x00340036`. Whether the "vector is contiguous so Gen2/3/4 are one problem" argument simply
+> failed on this silicon, or the Gen3 fuse is enforced independently downstream, is unresolved.
+> The cheapest untried experiment: write `0x00820580 = 0` through the same `xp3g` table that
+> already *attempts* `0x0082057c`, noting that that write fails, so expect
+> `booter FAILED to set` and `rd=0x00000001`. Then request TLS = 3. Cheap, but low prior. See
+> [Gen3 and Gen4](../frontier/pcie-gen3-gen4.md).
 
-!!! question "Open problem: is `FUSE_PCIE_MAGIC_D` writable?"
-    One analysis annotates `0x00820520` "(writable)"; one clean-room chain writes `0x00200000` to
-    it; the field manual lists it read-only; and the branch patch only ever reads it. Since Gen4 is
-    untestable without a Gen4 host, this has never been exercised. Read, write `0x00200000`, read
-    back, publish both values. Five minutes of work nobody has done.
+> [!NOTE]
+> **Open problem: is `FUSE_PCIE_MAGIC_D` writable?**
+>
+> One analysis annotates `0x00820520` "(writable)"; one clean-room chain writes `0x00200000` to
+> it; the field manual lists it read-only; and the branch patch only ever reads it. Since Gen4 is
+> untestable without a Gen4 host, this has never been exercised. Read, write `0x00200000`, read
+> back, publish both values. Five minutes of work nobody has done.
 
-!!! question "Open problem: is x16 stable?"
-    One 2026-07-26 capture is the entire evidence base for Gen2 x16. No burn-in, no AER counters
-    over time, no second rig.
+> [!NOTE]
+> **Open problem: is x16 stable?**
+>
+> One 2026-07-26 capture is the entire evidence base for Gen2 x16. No burn-in, no AER counters
+> over time, no second rig.
 
-!!! question "Open problem: Resizable BAR on a Gen2 card"
-    The capability structure exists and has been captured (`Capabilities: [bb0 v1] Physical
-    Resizable BAR`, BAR0 16 MB, BAR1 64 MB, BAR3 32 MB, one supported size each). What is open is
-    whether ReBAR can be made *usable*: BAR1 stays pinned at 64 MiB even when the card reports
-    81920 MiB, and nobody has retested it on a Gen2-trained card.
+> [!NOTE]
+> **Open problem: Resizable BAR on a Gen2 card**
+>
+> The capability structure exists and has been captured (`Capabilities: [bb0 v1] Physical
+> Resizable BAR`, BAR0 16 MB, BAR1 64 MB, BAR3 32 MB, one supported size each). What is open is
+> whether ReBAR can be made *usable*: BAR1 stays pinned at 64 MiB even when the card reports
+> 81920 MiB, and nobody has retested it on a Gen2-trained card.
 
 ## See also
 

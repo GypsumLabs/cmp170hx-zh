@@ -112,13 +112,6 @@ mailbox:
 | After FLR | `0x1FFFFE00` | `0x00000000` | `0x00000000` |
 | Stock driver loaded afterwards | `nvidia-smi` worked, 8192 MiB | | |
 
-!!! note "Superseded"
-    "FLR doesn't clear WPR2" circulated as a general truth, sourced from an NVIDIA forum post and
-    consistent with some observations. The four-stage measurement above disproved it. The claim
-    applies only to the broken path where the ACR mutex was never released.
-    *(Caveat: the same document's premise, that returning to `0x8103` works, was independently
-    shown broken on hardware, so the mutex attribution is not airtight.)*
-
 FLR also clears the SEC2 reset-PLM taint: `0x8f` becomes `0xff`.
 
 **FLR removes the Booter from Falcon IMEM.** `EXCI 0x0a (MISS_INS)` after writing DMEM post-FLR
@@ -258,10 +251,12 @@ writable. What it does:
   and `.cmpunlocker.pat`.
 * Rebuilds the initramfs and reloads stock modules.
 
-!!! danger "There is no `uninstall.sh`"
-    Documentation on the `docs` branch references `sudo ./uninstall.sh --yes`. **No such script
-    exists**, on master or on the docs branch itself. The correct command is
-    `sudo ./remove.sh --yes`, and that branch's own `ARCHITECTURE.md` says so.
+> [!CAUTION]
+> **There is no `uninstall.sh`**
+>
+> Documentation on the `docs` branch references `sudo ./uninstall.sh --yes`. **No such script
+> exists**, on master or on the docs branch itself. The correct command is
+> `sudo ./remove.sh --yes`, and that branch's own `ARCHITECTURE.md` says so.
 
 Master's `remove.sh` does **not** touch the kernel command line. IOMMU configuration and its
 reversal exist on the `Gen2`, `far` and `deced` branches, where `remove.sh` restores
@@ -309,19 +304,21 @@ clean install. Before reinstalling, undo all of it:
 * Restore stock `gsp_tu10x.bin` from `.stock` / `.backup` / `.bak` copies under
   `/lib/firmware/nvidia/610.43.03/` and `/lib/firmware/nvidia/580.173.02/`.
 
-!!! danger "A stale patched `gsp_tu10x.bin` poisons the in-driver unlock"
-    If the firmware-patching predecessor was ever used on this machine, restore the stock blob
-    before running the in-driver patch:
-
-    ```bash
-    GSP_DIR=/lib/firmware/nvidia/610.43.03
-    sudo cp $GSP_DIR/gsp_tu10x.bin.cmpunlocker.bak $GSP_DIR/gsp_tu10x.bin
-    ```
-
-    The driver saves the firmware's signature as "stock" during boot. If the firmware is still
-    patched, it saves the **exploit payload** instead, and the clean GSP-RM boot then DMAs the
-    wrong ROP chain. The success line to look for afterwards is
-    `SEC2_DEBUG: saved stock signature (4096 bytes)`.
+> [!CAUTION]
+> **A stale patched `gsp_tu10x.bin` poisons the in-driver unlock**
+>
+> If the firmware-patching predecessor was ever used on this machine, restore the stock blob
+> before running the in-driver patch:
+>
+> ```bash
+> GSP_DIR=/lib/firmware/nvidia/610.43.03
+> sudo cp $GSP_DIR/gsp_tu10x.bin.cmpunlocker.bak $GSP_DIR/gsp_tu10x.bin
+> ```
+>
+> The driver saves the firmware's signature as "stock" during boot. If the firmware is still
+> patched, it saves the **exploit payload** instead, and the clean GSP-RM boot then DMAs the
+> wrong ROP chain. The success line to look for afterwards is
+> `SEC2_DEBUG: saved stock signature (4096 bytes)`.
 
 ### 4.4 Restoring a version-matched firmware directory { #restore-firmware }
 
@@ -376,22 +373,24 @@ The structural argument is stronger than the absence of reports. The shipping un
 
 ### 5.2 The one report that does not fit { #bricking-contradiction }
 
-!!! question "Open problem"
-    One first-hand account describes a 10 GB card wedged with three stuck D-state threads that
-    would not clear with FLR, SBR, PCI detach and reattach, **or a full PSU power-off cold boot**:
-    "when I rebooted, the registers were still written, and the D-threads were still there... card
-    booted pre-wedged". Recovery eventually required holding the power switch with the strip off
-    and physically removing the card for a few hours.
-
-    The observation was doubted in-channel and remains unexplained. It **contradicts** the
-    otherwise well-supported model that the mod changes no persistent state, which is exactly why
-    it is worth resolving rather than dismissing. The cause offered at the time was "booting a
-    patched proprietary blob for cpu rm after a driverless payload delivery". Two other wedges in
-    the same account: one caused by an agent writing `FUSE_SS_PLM`-style registers (needed a full
-    power cycle), and one from "enter `0x10aa` at `0x10b9`" that hard-bricked a test bench.
-
-    What would settle it: a fresh capture of the register values immediately after such a cold
-    boot, with a photograph of the power state.
+> [!NOTE]
+> **Open problem**
+>
+> One first-hand account describes a 10 GB card wedged with three stuck D-state threads that
+> would not clear with FLR, SBR, PCI detach and reattach, **or a full PSU power-off cold boot**:
+> "when I rebooted, the registers were still written, and the D-threads were still there... card
+> booted pre-wedged". Recovery eventually required holding the power switch with the strip off
+> and physically removing the card for a few hours.
+>
+> The observation was doubted in-channel and remains unexplained. It **contradicts** the
+> otherwise well-supported model that the mod changes no persistent state, which is exactly why
+> it is worth resolving rather than dismissing. The cause offered at the time was "booting a
+> patched proprietary blob for cpu rm after a driverless payload delivery". Two other wedges in
+> the same account: one caused by an agent writing `FUSE_SS_PLM`-style registers (needed a full
+> power cycle), and one from "enter `0x10aa` at `0x10b9`" that hard-bricked a test bench.
+>
+> What would settle it: a fresh capture of the register values immediately after such a cold
+> boot, with a photograph of the power state.
 
 Until that is resolved, the honest statement is: **the model says a power cycle always wins, and
 in every reproducible case it did, but one credible operator reports a state that survived one.**
@@ -421,13 +420,15 @@ The residual risks named by the people closest to the work are not exotic:
    verification kernel can wedge the card with Xid 45. Across a full 8-card session with hundreds
    of 60-second health samples there were **0** hard faults when the workload was driven properly.
 
-!!! danger "Where real hardware risk does live"
-    The one place in this project with genuine, irreversible hardware risk is the **capacitor mod**:
-    24 × 0402 220 nF X7R parts hand-soldered in the C1100 to C1350 range on an 8 to 12 layer board
-    that needs 420 °C hot air for 2 minutes before a chip will lift. That is a soldering risk, not
-    a firmware risk, and it is covered separately in
-    [Physical mods](../operations/physical-mods.md). Note also that the capacitor mod changes lane
-    **count** only. It never changes PCIe generation.
+> [!CAUTION]
+> **Where real hardware risk does live**
+>
+> The one place in this project with genuine, irreversible hardware risk is the **capacitor mod**:
+> 24 × 0402 220 nF X7R parts hand-soldered in the C1100 to C1350 range on an 8 to 12 layer board
+> that needs 420 °C hot air for 2 minutes before a chip will lift. That is a soldering risk, not
+> a firmware risk, and it is covered separately in
+> [Physical mods](../operations/physical-mods.md). Note also that the capacitor mod changes lane
+> **count** only. It never changes PCIe generation.
 
 ### 5.4 A practical safety posture { #posture }
 

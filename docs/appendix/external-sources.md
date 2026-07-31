@@ -44,11 +44,13 @@ only the banner, `EXPECTED_MIB` and the metadata files. Pre-2026-07-18 instructi
 this point. See [driver patches](../unlock/driver-patches.md) and
 [install](../procedures/install.md).
 
-!!! warning "The README is loose on the device gate"
-    It says the unlock is `0x20C2`-gated, when the in-driver gate `_kgspSec2PostblTimingEnabled()`
-    accepts `0x20C2` **and** `0x2082`. Master ships no `DEBUGGING.md` at all: the "all PLMs must
-    show `0xffffffff`" line lives on the `docs` branch, and it is wrong because the shipping table
-    opens WPR_CFG `0x001fa7cc` to `0xfffff0ff`.
+> [!WARNING]
+> **The README is loose on the device gate**
+>
+> It says the unlock is `0x20C2`-gated, when the in-driver gate `_kgspSec2PostblTimingEnabled()`
+> accepts `0x20C2` **and** `0x2082`. Master ships no `DEBUGGING.md` at all: the "all PLMs must
+> show `0xffffffff`" line lives on the `docs` branch, and it is wrong because the shipping table
+> opens WPR_CFG `0x001fa7cc` to `0xfffff0ff`.
 
 ### The twelve unreleased branches
 
@@ -71,22 +73,24 @@ so four unreleased refs were never snapshotted and are not analysed anywhere on 
 | `PG199` | | Drive A100 snapshot | Reference only. |
 | `docs` | `651b6d5`, 2026-07-27 | Prose documentation | **Do not cite.** See below. |
 
-!!! danger "Two branch defects that will cost you"
-    **`Gen2` installs a Gen1 clamp.** `debug-gen2` and `Gen2` write
-    `NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"` into
-    `/etc/modprobe.d/cmp-pcie-gen2.conf`, pinning the link to Gen1 while trying to enable Gen2.
-    `far` commit `8854d3e "Remove clamp link to Gen1"` changed it to `0x2`. Which value is correct
-    is genuinely unresolved: both ship, and no A/B boot test exists.
-
-    **The `80` branch does not program what its metadata says.** `80/common/constants.yaml` carries
-    `lmr: "0x0000028B"` and `81920`, but `build.sh` never reads that file. `80/driver/build.sh`
-    line 93 sets `LMR="0x0000028A"`, `install.sh` line 138 prints `CFG1=0x02779000 LMR=0x0000028A`,
-    and patch `0001` line 144 bakes `lmrValue = 0x0000028AU`. Commit `3c53aca "Correct LMR for 80GB"`
-    changed only inert metadata. Every tester who ran that branch programmed CFG1 `0x02779000`,
-    LMR `0x0000028A` and `fb_length 0x0000001400000000`, a three-way disagreement that is the best
-    explanation for the branch's fold at exactly 40 GiB. No build of the branch has ever carried
-    the coherent value, though a clean-room script has fired it.
-    See [the 80 GB question](../frontier/80gb.md).
+> [!CAUTION]
+> **Two branch defects that will cost you**
+>
+> **`Gen2` installs a Gen1 clamp.** `debug-gen2` and `Gen2` write
+> `NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"` into
+> `/etc/modprobe.d/cmp-pcie-gen2.conf`, pinning the link to Gen1 while trying to enable Gen2.
+> `far` commit `8854d3e "Remove clamp link to Gen1"` changed it to `0x2`. Which value is correct
+> is genuinely unresolved: both ship, and no A/B boot test exists.
+>
+> **The `80` branch does not program what its metadata says.** `80/common/constants.yaml` carries
+> `lmr: "0x0000028B"` and `81920`, but `build.sh` never reads that file. `80/driver/build.sh`
+> line 93 sets `LMR="0x0000028A"`, `install.sh` line 138 prints `CFG1=0x02779000 LMR=0x0000028A`,
+> and patch `0001` line 144 bakes `lmrValue = 0x0000028AU`. Commit `3c53aca "Correct LMR for 80GB"`
+> changed only inert metadata. Every tester who ran that branch programmed CFG1 `0x02779000`,
+> LMR `0x0000028A` and `fb_length 0x0000001400000000`, a three-way disagreement that is the best
+> explanation for the branch's fold at exactly 40 GiB. No build of the branch has ever carried
+> the coherent value, though a clean-room script has fired it.
+> See [the 80 GB question](../frontier/80gb.md).
 
 ### `github.com/amoghmunikote/cmpunlocker` branch `docs`
 
@@ -109,10 +113,12 @@ matter repeatedly: `src/nvidia/generated/g_bindata_kgspGetBinArchiveBooterLoadUc
 shipping `master` are exactly `610.43.03` (default) and `610.43.02`; the build hard-fails on
 anything else. See [driver versions](../procedures/driver-versions.md).
 
-!!! note "No integrity check on the download"
-    `build.sh` fetches the tarball with `curl -L --fail` and caches it, with no checksum or
-    signature verification anywhere in the tree. Recording an expected SHA-256 per version would be
-    a one-line improvement and has not been done.
+> [!NOTE]
+> **No integrity check on the download**
+>
+> `build.sh` fetches the tarball with `curl -L --fail` and caches it, with no checksum or
+> signature verification anywhere in the tree. Recording an expected SHA-256 per version would be
+> a one-line improvement and has not been done.
 
 ---
 
@@ -182,14 +188,16 @@ Four CMP 170HX images exist in the collection:
 | 268495 | `92.00.6D.00.0A` | 2022-04-07 | `10DE 20C2` / `10DE 1585` | "0 GB" | The **300 W** ROM: 432 MHz memory field, board power target 250.0 W, limit 300.0 W, adjustment range -60% / +20%, MD5 `a58aae86e72b13d50603c15653350664`. The 0 GB label is wrong. |
 | 268984 | `92.00.66.00.02` | 2021-04-23 | `10DE 2082` / `10DE 1557` | 10 GB | The 10 GB image |
 
-!!! danger "Neither the '16 GB' nor the '0 GB' image unlocks memory"
-    They differ only in power and clock fields. Flashing 239457 onto a 10 GB card produced a yellow
-    bang and no driver acceptance because the device ID does not match. Flashing the 8 GB VBIOS onto
-    a 10 GB card leaves the card unable to boot. A third revision, `92.00.6D.00.09` dated
-    2021-11-01, exists in the field but is not in the TechPowerUp collection: it already carries the
-    300 W limit but has no memory overclock. **VBIOS version makes no difference to whether the
-    unlock works**, confirmed across four cards on two hosts running both `92.00.67` and
-    `92.00.6D.00.0A`. See [VBIOS](../hardware/vbios.md).
+> [!CAUTION]
+> **Neither the '16 GB' nor the '0 GB' image unlocks memory**
+>
+> They differ only in power and clock fields. Flashing 239457 onto a 10 GB card produced a yellow
+> bang and no driver acceptance because the device ID does not match. Flashing the 8 GB VBIOS onto
+> a 10 GB card leaves the card unable to boot. A third revision, `92.00.6D.00.09` dated
+> 2021-11-01, exists in the field but is not in the TechPowerUp collection: it already carries the
+> 300 W limit but has no memory overclock. **VBIOS version makes no difference to whether the
+> unlock works**, confirmed across four cards on two hosts running both `92.00.67` and
+> `92.00.6D.00.0A`. See [VBIOS](../hardware/vbios.md).
 
 Useful comparison entries from the same collection: A100 PCIe 40 GB (277449), A100 (283106), A30
 (262595, whose `92.00.66.00.0x` is almost identical to the 10 GB 170HX image), and Tesla V100 16 GB
@@ -199,11 +207,13 @@ Useful comparison entries from the same collection: A100 PCIe 40 GB (277449), A1
 
 **Trust: Use with care.** The correct entry for this card is `gpu-specs/cmp-170hx-8-gb.c3830`.
 
-!!! danger "The `c3824` URL is a trap"
-    `gpu-specs/cmp-170hx.c3824` returns HTTP 200 and redirects to
-    `/gpu-specs/radeon-pro-w6800x-duo.c3824`, an AMD product page. It has circulated widely,
-    including inside an agent brief. Adjacent IDs for orientation: `c3821` is the A100 PCIe 80 GB,
-    `c3822` the CMP 70HX, `c3823` PG506-242.
+> [!CAUTION]
+> **The `c3824` URL is a trap**
+>
+> `gpu-specs/cmp-170hx.c3824` returns HTTP 200 and redirects to
+> `/gpu-specs/radeon-pro-w6800x-duo.c3824`, an AMD product page. It has circulated widely,
+> including inside an agent brief. Adjacent IDs for orientation: `c3821` is the A100 PCIe 80 GB,
+> `c3822` the CMP 70HX, `c3823` PG506-242.
 
 TechPowerUp is reliable for die size (826 mm²), shading units (4,480 = 70 x 64), TMUs/ROPs/tensor
 cores (280/128/280) and L1 (192 KB per SM). It is **wrong twice** in ways that matter: it lists
@@ -272,13 +282,15 @@ assigns `fuc6` to GP102-and-later parts (`fuc0 [G98, MCP77, MCP79]`, `fuc3 [GT21
 formally fuc5 or fuc6 remains open; the practical answer recorded in-channel was "I picked whatever
 worked".
 
-!!! question "Open problem"
-    envytools has not been updated in roughly eight years, and it **cannot corroborate the secure
-    boot material at all**: its Falcon crypto page has section headings with no content, it
-    documents Falcon hardware versions only up to v5, and it has no entry for several registers this
-    work depends on. `envyhooks` on `gitlab.freedesktop.org/nouveau/envyhooks` was suggested as a
-    successor and was found to lack equivalent functionality. Settling fuc5 versus fuc6 needs a diff
-    of both decodes of the same image, looking for instructions only one target resolves coherently.
+> [!NOTE]
+> **Open problem**
+>
+> envytools has not been updated in roughly eight years, and it **cannot corroborate the secure
+> boot material at all**: its Falcon crypto page has section headings with no content, it
+> documents Falcon hardware versions only up to v5, and it has no entry for several registers this
+> work depends on. `envyhooks` on `gitlab.freedesktop.org/nouveau/envyhooks` was suggested as a
+> successor and was found to lack equivalent functionality. Settling fuc5 versus fuc6 needs a diff
+> of both decodes of the same image, looking for instructions only one target resolves coherently.
 
 Also in this family:
 
@@ -308,13 +320,15 @@ and re-forked by others, so cite the content, not a specific fork.
 | `84cd3921788d2ffbc1e9bf8b6f2c9396` | **GA100 VBIOS Comparison Table** (about 27 kB) plus `z1_dump_and_parse_vbios.sh` and `z2_parse_vbios_table.py` | Seven ROMs parsed statically, with the CFG1 strap table located by heuristic and memory-training entries decoded. The dump script is read-only with respect to flash: no write path exists. |
 | `da...` (A100 comparison), `dafea7b6663c13edc28b33872f6e51be` | Supplementary VBIOS comparison material | Secondary. |
 
-!!! warning "The VBIOS parser carries stale labels"
-    `z2_parse_vbios_table.py`'s docstrings contradict its own output. It claims the A100 PCIe strap
-    table sits at about `0x3FB18` while the comparison table places it at `0x4285A`. It labels RFRD
-    an "power table" when RFRD is an image layout descriptor and its `field_0C` is a MAC-verified
-    range size, not a power limit. Its FBPA tier extractor searches a window around the CFG1 table
-    and will match the CFG1 table itself if nothing else qualifies. Anyone using its output labels
-    verbatim propagates all of this.
+> [!WARNING]
+> **The VBIOS parser carries stale labels**
+>
+> `z2_parse_vbios_table.py`'s docstrings contradict its own output. It claims the A100 PCIe strap
+> table sits at about `0x3FB18` while the comparison table places it at `0x4285A`. It labels RFRD
+> an "power table" when RFRD is an image layout descriptor and its `field_0C` is a MAC-verified
+> range size, not a power limit. Its FBPA tier extractor searches a window around the CFG1 table
+> and will match the CFG1 table itself if nothing else qualifies. Anyone using its output labels
+> verbatim propagates all of this.
 
 ---
 
@@ -392,7 +406,7 @@ in the corpus as a failed-unlock signature: do not attach it to this result.)
 - **Commercial and marketplace links of every kind.** Procurement is out of scope for this wiki.
 - **Distributor part numbers.** Two different distributor SKUs circulated for the capacitor-mod
   part, and no source settles which is correct. This wiki quotes only the manufacturer part,
-  Samsung `CL05B224KO5NNNC` (220 nF, 16 V, X7R, 0402). See
+  Taiyo Yuden `MAASJ105SB7224KFCA01` (220 nF, 6.3 V, X7R, 0402). See
   [physical mods](../operations/physical-mods.md).
 - **Leaked material.** The February to March 2022 NVIDIA breach cache is referenced in the record
   only as a provenance question. Its contents are not used, quoted or linked here. See
