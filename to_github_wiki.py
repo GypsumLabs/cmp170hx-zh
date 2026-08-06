@@ -424,6 +424,9 @@ def build_sidebar(pages):
             # 顶层页 (通常只有 Home, 已单独放在顶部)
             continue
         if current_group != g:
+            # 分组标题前后都要空行, 否则上一组的最后一个列表项会被
+            # 当成同一列表, 导致分组标题缩进进列表里。
+            result.append("")
             result.append(f"**{g}**")
             result.append("")
             current_group = g
