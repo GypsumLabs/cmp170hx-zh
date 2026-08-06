@@ -353,12 +353,17 @@ def generate(output_dir):
 # 5. 克隆/更新并推送 wiki 仓库
 # --------------------------------------------------------------------------- #
 def git(*args, cwd=None):
-    """运行 git 命令, 失败则抛出。"""
+    """运行 git 命令, 失败则抛出。
+
+    统一用 UTF-8 解码输出, 避免 Windows 默认 GBK 编解码崩溃
+    (git 提交信息含中文时尤其容易出现 UnicodeDecodeError)。
+    """
     cmd = ["git"] + list(args)
+    kwargs = dict(capture_output=True, text=True,
+                  encoding="utf-8", errors="replace")
     if cwd:
-        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
-    else:
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        kwargs["cwd"] = cwd
+    proc = subprocess.run(cmd, **kwargs)
     if proc.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} 失败:\n{proc.stderr.strip()}")
     return proc.stdout.strip()
