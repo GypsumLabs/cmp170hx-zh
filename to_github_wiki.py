@@ -37,12 +37,113 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 MKDOCS_YML = os.path.join(ROOT, "mkdocs.yml")
 DOCS_DIR = os.path.join(ROOT, "docs")
 
-# 页面名需要重命名的特例: 源码相对路径 -> wiki 页面名(去掉 .md)
-# 例如 index.md 在 wiki 里必须叫 Home。
-# 其余页面统一由 "目录-文件名" 扁平化而来, 见 page_name()。
+# 页面名映射: docs 相对路径 -> wiki 页面名 (不带 .md, 与 GitHub 渲染的页面标题一致)。
+# 命名风格为 PascalCase: 目录前缀 + 文件名, 各段用连字符连接, 首字母大写,
+# 并保留 OTP/ROP/NVLink/ECC/LLM/PSU/PCIe/GA100/VBIOS/GPU/P2P/80GB/Gen2 等特殊形式。
+# 该表由原仓库 wiki 的页面命名规范精确推导, 保证链接跳转正确。
 PAGE_RENAME = {
     "index.md": "Home",
+    "start/what-is-this-card.md": "Start-What-Is-This-Card",
+    "start/how-to-read-this-wiki.md": "Start-How-To-Read-This-Wiki",
+    "start/identify-your-card.md": "Start-Identify-Your-Card",
+    "start/quick-start.md": "Start-Quick-Start",
+    "start/risks.md": "Start-Risks",
+    "start/glossary.md": "Start-Glossary",
+    "hardware/overview.md": "Hardware-Overview",
+    "hardware/ga100-silicon.md": "Hardware-GA100-Silicon",
+    "hardware/board-and-variants.md": "Hardware-Board-And-Variants",
+    "hardware/memory-subsystem.md": "Hardware-Memory-Subsystem",
+    "hardware/fuses-and-otp.md": "Hardware-Fuses-And-OTP",
+    "hardware/pcie-subsystem.md": "Hardware-PCIe-Subsystem",
+    "hardware/nvlink-hardware.md": "Hardware-NVLink-Hardware",
+    "hardware/power-delivery.md": "Hardware-Power-Delivery",
+    "hardware/thermals.md": "Hardware-Thermals",
+    "hardware/vbios.md": "Hardware-VBIOS",
+    "unlock/overview.md": "Unlock-Overview",
+    "unlock/how-it-works.md": "Unlock-How-It-Works",
+    "unlock/falcon-and-booter.md": "Unlock-Falcon-And-Booter",
+    "unlock/rop-chain.md": "Unlock-ROP-Chain",
+    "unlock/privilege-level-masks.md": "Unlock-Privilege-Level-Masks",
+    "unlock/memory-geometry.md": "Unlock-Memory-Geometry",
+    "unlock/compute-throttle.md": "Unlock-Compute-Throttle",
+    "unlock/driver-patches.md": "Unlock-Driver-Patches",
+    "unlock/pcie-gen2.md": "Unlock-PCIe-Gen2",
+    "unlock/register-reference.md": "Unlock-Register-Reference",
+    "procedures/install.md": "Procedures-Install",
+    "procedures/verify.md": "Procedures-Verify",
+    "procedures/troubleshooting.md": "Procedures-Troubleshooting",
+    "procedures/recovery.md": "Procedures-Recovery",
+    "procedures/multi-gpu.md": "Procedures-Multi-GPU",
+    "procedures/driver-versions.md": "Procedures-Driver-Versions",
+    "procedures/uninstall.md": "Procedures-Uninstall",
+    "operations/cooling.md": "Operations-Cooling",
+    "operations/power-and-psu.md": "Operations-Power-And-PSU",
+    "operations/physical-mods.md": "Operations-Physical-Mods",
+    "operations/performance.md": "Operations-Performance",
+    "operations/llm-inference.md": "Operations-LLM-Inference",
+    "operations/tuning.md": "Operations-Tuning",
+    "frontier/status-board.md": "Frontier-Status-Board",
+    "frontier/pcie-gen3-gen4.md": "Frontier-PCIe-Gen3-Gen4",
+    "frontier/nvlink.md": "Frontier-NVLink",
+    "frontier/ecc.md": "Frontier-ECC",
+    "frontier/80gb.md": "Frontier-80GB",
+    "frontier/p2p.md": "Frontier-P2P",
+    "frontier/open-questions.md": "Frontier-Open-Questions",
+    "history/timeline.md": "History-Timeline",
+    "history/clean-room-and-provenance.md": "History-Clean-Room-And-Provenance",
+    "history/dead-ends.md": "History-Dead-Ends",
+    "history/tool-lineage.md": "History-Tool-Lineage",
+    "appendix/register-index.md": "Appendix-Register-Index",
+    "appendix/artifacts.md": "Appendix-Artifacts",
+    "appendix/external-sources.md": "Appendix-External-Sources",
+    "appendix/methodology.md": "Appendix-Methodology",
 }
+
+# 通用 fallback 转换用的特殊词: 全大写保留 或 需特殊处理的段
+ALL_CAPS_TOKENS = {
+    "otp", "rop", "ecc", "llm", "psu", "gpu", "p2p", "vbios",
+}
+SPECIAL_TOKENS = {
+    "nvlink": "NVLink",
+    "pcie": "PCIe",
+    "ga100": "GA100",
+}
+
+
+def fallback_page_name(relpath):
+    """通用 PascalCase 转换 (用于未来新增页面, 不在 PAGE_RENAME 表中的)。
+
+    start/what-is-this-card.md -> Start-What-Is-This-Card
+    frontier/80gb.md -> Frontier-80GB
+    unlock/pcie-gen2.md -> Unlock-PCIe-Gen2
+    """
+    relpath = relpath.replace("\\", "/").lstrip("./")
+    stem = relpath[:-3] if relpath.endswith(".md") else relpath
+    parts = [p for p in stem.split("/") if p]
+    out = []
+    for i, seg in enumerate(parts):
+        tokens = seg.split("-")
+        converted = []
+        for t in tokens:
+            low = t.lower()
+            if low in ALL_CAPS_TOKENS:
+                converted.append(t.upper())
+            elif low in SPECIAL_TOKENS:
+                converted.append(SPECIAL_TOKENS[low])
+            elif re.fullmatch(r"\d+[a-z]+", low):
+                # 80gb -> 80GB
+                num, letters = re.fullmatch(r"(\d+)([a-z]+)", low).groups()
+                converted.append(num + letters.upper())
+            elif re.fullmatch(r"gen\d+", low):
+                # gen2 -> Gen2
+                converted.append("Gen" + low[3:])
+            elif re.fullmatch(r"[a-z]+\d+", low):
+                # 其他 字母+数字 形式: 首字母大写其余小写
+                converted.append(low[0].upper() + low[1:])
+            else:
+                converted.append(t[:1].upper() + t[1:].lower())
+        out.append("-".join(converted))
+    return "-".join(out)
 
 
 # --------------------------------------------------------------------------- #
@@ -126,16 +227,16 @@ def load_nav_pages():
 # 2. 页面名与链接转换
 # --------------------------------------------------------------------------- #
 def page_name(relpath):
-    """把 docs 相对路径转成 wiki 扁平页面名(不含扩展名)。
+    """把 docs 相对路径转成 wiki 页面名(不带 .md, PascalCase)。
 
+    优先查 PAGE_RENAME 精确映射, 未命中的用 fallback 通用转换。
     index.md -> Home
-    start/what-is-this-card.md -> start-what-is-this-card
+    start/what-is-this-card.md -> Start-What-Is-This-Card
     """
     relpath = relpath.replace("\\", "/").lstrip("./")
     if relpath in PAGE_RENAME:
         return PAGE_RENAME[relpath]
-    stem = relpath[:-3] if relpath.endswith(".md") else relpath
-    return stem.replace("/", "-")
+    return fallback_page_name(relpath)
 
 
 def build_flat_index(pages):
@@ -262,10 +363,10 @@ def convert_links(text, cur_dir, flat_index):
         rel = rel.lstrip("./")
 
         if main.lower().endswith(".md"):
-            # 页面链接: 扁平化为 wiki 页面名
+            # 页面链接: 扁平化为 wiki 页面名 (不带 .md, 否则 GitHub 会跳 raw 源文件)
             if rel not in flat_index:
                 return m.group(0)
-            return f"]({flat_index[rel]}.md{anchor}{query})"
+            return f"]({flat_index[rel]}{anchor}{query})"
         else:
             # 图片等资源: 保留 docs 相对目录结构, 指向 wiki 仓库同名目录
             return f"]({rel}{anchor}{query})"
@@ -285,28 +386,48 @@ def render_page(relpath, flat_index):
 # --------------------------------------------------------------------------- #
 # 3. 生成侧边栏
 # --------------------------------------------------------------------------- #
-def build_sidebar(pages, flat_index):
+def page_title(relpath):
+    """读取 docs 下某页的一级标题 (# ...), 用作侧边栏/链接文字。
+
+    index.md 用固定 "首页" 标题。
+    """
+    if relpath == "index.md":
+        return "首页"
+    full = os.path.join(DOCS_DIR, relpath)
+    try:
+        with open(full, encoding="utf-8") as f:
+            for ln in f:
+                s = ln.strip()
+                if s.startswith("# "):
+                    return s[2:].strip()
+    except OSError:
+        pass
+    # 兜底: 用文件名转可读标题
+    stem = os.path.splitext(os.path.basename(relpath))[0]
+    return stem.replace("-", " ")
+
+
+def build_sidebar(pages):
     """生成 GitHub Wiki 的 _Sidebar.md 内容。
 
-    分组标题用 **粗体**, 顶层页面(Home)列在最前, 组内页面用缩进列表。
+    结构对齐原仓库: 顶部 Home 链接, 分组用 **粗体** 标题, 组内页面
+    用 "- [页面标题](页面名)" (链接目标不带 .md)。
     """
-    # GitHub Wiki 的 _Sidebar 用嵌套无序列表 + 粗体分组标题
     result = []
-    result.append("# 侧边栏")
+    result.append("## [首页](Home)")
     result.append("")
     current_group = None
     for g, fp in pages:
+        title = page_title(fp)
         flat = page_name(fp)
         if g is None:
-            # 顶层页
-            if current_group is not None:
-                current_group = None
-            result.append(f"- [{flat}]({flat}.md)")
-        else:
-            if current_group != g:
-                result.append(f"- **{g}**")
-                current_group = g
-            result.append(f"  - [{flat}]({flat}.md)")
+            # 顶层页 (通常只有 Home, 已单独放在顶部)
+            continue
+        if current_group != g:
+            result.append(f"**{g}**")
+            result.append("")
+            current_group = g
+        result.append(f"- [{title}]({flat})")
     result.append("")
     return "\n".join(result)
 
@@ -348,7 +469,7 @@ def generate(output_dir):
         written.append(fname)
 
     # 侧边栏
-    sidebar = build_sidebar(pages, flat)
+    sidebar = build_sidebar(pages)
     with open(os.path.join(output_dir, "_Sidebar.md"), "w", encoding="utf-8") as f:
         f.write(sidebar)
     written.append("_Sidebar.md")
