@@ -1,79 +1,50 @@
-# Running LLMs on the CMP 170HX
+# 在 CMP 170HX 上运行 LLM
 
-**What this page covers.** Which inference stacks work on an unlocked card, the measured
-prompt-processing and token-generation rates with model, quantisation and context stated, what
-breaks and why, how to scale across cards, and the one question that governs every multi-card
-decision: whether PCIe bandwidth is the bottleneck. Raw compute and bandwidth numbers live on
-[performance.md](performance.md); clocks and power on [tuning.md](tuning.md).
+**本页覆盖内容。** 哪些推理栈在一张解锁卡上工作、带模型、量化和上下文声明的实测提示处理和 token 生成速率、什么会坏以及为什么、如何跨卡扩展、以及支配每个多卡决定的那个问题：PCIe 带宽是不是瓶颈。原始算力和带宽数字在[性能](performance.md)；时钟和功耗在[调优](tuning.md)。
 
-**Three results decide almost every choice you will make.**
+**三个结果决定你将做的几乎每个选择。**
 
-1. **vLLM beats llama.cpp by roughly 1.8x** on one card and one model family, and beats SGLang
-   too. That ratio comes from a single tester and the two sides were not quant-matched, so treat
-   it as a direction, not a constant.
-2. **Pipeline parallelism is mandatory across cards; tensor parallelism is a dead end at
-   PCIe Gen1 x4.** Direct A/B on Qwen2.5-72B AWQ: TP2 is 2.3-2.8x *worse* at prefill for +23%
-   decode.
-3. **The best multi-card result on record** is a 744B-parameter MoE (GLM-5.2, 40B active) on
-   8 unlocked 64 GB cards under vLLM pipeline parallelism: **2,675 t/s prefill at 131k context
-   and 30.2 t/s decode**, zero hard faults across the session.
+1. **vLLM 比 llama.cpp 大约快 1.8x**、在一张卡和一个模型家族上、也比 SGLang 快。那个比值来自一个测试者、两侧量化不匹配，所以把它当一个方向、不是一个常量。
+2. **跨卡流水线并行是必须的；张量并行在 PCIe Gen1 x4 下是一条死路。** Qwen2.5-72B AWQ 上的直接 A/B：TP2 在 prefill 时**差 2.3-2.8x**、换 +23% 解码。
+3. **记录上最佳的多卡结果**是一个 744B 参数 MoE（GLM-5.2、40B 活跃）在 vLLM 流水线并行下跑在 8 张解锁 64 GB 卡上：**131k 上下文下 prefill 2,675 t/s、decode 30.2 t/s**、整个会话零硬故障。
 
-Everything below is measured at **PCIe Gen1 x4** unless stated. The shipping unlocker contains
-no PCIe code at all: `common/constants.yaml` on `master` has only `driver_versions`, `gpu`,
-`compute` and `profiles` keys, with no `pcie` section anywhere in the tree. Any benchmark
-described as running on the released unlock ran at the card's stock link.
+下面一切除非说明都在 **PCIe Gen1 x4** 测量。出货解锁器完全不含任何 PCIe 代码：`master` 上的 `common/constants.yaml` 只有 `driver_versions`、`gpu`、`compute` 和 `profiles` 键、树里任何地方都没有 `pcie` 节。任何被描述为跑在发布解锁上的基准测试都以卡的出厂链路运行。
 
 > [!WARNING]
-> **How to read the numbers on this page**
+> **如何读本页的数字**
 >
-> Almost every figure here comes from **one tester, one card, one session**. Very little has
-> been independently reproduced, and several rows that once read as separate confirmations
-> turned out to be two rows of one table, or a chat summary of a report attached ten minutes
-> earlier. Where a figure has more than one source, the text says so explicitly; where it says
-> nothing, assume a single report. Model, quantisation, context and conditions are stated per
-> figure for the same reason.
+> 这里几乎每个数字都来自 **一个测试者、一张卡、一个会话**。很少有独立复现、几行一度读作分开确认的最终被证明是一张表的两行、或一条十分钟前附着报告的聊天总结。凡一个数字有多个来源、正文会显式说明；凡它什么都没说、假设是单一报告。模型、量化、上下文和条件也为此逐数字说明。
 
 ---
 
-## What the unlock buys an inference workload
+## 解锁给推理工作负载买什么
 
-The compute unlock (FEAT PLM `0x00823804` opened to `0xffffffff`, then SS0 `0x0082381C` =
-`0x88888888` and SS1 `0x00823820` = `0x00000008`) is what makes tensor-core throughput
-available. See [compute-throttle.md](../unlock/compute-throttle.md).
+算力解锁（FEAT PLM `0x00823804` 打开到 `0xffffffff`、然后 SS0 `0x0082381C` = `0x88888888` 和 SS1 `0x00823820` = `0x00000008`）就是让张量核吞吐可用的东西。见[算力节流](../unlock/compute-throttle.md)。
 
-- **`llama.cpp` uses the GA100 tensor cores automatically** with a stock SM80 build. No patch,
-  no flag. This is what produces the multi-thousand-token prompt-processing rates several
-  testers reproduced on unmodified latest builds with SM80 (and SM86) in the CUDA arch list.
-- **The unlocked VRAM is genuinely usable.** One tester running LLMs on 64 GB cards reported
-  "havent had a single crash". Six 10 GB cards unlocked to 40 GB ran Qwen 27B and Qwen 35B at
-  4-bit with no crashes and no bricked cards; the only limit was thermal, about 10 minutes of
-  runtime without an adequate cooling solution. See [cooling.md](cooling.md).
-- **Quick sanity check after an unlock:** LM Studio with a small model, where roughly
-  **85 tokens/s** is expected on the "E2B" small model. That is one tester's figure with the
-  model size not fully specified, so treat it as an order-of-magnitude check, not a target.
-  The rigorous check is BF16 throughput against the 202 TFLOPS ceiling; see
-  [verify.md](../procedures/verify.md).
+- **`llama.cpp` 带出厂 SM80 构建自动使用 GA100 张量核。** 无补丁、无标志。这正是几位测试者在 CUDA 架构列表里带 SM80（和 SM86）的未修改最新构建上复现的数千 token 提示处理速率。
+- **解锁的 VRAM 真正可用。** 一位在 64 GB 卡上跑 LLM 的测试者报告 "havent had a single crash"（从没崩过一次）。六张解锁到 40 GB 的 10 GB 卡以 4 位跑 Qwen 27B 和 Qwen 35B、无崩溃无变砖；唯一限制是热、没有足够散热方案时约 10 分钟运行时间。见[散热](cooling.md)。
+- **解锁后的快速健全检查：** LM Studio 带一个小模型、"E2B" 小模型上预期约 **85 tokens/s**。那是模型大小未完全说明的一位测试者数字、所以把它当一个量级检查、不是目标。严格检查是对照 202 TFLOPS 上限的 BF16 吞吐；见[验证](../procedures/verify.md)。
 
 ---
 
-## Backend selection
+## 后端选择
 
-| Backend | Verdict on this hardware | Evidence |
+| 后端 | 在这块硬件上的判决 | 证据 |
 |---|---|---|
-| **vLLM** | Best in essentially every measured configuration. The default choice. | "~1.8x faster" as stated by the one tester who ran both on Qwen3.6 27B, single card. Quant parity is not established: the llama.cpp side is Q4_K_M, the vLLM side's quant was never stated and was read in-channel as q6. The archived vLLM table gives Qwen3.6-27B at 62.4 t/s single-stream, which against 36.87 t/s is 1.69x. Also the only stack that runs GLM-5.2 usably |
-| **llama.cpp** | Fine for single-card and for non-DSA models across cards. Unusable for DSA-attention models. | 888.09 t/s pp512 single card; 141 t/s prefill on 8 cards for GLM-5.2 versus vLLM's 2,675 |
-| **ik_llama** | Slower than mainline llama.cpp on the one controlled comparison | pp512 296.36 versus 360.65; tg128 33.20 versus 33.10 |
-| **SGLang** | Lost to vLLM on a single card for Qwen3.6 27B int8, contrary to expectation, and would not run MTP at all | head-to-head with screenshots |
-| **LM Studio / llama-swap** | Work; useful as smoke tests and for serving | ~85 t/s on a small model; 60 t/s for a 35B A3B Q8 at a 125 W cap |
-| **Vulkan** | Dead end for multi-card | no `VK_KHR_device_group` support in the ggml Vulkan backend, so all card-to-card transfers go through host RAM |
+| **vLLM** | 在基本每个测量的配置里最好。默认选择。 | "约 1.8x faster"、由那个在 Qwen3.6 27B、单卡上跑过两者的唯一测试者陈述。量化对等未确立：llama.cpp 侧是 Q4_K_M、vLLM 侧的量化从未被说明、在频道内被读作 q6。归档的 vLLM 表给 Qwen3.6-27B 单流 62.4 t/s、对 36.87 t/s 是 1.69x。也是唯一能可用地跑 GLM-5.2 的栈 |
+| **llama.cpp** | 单卡和跨卡的非 DSA 模型很好。DSA 注意力模型不可用。 | 单卡 pp512 888.09 t/s；8 卡上 GLM-5.2 prefill 141 t/s 对比 vLLM 的 2,675 |
+| **ik_llama** | 在唯一受控对比里比主线的 llama.cpp 慢 | pp512 296.36 对比 360.65；tg128 33.20 对比 33.10 |
+| **SGLang** | 在 Qwen3.6 27B int8、单卡上输给 vLLM、与预期相反、而且完全跑不了 MTP | 带截图的头对头 |
+| **LM Studio / llama-swap** | 有效；作冒烟测试和服务有用 | 小模型约 85 t/s；125 W 上限下 35B A3B Q8 60 t/s |
+| **Vulkan** | 多卡死路 | ggml Vulkan 后端没有 `VK_KHR_device_group` 支持、所以所有卡间传输都经主机 RAM |
 
-### Building llama.cpp for this card
+### 为这张卡构建 llama.cpp
 
-A reproducible container build was published as `build-llama-170hx.sh`:
+一个可复现的容器构建被发布为 `build-llama-170hx.sh`：
 
 ```bash
-# base image: nvidia/cuda:13.3.0-devel-ubuntu26.04
-# clones ggml-org/llama.cpp at a resolved master commit
+# 基础镜像：nvidia/cuda:13.3.0-devel-ubuntu26.04
+# 在解析过的 master 提交克隆 ggml-org/llama.cpp
 cmake -B build \
   -DGGML_CUDA=ON \
   -DCMAKE_CUDA_ARCHITECTURES=80 \
@@ -85,196 +56,156 @@ cmake -B build \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=/app
 cmake --build build -j12          # Ninja
-# verifies libggml-cuda.so has no missing ldd entries, tags the image by
-# llama.cpp build number, then smoke-tests with --runtime=nvidia --gpus all:
+# 验证 libggml-cuda.so 没有缺失的 ldd 条目、按 llama.cpp 构建号标记镜像、然后冒烟测试：
 nvidia-smi --query-gpu=name,memory.total,pcie.link.gen.current,pcie.link.gen.max --format=csv
 llama-bench --list-devices
 ```
 
-`-DCMAKE_CUDA_ARCHITECTURES=80` is the load-bearing flag: CUDA capability 8.0 is GA100.
+`-DCMAKE_CUDA_ARCHITECTURES=80` 是承重标志：CUDA 能力 8.0 是 GA100。
 
 > [!CAUTION]
-> **Prebuilt `libggml-cuda.so` needs CUDA 13, and fails silently without it**
+> **预构建的 `libggml-cuda.so` 需要 CUDA 13、没有它静默失败**
 >
-> The prebuilt binaries link `libcudart.so.13` and `libcublas.so.13`. On a host with only
-> CUDA 12.4 the weights **load CPU-only and then OOM** rather than erroring cleanly, which
-> makes it hard to diagnose. The working fix is to prepend PyTorch's bundled cu13 libraries to
-> `LD_LIBRARY_PATH`.
+> 预构建二进制链接 `libcudart.so.13` 和 `libcublas.so.13`。在一台只有 CUDA 12.4 的主机上权重 **以 CPU-only 加载然后 OOM**、而非干净报错，这让诊断困难。有效修复是把 PyTorch 捆绑的 cu13 库前置到 `LD_LIBRARY_PATH`。
 
-`llama.cpp` also gained backend-agnostic tensor parallelism via `--split-mode tensor`
-(upstream PR `ggml-org/llama.cpp#19378`), removing the even / power-of-two GPU-count
-constraint. The PR itself describes the feature as "experimental ... not yet production ready".
-vLLM still requires an even GPU count for tensor parallelism, and on this card tensor
-parallelism is the wrong strategy anyway (see below).
+`llama.cpp` 也通过 `--split-mode tensor`（上游 PR `ggml-org/llama.cpp#19378`）获得了后端无关的张量并行、移除了偶数/2 的幂 GPU 计数约束。PR 本身把该功能描述为 "experimental ... not yet production ready"（实验性……还没到生产就绪）。vLLM 的张量并行仍要求偶数 GPU 数、而且这张卡上张量并行反正是一个错误策略（见下）。
 
 ---
 
-## Single-card measured throughput
+## 单卡实测吞吐
 
-### vLLM, one unlocked 64 GB card
+### vLLM、一张解锁 64 GB 卡
 
-Test shape roughly a 1,500-token prompt with 200 tokens of output.
+测试形状大致一个 1,500-token 提示带 200 个 token 输出。
 
-| Model | Decode | Aggregate at 4 parallel | Prefill |
+| 模型 | 解码 | 4 并行下的聚合 | Prefill |
 |---|---|---|---|
-| `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit` (MoE) | **113 tok/s** | **452 tok/s** | **1,700 tok/s** |
-| `Qwen3-32B-AWQ` (dense) | 52.9 tok/s | 205 tok/s | 1,755 tok/s |
+| `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit`（MoE） | **113 tok/s** | **452 tok/s** | **1,700 tok/s** |
+| `Qwen3-32B-AWQ`（dense） | 52.9 tok/s | 205 tok/s | 1,755 tok/s |
 | Qwen3.6-27B BF16 | 19.2 tok/s | 71.1 tok/s | 2,231 tok/s |
 | Qwen3.6-27B-AWQ-INT4 | 58.5 tok/s | 214.8 tok/s | 2,044 tok/s |
 
-### llama.cpp, one unlocked card
+### llama.cpp、一张解锁卡
 
-| Benchmark | Model / conditions | Result |
+| 基准测试 | 模型 / 条件 | 结果 |
 |---|---|---|
-| `llama-bench` pp512 | qwen35 27B Q4_K_M, 15.65 GiB, 26.90 B params, CUDA, `ngl 99`, one card | **888.09 ± 24.69 t/s** |
-| `llama-bench` tg128 | the second row of that same table, same run, same screenshot | **36.87 ± 0.04 t/s** |
-| Community reference bench | Llama-2 7B Q4_0, proposed in-channel as the standard quant | **3106 t/s pp, 158 t/s tg**, one numeric report. A second tester posted a screenshot without quoting figures and agreed the numbers were "fine"; a third said "I get 3333 on 7b" without stating the quant |
-| Dense versus sparse contrast | Gemma4 26B A4B Q8 (sparse) pp2048 3894.29 versus Gemma4 31B Q8 (dense) pp2048 830.33, same rig and build | model density, not misconfiguration |
-| Decode by model | Qwen3.5 9B q4_k_xl ~105 tok/s; Qwen3.6 27B q8 with q8 KV and MTP depth 2, 50 tok/s; Gemma4 26B A4B Q8 tg128 90.65 / tg512 90.10 / tg1024 89.85; Gemma4 31B Q8 tg128 27.07 / tg512 26.74 / tg1024 26.33 | single card |
+| `llama-bench` pp512 | qwen35 27B Q4_K_M、15.65 GiB、26.90 B 参数、CUDA、`ngl 99`、一张卡 | **888.09 ± 24.69 t/s** |
+| `llama-bench` tg128 | 同一张表的第二行、同一次运行、同一个截图 | **36.87 ± 0.04 t/s** |
+| 社区参考基准 | Llama-2 7B Q4_0、在频道内被提出作标准量化 | **pp 3106 t/s、tg 158 t/s**、一份数字报告。第二位测试者贴了一个截图没引数字、同意这些数字 "fine"；第三位说 "I get 3333 on 7b" 没说明量化 |
+| dense 对比 sparse 对照 | Gemma4 26B A4B Q8（sparse）pp2048 3894.29 对比 Gemma4 31B Q8（dense）pp2048 830.33、同一机架同一构建 | 模型密度、不是配置错误 |
+| 按模型的解码 | Qwen3.5 9B q4_k_xl 约 105 tok/s；Qwen3.6 27B q8 带 q8 KV 和 MTP depth 2、50 tok/s；Gemma4 26B A4B Q8 tg128 90.65 / tg512 90.10 / tg1024 89.85；Gemma4 31B Q8 tg128 27.07 / tg512 26.74 / tg1024 26.33 | 单卡 |
 
-The 888.09 / 36.87 pair is **one run**: two rows of a single `llama-bench` table in a single
-screenshot. A second participant later reposted a screenshot of that same conversation, saying the
-run had matched their own numbers, but never posted the numbers being matched, so there is no
-second table to compare against.
+888.09 / 36.87 对是**一次运行**：单个 `llama-bench` 表在一个截图里的两行。第二位参与者后来重贴了同一段对话的截图、说该运行匹配了他们自己的数字、却从没贴出被匹配的数字，所以没有第二张表可对比。
 
-Dense 27B-class models run an order of magnitude slower on prompt processing than 7B, and that
-is model density, not a tuning failure: ~500 t/s and ~900 t/s pp were both reported for dense
-Qwen3.6 27B q4_k_p on unpatched SM80/SM86 builds.
+Dense 27B 类模型在提示处理上比 7B 慢一个数量级、那是模型密度、不是调优失败：dense Qwen3.6 27B q4_k_p 在未打补丁的 SM80/SM86 构建上 pp 约 500 t/s 和约 900 t/s 都被报告。
 
-### The most rigorous controlled single-card benchmark
+### 最严格的控制单卡基准测试
 
-A 10 GB card unlocked to 40 GB, Gen1 x4, 250 W cap. Host: 2x EPYC 7713, DDR4, Supermicro
-H12DSi-N6, kernel 6.18.38. Model `unsloth/Qwen3.6-27B-MTP-GGUF` (`UD-Q4_K_XL` and `UD-Q8_K_XL`),
-17464 MiB of 40960 MiB used at Q4 and 35718 MiB at Q8, ~42 W idle. One tester, one card, one
-session, posted in full with error bars; nobody has re-run it.
+一张解锁到 40 GB 的 10 GB 卡、Gen1 x4、250 W 上限。主机：2x EPYC 7713、DDR4、Supermicro H12DSi-N6、内核 6.18.38。模型 `unsloth/Qwen3.6-27B-MTP-GGUF`（`UD-Q4_K_XL` 和 `UD-Q8_K_XL`）、Q4 用 40960 MiB 中的 17464 MiB、Q8 用 35718 MiB、空转约 42 W。一个测试者、一张卡、一个会话、带误差棒完整贴出；没人重跑过。
 
-| Build / config | pp512 | pp2048 | pp8192 | tg128 | tg512 | tg2048 |
+| 构建 / 配置 | pp512 | pp2048 | pp8192 | tg128 | tg512 | tg2048 |
 |---|---|---|---|---|---|---|
-| llama.cpp b10095 (e8e6c7af2), Q4, no MTP | 360.65 | 564.30 | 722.49 | 33.10 | 32.67 | 30.50 |
-| Same, MTP (`--spec-type draft-mtp --spec-draft-n-max 2`) | 323.63 | 496.85 | 639.53 | 46.24 (peak 56.67) | 43.02 (peak 55.33) | 44.47 (peak 59.00) |
-| ik_llama b4735 (9d07d868), Q4, no MTP | 296.36 | 544.72 | 649.61 | 33.20 | 34.23 | 31.93 |
-| ik_llama, Q4, MTP (`--spec-type mtp:n_max=2,p_min=0.0`) | 203.38 | 315.87 | 336.61 | 41.11 (peak 47.00) | 38.26 (peak 47.67) | 35.82 (peak 46.67) |
-| ik_llama, Q8, no MTP | 271.49 | 584.31 | 697.18 | 26.36 | 27.27 | 25.79 |
-| ik_llama, Q8, MTP | 203.84 | 328.81 | 363.25 | 38.15 | 37.69 | 36.78 |
+| llama.cpp b10095（e8e6c7af2）、Q4、无 MTP | 360.65 | 564.30 | 722.49 | 33.10 | 32.67 | 30.50 |
+| 相同、MTP（`--spec-type draft-mtp --spec-draft-n-max 2`） | 323.63 | 496.85 | 639.53 | 46.24（峰值 56.67） | 43.02（峰值 55.33） | 44.47（峰值 59.00） |
+| ik_llama b4735（9d07d868）、Q4、无 MTP | 296.36 | 544.72 | 649.61 | 33.20 | 34.23 | 31.93 |
+| ik_llama、Q4、MTP（`--spec-type mtp:n_max=2,p_min=0.0`） | 203.38 | 315.87 | 336.61 | 41.11（峰值 47.00） | 38.26（峰值 47.67） | 35.82（峰值 46.67） |
+| ik_llama、Q8、无 MTP | 271.49 | 584.31 | 697.18 | 26.36 | 27.27 | 25.79 |
+| ik_llama、Q8、MTP | 203.84 | 328.81 | 363.25 | 38.15 | 37.69 | 36.78 |
 
-### Power and efficiency at the single-card level
+### 单卡级的功耗和效率
 
-| Condition | Result |
+| 条件 | 结果 |
 |---|---|
-| Qwen3.6 27B `q6_k_xl` (41 GB resident), deliberately handicapped host (no-AVX2 CPU, card throttling at 250 W, PCIe x4) | ~26 tok/s, rising to **50 then 55 tok/s** once MTP was enabled |
-| `Qwen-AgentWorld-35B-A3B-Q8_0.gguf`, llama.cpp via llama-swap, **125 W power limit** | ~60 tok/s |
-| Qwen3.6-35B-A3B Q8 with MTP, **170 W** | ~130 tok/s |
-| vLLM, Qwen3.6 27B int8 | **2.16 tok/s per watt**, described in-channel as "actually decent efficiency" |
+| Qwen3.6 27B `q6_k_xl`（41 GB 驻留）、故意拖累的主机（无-AVX2 CPU、卡在 250 W 节流、PCIe x4） | 约 26 tok/s、启用 MTP 后升到 **50 然后 55 tok/s** |
+| `Qwen-AgentWorld-35B-A3B-Q8_0.gguf`、llama.cpp 经 llama-swap、**125 W 功耗限制** | 约 60 tok/s |
+| Qwen3.6-35B-A3B Q8 带 MTP、**170 W** | 约 130 tok/s |
+| vLLM、Qwen3.6 27B int8 | **每瓦 2.16 tok/s**、在频道内被描述为 "actually decent efficiency"（实际效率不错） |
 
-Power limit and MTP both move the number substantially. See [tuning.md](tuning.md).
+功耗限制和 MTP 都大幅移动那个数字。见[调优](tuning.md)。
 
 > [!NOTE]
-> **Open problem: the 27B single-card decode figure is not reconciled**
+> **未解问题：27B 单卡解码数字未调和**
 >
-> Published and in-channel figures for "Qwen 27B-class, one unlocked 64 GB card, vLLM" span
-> **97 / 90 / 75 / 58.5 t/s**, plus 36.87 t/s for llama.cpp Q4_K_M. Quantisation, MTP state,
-> context length and vLLM version all differ between reports and were never held constant.
-> Running the published repo configuration verbatim on one card and posting the flags would
-> settle it.
+> 已发布和频道内的 "Qwen 27B 类、一张解锁 64 GB 卡、vLLM" 数字跨越 **97 / 90 / 75 / 58.5 t/s**、加 llama.cpp Q4_K_M 的 36.87 t/s。量化、MTP 状态、上下文长度和 vLLM 版本都在报告间不同、从未被保持恒定。在一张卡上逐字跑已发布的仓库配置并贴出标志能解决它。
 
 ---
 
-## Multi-token prediction (MTP)
+## 多 token 预测（MTP）
 
-MTP behaves **oppositely on the two backends** for the same 35B MoE.
+MTP 在同一个 35B MoE 的两个后端上表现**相反**。
 
-| Backend | Without MTP | With MTP | Delta |
+| 后端 | 无 MTP | 带 MTP | 增量 |
 |---|---|---|---|
-| llama.cpp (`unsloth/Qwen3.6-35B-A3B-MTP-GGUF`) | 108.4 tok/s | **131.3 tok/s** | **+21%** |
-| vLLM (same model class) | 147 tok/s | **113 tok/s** | **-23%**, despite a 75% acceptance rate / 1.75 tokens |
+| llama.cpp（`unsloth/Qwen3.6-35B-A3B-MTP-GGUF`） | 108.4 tok/s | **131.3 tok/s** | **+21%** |
+| vLLM（同模型类） | 147 tok/s | **113 tok/s** | **-23%**、尽管 75% 接受率 / 1.75 tokens |
 
-On the controlled 40 GB rig, MTP buys roughly **+40% decode for about -10% prompt processing**
-(tg128 33.10 to 46.24 while pp8192 722.49 to 639.53). It is a **single-stream benefit only**; a
-caution was raised separately that MTP does not scale well with batch size, which is reasoned
-rather than measured.
+在受控 40 GB 机架上、MTP 买来约 **+40% 解码、约 -10% 提示处理**（tg128 33.10 到 46.24、而 pp8192 722.49 到 639.53）。它是一个**仅单流受益**；另有一条警告说 MTP 不能随批大小很好扩展、那是推理、不是测量。
 
-The vLLM regression was traced through three hypotheses. Quantisation of the MTP head was ruled
-out (`mtp` is in `modules_to_not_convert`, and fc, attention and shared expert are all BF16). A
-wrong FlashInfer cubin was suspected second. The standing explanation is a CPU-side bottleneck:
-"it utilizes the CPU and as we are on PCIe Gen1 4x this becomes the bottleneck. GPU-Compute
-Utilization goes down by 7% and Mem Usage as well." Suggested monitoring:
+vLLM 回退被追踪穿过三个假设。MTP 头的量化被排除（`mtp` 在 `modules_to_not_convert` 里、fc、attention 和共享专家都是 BF16）。一个错误的 FlashInfer cubin 是第二个怀疑。站得住脚的解释是一个 CPU 侧瓶颈："it utilizes the CPU and as we are on PCIe Gen1 4x this becomes the bottleneck. GPU-Compute Utilization goes down by 7% and Mem Usage as well."（它利用 CPU、而我们在 PCIe Gen1 4x 上、这成为瓶颈。GPU-Compute 利用率掉 7%、Mem 使用也一样。）建议的监控：
 
 ```bash
-nvidia-smi dmon -s put      # watch sm, mem, rx/txpci
+nvidia-smi dmon -s put      # 观察 sm、mem、rx/txpci
 ```
 
-It was never proven with a fix.
+它从未带修复被证明。
 
 ---
 
-## Multi-card: the headline result and its recipe
+## 多卡：头条结果和它的配方
 
-A 744B-parameter MoE (GLM-5.2, 40B active) at W4A16 symmetric quantisation on **8 unlocked 64 GB
-cards** under vLLM pipeline parallelism, driver 610.43.02, PCIe Gen1 x4 (no capacitor mod, and
-predating the Gen2 merge), rented hardware.
+一个 744B 参数 MoE（GLM-5.2、40B 活跃）在 W4A16 对称量化、**8 张解锁 64 GB 卡**、vLLM 流水线并行、驱动 610.43.02、PCIe Gen1 x4（无电容改装、先于 Gen2 合并）、租用硬件上。
 
-| Metric | Value |
+| 指标 | 值 |
 |---|---|
-| Prefill at 4k / 32k / 65k / 131k context | 665 / 1,497 / 2,342 / **2,675 t/s** |
-| Decode (no MTP) | **30.2 t/s** |
-| KV capacity | 438,107 tokens at 0.92 memory utilisation (BF16 KV, ~88-100 KB/token under MLA) |
-| Model load time | ~440-620 s |
-| Faults | zero hard faults across the session |
+| 4k / 32k / 65k / 131k 上下文下的 Prefill | 665 / 1,497 / 2,342 / **2,675 t/s** |
+| 解码（无 MTP） | **30.2 t/s** |
+| KV 容量 | 0.92 显存利用率下 438,107 个 token（BF16 KV、MLA 下约 88-100 KB/token） |
+| 模型加载时间 | 约 440-620 s |
+| 故障 | 整个会话零硬故障 |
 
-Prefill **rises** with context, because of chunked prefill plus sparse attention. That is the
-opposite of llama.cpp's behaviour on the same model and is the clearest single signal that stack
-choice dominates hardware here.
+Prefill **随上下文上升**、因为分块 prefill 加稀疏注意力。那是 llama.cpp 在同一个模型上行为的反面、也是栈选择在这里主导硬件的单一最清晰信号。
 
-This is **one report, not two.** A single tester rented nine cards, benchmarked on eight,
-attached `170HX-benchmark-results.md` (2,675 t/s prefill at 131k, 30.2 t/s decode) and ten
-minutes later summarised the same run in chat as "2600 t/s prefill, 30 t/s decode". The rounded
-and the precise figures are the same session. Nobody has reproduced it on other cards.
+这是**一份报告、不是两份。** 一个测试者租了九张卡、在八张上基准测试、附着 `170HX-benchmark-results.md`（131k 下 prefill 2,675 t/s、decode 30.2 t/s）、十分钟后在聊天里把同一次运行总结为 "2600 t/s prefill, 30 t/s decode"。取整的和精确的数字是同一个会话。没人用其它卡复现过它。
 
-### The exact recipe
+### 精确配方
 
 ```text
 vllm==0.20.2  release wheel
-  + PR #38476 python files applied as a diff onto site-packages
-transformers 5.x                       (4.57 does not know glm_moe_dsa)
+  + PR #38476 python 文件作为 diff 应用到 site-packages
+transformers 5.x                       （4.57 不认识 glm_moe_dsa）
 VLLM_ATTENTION_BACKEND=TRITON_MLA_SPARSE
 VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0
 --pipeline-parallel-size 8 --gpu-memory-utilization 0.90
-block-size 64                          (auto-set by DEEPSEEK_V32_INDEXER)
+block-size 64                          （由 DEEPSEEK_V32_INDEXER 自动设置）
 quantisation: W4A16 symmetric
 ```
 
-GLM-5.2 uses DeepSeek sparse attention (DSA), which natively needs Hopper or Blackwell. Running
-it on Ampere requires the `TRITON_MLA_SPARSE` backend from vLLM PR #38476.
+GLM-5.2 用 DeepSeek 稀疏注意力（DSA）、它原生需要 Hopper 或 Blackwell。在 Ampere 上跑它需要来自 vLLM PR #38476 的 `TRITON_MLA_SPARSE` 后端。
 
 > [!CAUTION]
-> **Quantisation selection: most published guides are wrong for this path**
+> **量化选择：大多数已发布指南对这条路径是错的**
 >
-> For GLM-5.2 on vLLM the MoE kernels **reject asymmetric quantisation**.
-> Working: `lowbitcoffee/GLM-5.2-W4A16` (symmetric, g128, 388 GB) and
-> `QuantTrio/GLM-5.2-Int4-Int8Mix`.
-> **Fails: `cyankiwi/GLM-5.2-AWQ-INT4`** (asymmetric, g32), which is the quant most guides
-> cite.
+> 对 vLLM 上的 GLM-5.2、MoE 内核**拒绝非对称量化**。
+> 有效：`lowbitcoffee/GLM-5.2-W4A16`（对称、g128、388 GB）和 `QuantTrio/GLM-5.2-Int4-Int8Mix`。
+> **失败：`cyankiwi/GLM-5.2-AWQ-INT4`**（非对称、g32）、它是大多数指南引用的量化。
 
 > [!WARNING]
-> **Experimental: `VLLM_USE_PRECOMPILED` will not work here**
+> **实验性：`VLLM_USE_PRECOMPILED` 这里不会工作**
 >
-> The normal way to apply a vLLM patch is an editable install with `VLLM_USE_PRECOMPILED`. It
-> ships no `vllm._C` and will fail. Use the 0.20.2 release wheel with the PR's python files
-> applied as a diff onto site-packages.
+> 应用一个 vLLM 补丁的正常方式是带 `VLLM_USE_PRECOMPILED` 的可编辑安装。它不带 `vllm._C` 出货、会失败。用 0.20.2 release wheel、把 PR 的 python 文件作为 diff 应用到 site-packages。
 
-### Other multi-card results
+### 其它多卡结果
 
-| Configuration | Model / stack | Result |
+| 配置 | 模型 / 栈 | 结果 |
 |---|---|---|
-| 8x 64 GB (512 GiB), llama.cpp b10079, `-ngl 999 -c 4096 -np 1 --flash-attn on --no-context-shift --fit off --no-warmup --spec-type none`; virtualised host, masked GPU names, link active Gen1 x4 but device max Gen2 x16 | GLM-5.2 UD-IQ2_M, 239 GB 2-bit, ~224 GiB resident, ~6 min load | TG **17.33 tok/s** (17.31-17.37, SD 0.02); PP **113.0 tok/s** (111.8-115.5, SD 1.01), ten consecutive runs |
-| 8x 64 GB, llama.cpp `-sm layer` | GLM-5.2 Q4_K_S GGUF | prefill **141 / 162 / 124 t/s** at 512 / 4k / 16k (degrades with context), decode **17.2 t/s** |
-| 8x 64 GB, llama.cpp layer split, Gigabyte G292-Z20, Proxmox passthrough | GLM-5.2-Q4_K_XL fully in VRAM (320 GB reported resident) | **13-14 tok/s** single stream, collapsing to **3 tok/s** across 20 concurrent sessions |
-| 4x 64 GB (256 GB) through an AliExpress x4x4x4x4 bifurcation board, every card Gen1 x4, llama.cpp layer/row split, no MTP | unsloth `GLM-5.2-UD-IQ2_XXS` | **~15 tok/s decode**, **24.07 t/s prefill**; see the log detail below |
-| 3x 40 GB (120 GB), llama.cpp, almost all of the model on CPU: **one layer** plus context and compute buffers on the GPUs (18 GB of 40 GB on their own) | unsloth `GLM-5.2-GGUF`, ~460 GB MoE | **pp2048 33.44 ± 0.37 t/s, tg512 5.90 ± 0.03 t/s**. Against CPU plus DDR4 alone the tester reported only relative deltas, "TG went ~60% up" and "PP went ~30% down"; no absolute CPU-only figures were ever posted |
-| 7-card rented rig, llama.cpp | GLM-5.2 | **121 t/s prefill**, judged unusable (about a 25-minute prompt-processing time); killed before decode |
+| 8x 64 GB（512 GiB）、llama.cpp b10079、`-ngl 999 -c 4096 -np 1 --flash-attn on --no-context-shift --fit off --no-warmup --spec-type none`；虚拟化主机、掩码 GPU 名、链路活跃 Gen1 x4 但设备最大 Gen2 x16 | GLM-5.2 UD-IQ2_M、239 GB 2 位、约 224 GiB 驻留、约 6 分钟加载 | TG **17.33 tok/s**（17.31-17.37、SD 0.02）；PP **113.0 tok/s**（111.8-115.5、SD 1.01）、十次连续运行 |
+| 8x 64 GB、llama.cpp `-sm layer` | GLM-5.2 Q4_K_S GGUF | prefill **141 / 162 / 124 t/s** at 512 / 4k / 16k（随上下文退化）、decode **17.2 t/s** |
+| 8x 64 GB、llama.cpp 层拆分、Gigabyte G292-Z20、Proxmox 直通 | GLM-5.2-Q4_K_XL 完全在 VRAM（报告 320 GB 驻留） | **13-14 tok/s** 单流、20 个并发会话时崩到 **3 tok/s** |
+| 4x 64 GB（256 GB）经一块 AliExpress x4x4x4x4 分叉板、每张卡 Gen1 x4、llama.cpp 层/行拆分、无 MTP | unsloth `GLM-5.2-UD-IQ2_XXS` | **约 15 tok/s 解码**、**24.07 t/s prefill**；见下面日志细节 |
+| 3x 40 GB（120 GB）、llama.cpp、几乎整个模型在 CPU 上：**一层**加上下文和算力缓冲在 GPU 上（40 GB 中 18 GB 在它们自己身上） | unsloth `GLM-5.2-GGUF`、约 460 GB MoE | **pp2048 33.44 ± 0.37 t/s、tg512 5.90 ± 0.03 t/s**。对照单独的 CPU 加 DDR4、测试者只报相对增量、"TG went ~60% up"（TG 升约 60%）和 "PP went ~30% down"（PP 降约 30%）；绝对 CPU-only 数字从未贴出 |
+| 7 卡租用机架、llama.cpp | GLM-5.2 | **121 t/s prefill**、被判不可用（约 25 分钟提示处理时间）；解码前被杀 |
 
-The 4-card server log is worth quoting in full because it is the most completely specified
-multi-card capture in the archive:
+4 卡服务器日志值得完整引用、因为它是档案里最完整指定的多卡捕获：
 
 ```text
 n_ctx_slot = 65536, n_keep = 0
@@ -288,115 +219,70 @@ VRAM: 53G/64G, 60G/64G, 60G/64G, 56G/64G
 prompt cache: 8192.000 MiB, 65536 tokens, 8589934592 est
 ```
 
-### Concurrency scales badly
+### 并发扩展很差
 
-One concurrency sweep exists: the 8-card GLM-5.2 UD-IQ2_M report, `-np 16 -c 16384`, continuous
-batching, 128 tokens per user. Every column below is tabulated in that report.
+存在一个并发扫描：8 卡 GLM-5.2 UD-IQ2_M 报告、`-np 16 -c 16384`、连续批处理、每用户 128 个 token。下面每列都在那份报告里制成表。
 
-| Users | 1 | 2 | 4 | 8 | 16 |
+| 用户 | 1 | 2 | 4 | 8 | 16 |
 |---|---|---|---|---|---|
-| Aggregate | 17.3 | 21.6 | 25.7 | 28.1 | **38.9 tok/s** |
-| Per user | 17.3 | 10.8 | 6.4 | 3.5 | **2.4 tok/s** |
-| Batch wall time | n/a | 11.9 s | 20.0 s | 36.5 s | 52.6 s |
-| Scaling versus 1 user | 1.00x | 1.25x | 1.49x | 1.62x | **2.25x** |
+| 聚合 | 17.3 | 21.6 | 25.7 | 28.1 | **38.9 tok/s** |
+| 每用户 | 17.3 | 10.8 | 6.4 | 3.5 | **2.4 tok/s** |
+| 批墙钟时间 | n/a | 11.9 s | 20.0 s | 36.5 s | 52.6 s |
+| 相对 1 用户的扩展 | 1.00x | 1.25x | 1.49x | 1.62x | **2.25x** |
 
-That is only **2.25x from 1 to 16 users**. The report root-causes it to three things together:
-no PCIe or NVLink peer-to-peer, so every token is relayed through host memory seven times; a
-cross-NUMA pipeline hop at the layer 49 to 50 transition; and the link itself. Note the host is
-a virtualised or passthrough environment with masked GPU names, and its link reads **active
-Gen1 x4 but device-max Gen2 x16**, so this one sweep is not a clean stock-card measurement.
+那是从 1 到 16 个用户只有 **2.25x**。报告把它根因归到三个东西一起：没有 PCIe 或 NVLink 点对点、所以每个 token 经主机内存中继七次；层 49 到 50 过渡处一次跨-NUMA 流水线跳；以及链路本身。注意主机是一个带掩码 GPU 名的虚拟化或直通环境、它的链路读作**活跃 Gen1 x4 但设备最大 Gen2 x16**，所以这个单一扫描不是一次干净的出厂卡测量。
 
 ---
 
-## Why PCIe is, and is not, the bottleneck
+## 为什么 PCIe 是、又不是瓶颈
 
-This is the most contested question in the archive, and the dispute persists mostly because the
-two sides are describing different configurations. State the claim per configuration and it
-resolves cleanly.
+这是档案里最有争议的问题、争议持续主要是双方在描述不同的配置。按配置陈述声称、它就干净地解决。
 
-### The physical situation
+### 物理情况
 
-- The stock link is **Gen1 x4, about 1.0 GB/s**, and it **does not ramp under inference load**.
-- There is **no peer-to-peer and no NVLink**. `torch.cuda.can_device_access_peer(i,j)` returned
-  `False` for all **56 GPU pairs** on an 8-card rig, even within a PIX group; a ggml `-lv 5` log
-  contained zero peer/p2p/rpc occurrences; `nvidia-smi nvlink` reports "Device does not have or
-  support Nvlink". See [p2p.md](../frontier/p2p.md) and [nvlink.md](../frontier/nvlink.md).
-- Consequently, with layer split on an 8-card 80-layer model (10 layers per GPU), every
-  generated token makes **7 GPU to CPU RAM to GPU hops**, one of which crosses a NUMA/socket
-  boundary at the layer 49 to 50 transition.
+- 出厂链路是 **Gen1 x4、约 1.0 GB/s**、而且**在推理负载下不爬升**。
+- 没有**点对点、也没有 NVLink**。`torch.cuda.can_device_access_peer(i,j)` 在一个 8 卡机架上对全部 **56 个 GPU 对**返回 `False`、即使在一个 PIX 组内；一个 ggml `-lv 5` 日志含零个 peer/p2p/rpc 出现；`nvidia-smi nvlink` 报告 "Device does not have or support Nvlink"。见[P2P](../frontier/p2p.md) 和[NVLink](../frontier/nvlink.md)。
+- 因此、在 8 卡 80 层模型（每 GPU 10 层）上做层拆分时、每个生成的 token 做 **7 次 GPU 到 CPU RAM 到 GPU 跳**、其中一次在层 49 到 50 过渡处跨一个 NUMA/socket 边界。
 
-### Where it does not bite
+### 它不咬人的地方
 
-**Single card.** Weights are resident in VRAM after load. The PCIe cost is a one-time ~30 s
-model load, after which prefill and decode run at normal speed. Moving a single card from x4 to
-x16 moved llama.cpp pp only 439 to 448 and tg 81.91 to 85.75. The "PCIe bandwidth is a nothing
-burger" position is **correct for this case** and only this case.
+**单卡。** 权重在加载后驻留 VRAM。PCIe 代价是一次性约 30 s 的模型加载、之后 prefill 和 decode 以正常速度跑。把单卡从 x4 移到 x16 只移动 llama.cpp pp 439 到 448 和 tg 81.91 到 85.75。"PCIe bandwidth is a nothing burger"（PCIe 带宽无所谓）的立场**对这个情况正确**、而且只对这个情况。
 
-**Diffusion and image or video generation.** Compute-bound and VRAM-resident, so the link never
-enters the picture.
+**扩散和图像或视频生成。** 算力绑定且驻留 VRAM、所以链路从不进入画面。
 
-### Where it bites hard
+### 它咬得很狠的地方
 
-**Prefill, not decode.** Reported on two different card families: a 170HX offload user found
-prompt processing literally *faster on CPU* than with GPU offload ("PP went ~30% down because of
-gen1 x4 link limit" for the three-card, one-layer-offload run that measured pp2048 33.44 t/s),
-and a CMP 100-210 multi-card user with large MoE models reported "the pipeline parallelization
-for decode is fine, its the prefill that kills you". Decode moved the other way on the same run,
-"TG went ~60% up" against CPU plus DDR4, so GPU offload is worth it only if decode dominates your
-workload. Both sides of that comparison are percentages quoted by the tester; the CPU-only
-absolute rates were never posted, so do not treat any derived CPU figure as measured.
+**Prefill、不是 decode。** 在两个不同的卡家族上报告：一个 170HX 卸载用户发现提示处理在 CPU 上*字面上更快*、比 GPU 卸载还快（"PP went ~30% down because of gen1 x4 link limit"、针对测出 pp2048 33.44 t/s 的三卡一层卸载运行），一个带大 MoE 模型的多卡 CMP 100-210 用户报告 "the pipeline parallelization for decode is fine, its the prefill that kills you"（流水线并行化对解码没问题、是 prefill 干掉你）。同一运行里解码朝反方向移动、"TG went ~60% up" 对比 CPU 加 DDR4、所以只有 decode 支配你的工作负载时 GPU 卸载才值得。那个对比的两侧都是测试者引用的百分比；CPU-only 绝对速率从未贴出、所以不要把任何派生的 CPU 数字当测量过。
 
-**Tensor parallelism.** The decisive A/B, Qwen2.5-72B dense AWQ on vLLM at Gen1 x4:
+**张量并行。** 决定性的 A/B、Qwen2.5-72B dense AWQ 在 vLLM、Gen1 x4：
 
-| Configuration | Prefill at 1k / 4k / 16k | Decode |
+| 配置 | 1k / 4k / 16k 下的 Prefill | 解码 |
 |---|---|---|
-| 1 card | 839 / 1,092 / 960 t/s | 27.3 t/s |
-| **PP2** (pipeline) | 829 / 1,084 / **1,167** t/s | 29.1 t/s |
-| **TP2** (tensor) | **316 / 420 / 416** t/s | 33.7 t/s |
+| 1 卡 | 839 / 1,092 / 960 t/s | 27.3 t/s |
+| **PP2**（流水线） | 829 / 1,084 / **1,167** t/s | 29.1 t/s |
+| **TP2**（张量） | **316 / 420 / 416** t/s | 33.7 t/s |
 
-TP is **2.3-2.8x worse at prefill for +23% decode**. On GLM-5.2 with 8 cards the same pattern is
-worse: TP8 with `enforce_eager` gives 382 / 435 / 629 t/s at 4k / 16k / 32k (about 4x worse than
-PP8) and **3.4 t/s decode**; without `enforce_eager`, CUDA-graph capture crashes (vLLM issue
-#48285). Multiple operators converged independently: "With PCIe 1.0 x4 link Tensor parallel is a
-no go."
+TP 在 prefill 时**差 2.3-2.8x**、换 +23% 解码。在 8 卡的 GLM-5.2 上同一个模式更糟：带 `enforce_eager` 的 TP8 在 4k / 16k / 32k 给 382 / 435 / 629 t/s（比 PP8 差约 4x）和 **3.4 t/s 解码**；不带 `enforce_eager`、CUDA-graph 捕获崩溃（vLLM issue #48285）。多位操作者独立收敛："With PCIe 1.0 x4 link Tensor parallel is a no go."（在 PCIe 1.0 x4 链路上张量并行不可行。）
 
-**Concurrency.** The 2.25x ceiling from 1 to 16 users above.
+**并发。** 上面 1 到 16 用户的 2.25x 上限。
 
-### Why pipeline parallelism survives a narrow link
+### 为什么流水线并行能活过一条窄链路
 
-Pipeline parallelism sends only the token or its activation/embedding vector between stages,
-once per stage per token. Tensor parallelism splits every matrix multiply and therefore needs an
-all-reduce across cards inside every layer, which is demanding on both bandwidth **and** latency
-(and latency is the part a wider link does not fix). The interconnect-demand ranking that the
-measurements support is:
+流水线并行在阶段之间只发 token 或其激活/嵌入向量、每阶段每 token 一次。张量并行拆分每个矩阵乘、因此需要在每层内跨卡做 all-reduce、这同时苛求带宽**和**延迟（而延迟是更宽链路不修的那部分）。测量支持互连需求排序：
 
-**Tensor >> Expert > Pipeline > Data.**
+**Tensor >> Expert > Pipeline > Data。**
 
-Only data parallelism runs unimpaired on stock 170HX links. A **1.56x** prompt-processing gain
-for two cards in pipeline-parallel mode despite the PCIe 1.0 x4 link circulated early, but it is
-second-hand: it was relayed from a private group the reporter could not share, with no model,
-quant or configuration given. Treat it as an anecdote, not a measurement. Pipeline parallelism
-does not meaningfully improve token-generation speed; it buys capacity and prefill, not decode.
-The measured PP2 gain over one card was 27.3 to 29.1 t/s decode, with prefill at 16k rising
-960 to 1,167 t/s.
+只有数据并行在出厂 170HX 链路上不受损地运行。一个 **1.56x** 的、流水线并行模式里两张卡相对单卡的提示处理增益早期流传、但它是二手的：从一个报告者无法分享的私人组转述、没给模型、量化或配置。把它当一个轶事、不是测量。流水线并行不显著改善 token 生成速度；它买容量和 prefill、不是解码。测得的 PP2 相对一卡的增益是 decode 27.3 到 29.1 t/s、prefill 在 16k 从 960 升到 1,167 t/s。
 
-### The threshold for tensor parallelism, and why Gen2 x4 does not meet it
+### 张量并行的阈值、以及为什么 Gen2 x4 达不到
 
-The stated threshold is **PCIe Gen2 x16 or Gen3 x4**: "Unless we can unlock at least PCIE 2 16x
-or PCIE 3 4x, Tensor Parallel is out of the question." The unlocker delivers **Gen2 x4**
-(roughly 2 GB/s), which is below that. Chat references to a "Gen 2 x4 lane unlock" are a
-misnomer: there is no lane, width or x16 handling anywhere in `Gen2/_DIFF_vs_master.patch`.
-Restoring x16 is a **physical** modification, 24 hand-soldered 0402 capacitors. See
-[physical-mods.md](physical-mods.md) and [pcie-gen2.md](../unlock/pcie-gen2.md).
+陈述的阈值是 **PCIe Gen2 x16 或 Gen3 x4**："Unless we can unlock at least PCIE 2 16x or PCIE 3 4x, Tensor Parallel is out of the question."（除非我们能解锁至少 PCIE 2 16x 或 PCIE 3 4x、张量并行无从谈起。）解锁器交付 **Gen2 x4**（约 2 GB/s）、低于那个。聊天里对 "Gen 2 x4 lane unlock"（Gen 2 x4 通道解锁）的引用是一个误称：`Gen2/_DIFF_vs_master.patch` 里任何地方都没有 lane、width 或 x16 处理。恢复 x16 是一个**物理**改装、24 颗手工焊接 0402 电容。见[物理改装](physical-mods.md) 和[PCIe Gen2](../unlock/pcie-gen2.md)。
 
-What Gen2 x4 buys comes from **two runs by the same tester**, neither of them a controlled A/B
-with a stated methodology. Both are worth reading with their conditions attached.
+Gen2 x4 买来什么来自**同一个测试者的两次运行**、都不是带陈述方法论的受控 A/B。两者都值得带条件读。
 
-**The cleaner one: a single card, model fully resident in VRAM.** A 10 GB card unlocked to 40 GB,
-`unsloth/Qwen3.6-27B-MTP-UD-Q8_K_XL` on ik_llama with MTP on, described by the tester as
-"all other factors unchanged":
+**更干净的那次：一张卡、模型完全驻留 VRAM。** 一张解锁到 40 GB 的 10 GB 卡、`unsloth/Qwen3.6-27B-MTP-UD-Q8_K_XL` 在 ik_llama 上带 MTP 开、被测试者描述为 "all other factors unchanged"（其它一切不变）：
 
-| Test | Gen1 x4 (2026-07-22) | Gen2 x4 (2026-07-27) |
+| 测试 | Gen1 x4（2026-07-22） | Gen2 x4（2026-07-27） |
 |---|---|---|
 | pp512 | 203.84 ± 12.10 | **277.84 ± 19.81** |
 | pp2048 | 328.81 ± 8.27 | **449.41 ± 13.44** |
@@ -405,169 +291,104 @@ with a stated methodology. Both are worth reading with their conditions attached
 | tg512 | 37.69 ± 1.59 | **40.12 ± 1.52** |
 | tg2048 | 36.78 ± 1.43 | **37.90 ± 0.80** |
 
-The tester summarised it as "big PP gains" with "TG also got a nice bump", and could not explain why a
-fully VRAM-resident model should move at all, guessing at MTP's CPU-side scheduling. Two caveats:
-the runs are five days apart rather than back to back, and the stated purpose of the second run
-was measuring a SlimSAS adapter path, not link speed.
+测试者把它总结为 "big PP gains"（大 PP 增益）、"TG also got a nice bump"（TG 也得到不错的提升）、且无法解释为什么一个完全驻留 VRAM 的模型应该动、猜测是 MTP 的 CPU 侧调度。两个注意：运行相隔五天而非背靠背、第二个运行的陈述目的是测量一个 SlimSAS 转接卡路径、不是链路速度。
 
-**The multi-card one, which is not a like-for-like pair.** A three-GPU run with almost the whole
-model on CPU (one layer plus context and compute buffers on the cards): pp2048
-33.44 ± 0.37 t/s at Gen1 x4 on 2026-07-20, and 48.22 ± 1.36 t/s in what the tester labelled a
-"gen2 x4 attempt" on 2026-07-24; tg512 5.90 to 6.39; time-to-first-response 61,253 to 42,510 ms.
-The percentage deltas often quoted from this pair (+44.2% prefill, -30.6% latency) are computed
-here, not stated by the tester, and the two runs are not quant-matched: the later one is labelled
-`GLM-5.2-GGUF-Q4` where the earlier is unlabelled `GLM-5.2-GGUF`. A `GLM-5.2-UD-Q2_K_XL` run on
-the same rig at Gen2 x4 gave pp2048 49.00 ± 1.08 and tg512 6.81 ± 0.06. The tester's own verdict
-was cautious: "with gen2 x4 PP is at least not worse, but I feel like I'm still getting pegged by
-bandwidth".
+**多卡那次、不是一个同类对。** 一个三-GPU 运行、几乎整个模型在 CPU 上（一层加上下文和算力缓冲在卡上）：pp2048 33.44 ± 0.37 t/s at Gen1 x4 on 2026-07-20、和 48.22 ± 1.36 t/s 在测试者标注为 "gen2 x4 attempt" 的 2026-07-24 运行；tg512 5.90 到 6.39；到首响应时间 61,253 到 42,510 ms。常从这个对引用的百分比增量（+44.2% prefill、-30.6% 延迟）在这里计算、不是测试者陈述、而且两个运行量化不匹配：更晚的标注 `GLM-5.2-GGUF-Q4`、更早的未标注 `GLM-5.2-GGUF`。同一机架上 Gen2 x4 的 `GLM-5.2-UD-Q2_K_XL` 运行给 pp2048 49.00 ± 1.08 和 tg512 6.81 ± 0.06。测试者自己的判决谨慎："with gen2 x4 PP is at least not worse, but I feel like I'm still getting pegged by bandwidth"（带 gen2 x4 PP 至少不更糟、但我觉得还是被带宽钉住）。
 
-Direction across both: prefill and latency improve, decode moves much less. That is the shape the
-pipeline-parallel model predicts, but neither run isolates link speed cleanly.
+两者跨向：prefill 和延迟改善、decode 动得少得多。那是流水线并行模型预测的形状、但两个运行都没有干净隔离链路速度。
 
 > [!NOTE]
-> **Open problem: nobody has re-run the parallelism A/B at Gen2 x4**
+> **未解问题：没人重跑过 Gen2 x4 下的并行 A/B**
 >
-> Every parallelism comparison in this domain ran at Gen1 x4. The two Gen2 x4 inference
-> datasets above come from one tester, and neither is a pipeline-versus-tensor comparison.
-> Others repeatedly noted "didn't try the pcie 2.0 yet". The cleanest single-variable
-> experiment available is the 4-card bifurcation rig above (fully documented configuration)
-> running the identical GLM-5.2 UD-IQ2_XXS workload with the Gen2 code installed.
+> 这个领域里每个并行对比都跑在 Gen1 x4。上面两个 Gen2 x4 推理数据集来自一个测试者、而且都不是流水线-对比-张量对比。其他人反复注明 "didn't try the pcie 2.0 yet"（还没试 pcie 2.0）。可用的最干净单变量实验是上面的 4 卡分叉机架（完整文档化配置）带安装的 Gen2 代码跑完全相同的 GLM-5.2 UD-IQ2_XXS 工作负载。
 
 > [!NOTE]
-> **Open problem: does lane count matter once weights are resident?**
+> **未解问题：权重驻留后通道数要紧吗？**
 >
-> Asked directly and answered only with opinions ("any additional bandwidth is more than
-> welcome", "use MoE models", "PCI-e 3.0 x16 would be more than enough for multi-GPU"). It is
-> blocked on hardware: no x16 card was available to the people asking. The one long-context
-> prefill-versus-width number in the corpus, roughly 6,000 down to 3,000 t/s moving x16 to x8
-> at 64k context, was measured on a different, non-170HX card and does not transfer. The CMP
-> x4-versus-x16 llama.cpp comparison quoted earlier is short-context and single-card, so it
-> does not settle the long-context case either.
+> 被直接问、只被意见回答（"any additional bandwidth is more than welcome"（任何额外带宽都求之不得）、"use MoE models"（用 MoE 模型）、"PCI-e 3.0 x16 would be more than enough for multi-GPU"（PCI-e 3.0 x16 对多 GPU 绰绰有余））。它被硬件阻塞：问的人没有 x16 卡可用。语料库里唯一的长上下文 prefill-对比-位宽数字、64k 上下文时从 x16 到 x8 约 6,000 降到 3,000 t/s、是在一张不同的、非 170HX 卡上测量的、不可迁移。上面引用的 CMP x4-对比-x16 llama.cpp 对比是短上下文和单卡、所以也不解决长上下文情况。
 
-### Mitigations that are actually supported
+### 真正受支持的缓解
 
-- **Prefer MoE models.** They reduce cross-device activation traffic per token, which is the
-  recommended mitigation for the lack of NVLink. Reasoned rather than isolated by benchmark, but
-  consistent with everything measured.
-- **Use pipeline parallelism, always.**
-- **Batch on one card rather than sharding across cards** where the model fits.
+- **偏好 MoE 模型。** 它们减少每 token 的跨设备激活流量、那是对缺 NVLink 的推荐缓解。是推理而非被基准测试隔离、但与一切测量一致。
+- **总是用流水线并行。**
+- **模型放得下时、在一张卡上批处理、而不是跨卡分片。**
 
 ---
 
-## What breaks
+## 什么会坏
 
-| Symptom | Cause | Fix |
+| 症状 | 原因 | 修复 |
 |---|---|---|
-| Weights load CPU-only then OOM | prebuilt `libggml-cuda.so` needs `libcudart.so.13` / `libcublas.so.13`; host has CUDA 12.4 | prepend PyTorch's bundled cu13 libraries to `LD_LIBRARY_PATH` |
-| vLLM import fails, no `vllm._C` | `VLLM_USE_PRECOMPILED` editable install | 0.20.2 release wheel + PR #38476 python diff onto site-packages |
-| vLLM does not recognise `glm_moe_dsa` | `transformers` 4.57 | `transformers` 5.x |
-| GLM-5.2 MoE kernels reject the quant | asymmetric quantisation (`cyankiwi/GLM-5.2-AWQ-INT4`, asym g32) | symmetric quants: `lowbitcoffee/GLM-5.2-W4A16`, `QuantTrio/GLM-5.2-Int4-Int8Mix` |
-| GLM-5.2 prefill collapses to ~120-160 t/s | llama.cpp has no DSA support and falls back to dense attention (llama.cpp issue #24730) | use vLLM with `TRITON_MLA_SPARSE` |
-| vLLM TP8 crashes during CUDA-graph capture | vLLM issue #48285 | `enforce_eager` avoids the crash but costs ~4x prefill; use PP instead |
-| MTP + pipeline parallelism refuses to run | currently incompatible in vLLM | none known; MTP + TP8 goes straight to OOM |
-| SGLang will not run MTP | "sglang doesnt like mtp" | use vLLM or llama.cpp for MTP |
-| Loader pins RSS and thrashes disk until OOM | llama.cpp's load-time compute-graph pass thrashes system RAM | more host RAM (see below); `swapon` is blocked inside containers |
-| Model loading hangs after ~20 GB | the 80 GB geometry | revert to the shipping 40 GB profile |
+| 权重以 CPU-only 加载然后 OOM | 预构建 `libggml-cuda.so` 需要 `libcudart.so.13` / `libcublas.so.13`；主机有 CUDA 12.4 | 把 PyTorch 捆绑的 cu13 库前置到 `LD_LIBRARY_PATH` |
+| vLLM import 失败、无 `vllm._C` | `VLLM_USE_PRECOMPILED` 可编辑安装 | 0.20.2 release wheel + PR #38476 python diff 应用到 site-packages |
+| vLLM 不认识 `glm_moe_dsa` | `transformers` 4.57 | `transformers` 5.x |
+| GLM-5.2 MoE 内核拒绝量化 | 非对称量化（`cyankiwi/GLM-5.2-AWQ-INT4`、asym g32） | 对称量化：`lowbitcoffee/GLM-5.2-W4A16`、`QuantTrio/GLM-5.2-Int4-Int8Mix` |
+| GLM-5.2 prefill 崩到约 120-160 t/s | llama.cpp 没有 DSA 支持、回退到 dense 注意力（llama.cpp issue #24730） | 用带 `TRITON_MLA_SPARSE` 的 vLLM |
+| vLLM TP8 在 CUDA-graph 捕获期间崩溃 | vLLM issue #48285 | `enforce_eager` 避免崩溃但花约 4x prefill；改用 PP |
+| MTP + 流水线并行拒绝运行 | 在 vLLM 中当前不兼容 | 未知；MTP + TP8 直接 OOM |
+| SGLang 不跑 MTP | "sglang doesnt like mtp" | 用 vLLM 或 llama.cpp 跑 MTP |
+| 加载器钉死 RSS 和磁盘抖动直到 OOM | llama.cpp 的加载时计算图 pass 抖动系统 RAM | 更多主机 RAM（见下）；容器内 `swapon` 被阻止 |
+| 约 20 GB 后模型加载挂起 | 80 GB 几何布局 | 回退到出货 40 GB 档位 |
 
 > [!CAUTION]
-> **The 80 GB profile gives you less usable memory, not more**
+> **80 GB 档位给你更少的可用显存、不是更多**
 >
-> Under the experimental `80` branch, model loading hung after roughly 20 GB and even models
-> that previously fit the 40 GB unlock stopped loading; a second tester saw failures in the
-> 40-60 GB range. Reverting to the 40 GB geometry restored working loads. Note also that the
-> branch's `constants.yaml` advertises `lmr: 0x0000028B` but the build never reads that file:
-> `80/driver/build.sh` line 93 sets `LMR="0x0000028A"`, so every tester who ran that branch
-> actually programmed CFG1 `0x02779000` + LMR `0x0000028A` + `fb_length 0x0000001400000000`, a
-> three-way inconsistency that is itself the likely cause of the instability. See
-> [80gb.md](../frontier/80gb.md).
+> 实验性 `80` 分支下、模型加载在约 20 GB 后挂起、甚至之前装进 40 GB 解锁的模型也停止加载；第二位测试者在 40-60 GB 范围看到失败。回退到 40 GB 几何布局恢复了工作加载。也要注意分支的 `constants.yaml` 宣告 `lmr: 0x0000028B` 但构建从不读那个文件：`80/driver/build.sh` 第 93 行设 `LMR="0x0000028A"`，所以每个跑过那个分支的测试者实际编程了 CFG1 `0x02779000` + LMR `0x0000028A` + `fb_length 0x0000001400000000`、一个三路不一致、它本身很可能就是不稳定的原因。见[80 GB 问题](../frontier/80gb.md)。
 
 ---
 
-## Model sizing and host requirements
+## 模型尺寸和主机要求
 
-| Question | Answer |
+| 问题 | 答案 |
 |---|---|
-| Does Qwen3.6 27B bf16 fit a 64 GB card? | Yes, at roughly **54-56 GB**, leaving almost no KV headroom. The Q4_K_M quant of the same model is **18-24 GB** |
-| Is going above q4 worth it? | In-channel judgement backed by unspecified benchmarks: not clearly. On a 64 GB card the KV headroom matters more |
-| How much host RAM? | **At least ~256 GB** for very large models. A GLM-5.2 4-bit 467 GB model could not load on an 88 GiB-RAM host **even with 512 GiB of VRAM available**: weights reached a ~431 GiB VRAM plateau (405 GiB model plus KV/overhead) but the loader pinned RSS at **87.6 GB** with continuous **~820 MB/s disk re-reads** until OOM. Reproduced across raw `llama-server` and an Unsloth studio run, and across `-c 1024` / `-c 8192`, no-warmup and batch tuning |
-| Model load time? | ~30 s for a single card at Gen1; ~6 min for a 239 GB model across 8 cards; ~440-620 s for GLM-5.2 under vLLM. Over RPC, 20-60 min for a >=500B model at Q4-6, and 4-6 hours for a Kimi K3-class model across 170HX cards |
-| How many cards for Kimi K3? | ~1.4T weights in MXFP4 (e2m1) with MXFP8 activations is **4.25 bits per weight** (4 for the weight, 0.25 for an 8-bit scale per 32 weights), so about **744 GB of weights, twelve 64 GB cards' worth**. The in-channel estimates were off-the-cuff and higher: "so... 25 cards XD" for pipeline-parallel only and "more like 32 to account for inefficiencies, kv cache, and a reasonable parallelism setup". Nobody reconciled the arithmetic, and the tp8 half of that estimate does not hold at Gen1 x4. GA100 handles the group scales via the Marlin kernel |
+| Qwen3.6 27B bf16 装进一张 64 GB 卡吗？ | 装得进、约 **54-56 GB**、几乎留不下 KV 余量。同一个模型的 Q4_K_M 量化是 **18-24 GB** |
+| 越过 q4 值得吗？ | 频道内判断、由未说明的基准测试支持：不明确。一张 64 GB 卡上 KV 余量更要紧 |
+| 需要多少主机 RAM？ | 对非常大的模型**至少约 256 GB**。一个 GLM-5.2 4 位 467 GB 模型在一台 88 GiB-RAM 主机上**即使有 512 GiB VRAM 可用也加载不了**：权重达到约 431 GiB 的 VRAM 平台（405 GiB 模型加 KV/开销）、但加载器把 RSS 钉在 **87.6 GB**、持续 **约 820 MB/s 的磁盘重读** 直到 OOM。在裸 `llama-server` 和 Unsloth studio 运行、以及 `-c 1024` / `-c 8192`、no-warmup 和批调优之间复现 |
+| 模型加载时间？ | 单卡 Gen1 约 30 s；8 卡上 239 GB 模型约 6 分钟；GLM-5.2 在 vLLM 下约 440-620 s。经 RPC、>=500B 模型在 Q4-6 下 20-60 分钟、Kimi K3 类模型跨 170HX 卡 4-6 小时 |
+| Kimi K3 需要几张卡？ | 约 1.4T 权重在 MXFP4（e2m1）带 MXFP8 激活是**每权重 4.25 位**（权重 4 位、每 32 个权重 8 位缩放 0.25 位），所以约 **744 GB 权重、十二张 64 GB 卡的量**。频道内估计随口且更高："so... 25 cards XD" 仅流水线并行、"more like 32 to account for inefficiencies, kv cache, and a reasonable parallelism setup"（更像 32 张、把低效、kv 缓存和一个合理的并行设置算进去）。没人调和过算术、那个估计的 tp8 一半在 Gen1 x4 不成立。GA100 经 Marlin 内核处理组缩放 |
 
 > [!NOTE]
-> **VRAM alone is not the binding constraint on model choice in this range**
+> **这个范围里、VRAM 单独不是模型选择的约束约束**
 >
-> Going from 40 GB to 84 GB let one user run the same 27B model with only a longer context.
-> Two others corroborated: "even with an 8x64 and 512GB, LLMs like deepseek pro still cant
-> run", and "I think 27b unmatched up to like 200gb". This is a statement about the model
-> landscape at these sizes, not about the hardware. The counterpoint offered was bigger quants
-> and unquantised context.
+> 从 40 GB 到 84 GB 让一个用户用更长的上下文跑同一个 27B 模型。另外两人佐证："even with an 8x64 and 512GB, LLMs like deepseek pro still cant run"（即使 8x64 和 512GB、deepseek pro 这类 LLM 仍跑不了）、"I think 27b unmatched up to like 200gb"（我觉得 27b 到约 200gb 不匹配）。这是关于这些尺寸下模型格局的陈述、不是关于硬件的。提出的反方是更大量化和未量化上下文。
 
 ---
 
-## Where the card sits against other hardware
+## 这张卡相对其它硬件的位置
 
-| Reference | Figure | Notes |
+| 参考 | 数字 | 备注 |
 |---|---|---|
-| RTX 3090, Qwen 27B q4_k_m | 60 tok/s with MTP, 40 without, prefill ~1,200 t/s | the comparison baseline used in-channel |
-| 170HX versus 3090 | roughly 3090-class for single-stream decode on **dense** models, with far more VRAM; **above** the 3090 on MoE prefill; **below** it on MoE decode, which is bandwidth-bound | the "3090-class" characterisation is disputed and both sides are probably right for different model classes |
-| Two 170HX versus one RTX 5090, image and video | "A little bit slower, but same power draw and would let you run concurrent tasks in 2 separate comfyui containers" | one tester on rented hardware, screenshots only, never reproduced: low confidence |
-| A100, GLM-5.2 | 55 tok/s | second-hand, no configuration, low confidence |
+| RTX 3090、Qwen 27B q4_k_m | 带 MTP 60 tok/s、不带 40、prefill 约 1,200 t/s | 频道内使用的对比基线 |
+| 170HX 对比 3090 | 对**dense** 模型的单流解码大致 3090 级、VRAM 远多；MoE prefill 在 3090 **之上**；MoE decode 在它**之下**、那是带宽绑定的 | "3090 级" 的定性有争议、双方可能对不同模型类都对 |
+| 两张 170HX 对比一张 RTX 5090、图像和视频 | "A little bit slower, but same power draw and would let you run concurrent tasks in 2 separate comfyui containers"（稍慢一点、但功耗相同、能让你在 2 个独立 comfyui 容器里跑并发任务） | 一个测试者、租用硬件、只有截图、从未复现：低置信度 |
+| A100、GLM-5.2 | 55 tok/s | 二手、无配置、低置信度 |
 
 ---
 
-## Non-LLM CUDA workloads
+## 非 LLM CUDA 工作负载
 
-Diffusion and image generation are a strong fit: INT8 convolution "is fast and works well on the
-cmp170 in ComfyUI", and an owner coming from Pascal called it "a speed demon". The mechanism is
-that the workload is compute-bound and fits entirely in VRAM, so the Gen1 x4 link does not bite,
-and diffusion tolerates low-precision noise better than language models because errors do not
-compound the same way. One caveat raised: diffusion-transformer weights have worse outliers than
-LLM weights, so W8A8-style quantisation is not automatically safe. Measured diffusion numbers are
-tabulated on [performance.md](performance.md).
+扩散和图像生成是一个强契合：INT8 卷积 "is fast and works well on the cmp170 in ComfyUI"（在 cmp170 的 ComfyUI 里快且工作良好）、一位从 Pascal 来的拥有者叫它 "a speed demon"（一个速度恶魔）。机制是工作负载算力绑定且完全装进 VRAM、所以 Gen1 x4 链路不咬人、而扩散比语言模型更好地容忍低精度噪声、因为错误不会以同样方式复合。一个提出的注意：扩散-变换器权重有比 LLM 权重更差的离群值、所以 W8A8 式量化不自动安全。实测扩散数字在[性能](performance.md) 制成表。
 
-Video generation works: LTX 2.3 on a single unlocked card produced roughly a **30-second clip in
-about 2 minutes** with "zero optimization going", the card running 250 W sustained under a
-USB-controlled blower and staying below 65 C. That report gives no resolution, frame count or
-step count, so it is low-to-medium confidence.
+视频生成有效：单张解锁卡上的 LTX 2.3 在约 2 分钟内产出约 **30 秒的片段**、带 "zero optimization going"（零优化进行中）、卡在 USB 控制鼓风机下持续 250 W 并保持在 65 C 以下。那份报告没给分辨率、帧数或步数、所以它是低到中置信度。
 
-A six-GPU 10 GB to 40 GB host was verified serving **five concurrent vLLM OpenAI-compatible
-endpoints** (GPUs 0-4, one model each: `Qwen/Qwen2.5-7B-Instruct-AWQ`,
-`cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit`, `Qwen/Qwen2.5-32B-Instruct-AWQ`,
-`Qwen/Qwen2.5-VL-32B-Instruct-AWQ`, `Qwen/Qwen2.5-Omni-7B-AWQ`) plus ComfyUI on GPU 5. That was
-explicitly a concurrency smoke test, not a benchmark.
+一个六-GPU 10 GB 到 40 GB 主机被验证服务 **五个并发 vLLM OpenAI 兼容端点**（GPU 0-4、每个一个模型：`Qwen/Qwen2.5-7B-Instruct-AWQ`、`cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit`、`Qwen/Qwen2.5-32B-Instruct-AWQ`、`Qwen/Qwen2.5-VL-32B-Instruct-AWQ`、`Qwen/Qwen2.5-Omni-7B-AWQ`）加 GPU 5 上的 ComfyUI。那明确是一次并发冒烟测试、不是基准测试。
 
 > [!NOTE]
-> **Open problem: 3D Gaussian splat training**
+> **未解问题：3D 高斯泼溅训练**
 >
-> Predicted poor rather than measured poor. Splats have few dense matrix multiplies and
-> generally do not use lower-precision formats, so they run on standard CUDA cores where the
-> card is ~12 TFLOPS FP32, roughly a 3060. Nobody has run an actual splat benchmark.
+> 被预测为差、而非测量为差。泼溅有很少的稠密矩阵乘、通常不用低精度格式，所以它们在标准 CUDA 核上运行、那里这张卡约 12 TFLOPS FP32、大致一块 3060。没人跑过实际泼溅基准测试。
 
 ---
 
-## Open questions
+## 开放问题
 
-1. **Get MTP working with pipeline parallelism in vLLM.** The benchmark report projects
-   "~1.7x decode (30 to ~50 t/s) on PP8" if the unmerged fix in RFC #44697 lands; the same
-   author later said in chat that MTP "should push GLM 5.2 closer to 45 t/s". Both are
-   projections from the measured 30.2 t/s, not measurements.
-2. **Re-run the parallelism A/B at PCIe Gen2 x4** on the documented 4-card bifurcation rig.
-3. **Answer x4 versus x16 at Gen2 with numbers.** Blocked on hardware.
-4. **Reconcile the ~27B single-card decode figures** by running one published configuration
-   verbatim.
-5. **Explain the vLLM long-context regression:** one tester saw vLLM fall to 22 tok/s at ~130k
-   context while llama.cpp held 48 tok/s on the same card, with MTP on both, after vLLM led
-   90 versus 60 at normal context. The 8-card result shows vLLM prefill *improving* with
-   context, so a configuration cause is likely. Nobody reproduced it.
-6. **Determine whether P2P can be enabled at all.** The unlocker already reaches SEC2/PLM
-   registers; whether a P2P-capability bit lives in the same space the FEAT PLM at `0x00823804`
-   governs has never been checked.
-7. **Colibri-style expert placement**, executing non-resident MoE experts on the CPU directly
-   from RAM instead of uploading them over the slow link. Suggestive prior evidence: prefill is
-   already faster on CPU than with GPU offload on this link.
-8. **Whether the memory unlock slightly slows already-unthrottled compute** through refresh
-   collisions. Nobody has run the before/after because the installer applies both unlocks
-   together.
+1. **让 MTP 在 vLLM 里与流水线并行工作。** 基准测试报告预测 "PP8 上约 1.7x decode（30 到约 50 t/s）" 如果 RFC #44697 里的未合并修复落地；同一位作者后来在聊天里说 MTP "should push GLM 5.2 closer to 45 t/s"（应该把 GLM 5.2 推到更接近 45 t/s）。两者都是从实测 30.2 t/s 的预测、不是测量。
+2. **在文档化的 4 卡分叉机架上重跑 Gen2 x4 的并行 A/B。**
+3. **用数字回答 Gen2 下的 x4 对比 x16。** 被硬件阻塞。
+4. **逐字跑一个已发布配置来调和约 27B 单卡解码数字。**
+5. **解释 vLLM 长上下文回退：** 一个测试者看到 vLLM 在约 130k 上下文时掉到 22 tok/s、而 llama.cpp 在同一个卡上带两边 MTP 保持 48 tok/s、在正常上下文时 vLLM 领先 90 对 60 之后。8 卡结果显示 vLLM prefill 随上下文*改善*、所以一个配置原因很可能。没人复现过。
+6. **确定 P2P 能否被启用。** 解锁器已经到达 SEC2/PLM 寄存器；一个 P2P 能力位是否活在 `0x00823804` 处 FEAT PLM 管辖的同一个空间里、从未被检查。
+7. **Colibri 式专家放置**、直接在 CPU 上从 RAM 执行非驻留 MoE 专家、而不是经慢链路上传它们。提示性先前证据：prefill 在这个链路上已经比 GPU 卸载在 CPU 上更快。
+8. **显存解锁是否通过刷新冲突稍微拖慢已不再节流的算力。** 没人跑过前后对比、因为安装器同时应用两个解锁。
 
-See [open-questions.md](../frontier/open-questions.md),
-[multi-gpu.md](../procedures/multi-gpu.md) and [dead-ends.md](../history/dead-ends.md).
+见[未解问题](../frontier/open-questions.md)、[多卡](../procedures/multi-gpu.md) 和[死路](../history/dead-ends.md)。

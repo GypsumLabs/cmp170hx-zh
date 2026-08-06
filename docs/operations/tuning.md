@@ -1,278 +1,198 @@
-# Tuning an unlocked card
+# 调优一张解锁卡
 
-**What this page covers.** Getting the most out of an unlocked CMP 170HX: clocks and the one
-working overclock lever, power limits, persistence mode, performance-state management, how much
-VRAM you can actually allocate, and workload-level tuning. Measured baseline throughput is on
-[performance.md](performance.md); inference-specific tuning is on
-[llm-inference.md](llm-inference.md); cooling hardware is on [cooling.md](cooling.md).
+**本页覆盖内容。** 从一张解锁的 CMP 170HX 榨出最多：时钟和那一个工作的超频杠杆、功耗限制、持久化模式、性能状态管理、你真能分配多少 VRAM、以及工作负载级调优。实测基线吞吐在[性能](performance.md)；推理专属调优在[LLM 推理](llm-inference.md)；散热硬件在[散热](cooling.md)。
 
-**The three facts that shape everything here.**
+**塑造这里一切的三个事实。**
 
-1. **The only working overclock lever is the GPC clock VF offset via NVML**
-   (`nvmlDeviceSetGpcClkVfOffset`, range `[-1000 .. +1000]` MHz). The memory-clock VF offset
-   range is `[0 .. 0]` and the driver refuses it. `nvidia-smi` on 610.43.03 exposes only the
-   negative direction (`--set-vf-derate`), which makes overclocking look unavailable, but NVML
-   exports the full API.
-2. **The offset is really an undervolt expressed as a frequency offset.** At a pinned 1350 MHz
-   SM clock, going from +0 to +300 cut draw from **174.6 W to 132.0 W (-24.4%)** at identical
-   throughput (179.7 versus 180.7 TFLOPS BF16). The best value in tuning this card is power
-   saved, not throughput gained.
-3. **Above roughly +300 MHz the failure mode is silent data corruption, not a crash.** A run
-   that completes is not evidence a setting is safe.
+1. **唯一工作的超频杠杆是经 NVML 的 GPC 时钟 VF 偏移**（`nvmlDeviceSetGpcClkVfOffset`、范围 `[-1000 .. +1000]` MHz）。显存时钟 VF 偏移范围是 `[0 .. 0]`、驱动拒绝它。610.43.03 上的 `nvidia-smi` 只暴露负方向（`--set-vf-derate`）、这让超频看起来不可用，但 NVML 导出完整 API。
+2. **偏移真的是一个表达为频率偏移的降压。** 在钉住的 1350 MHz SM 时钟下、从 +0 到 +300 把功耗从 **174.6 W 砍到 132.0 W（-24.4%）**、吞吐相同（179.7 对比 180.7 TFLOPS BF16）。调优这张卡的最佳价值是省电、不是提吞吐。
+3. **约 +300 MHz 之上、失败模式是静默数据损坏、不是崩溃。** 一次完成的运行不是设置安全的证据。
 
 > [!CAUTION]
-> **Silent memory corruption above +300 MHz offset at a 1400 MHz ceiling**
+> **1400 MHz 上限下 +300 MHz 偏移之上、静默显存损坏**
 >
-> Measured with a full-VRAM pattern sweep as the gate: **+250** at 142.2 W passed 3 sweeps
-> with 0 errors; **+300** at 138.5 W passed 4 sweeps with 0 errors; **+325** at 132.7 W gave
-> **6 errors, then 3 errors, then 0 errors** across 3 sweeps; **+375** took a CUDA device
-> fault under load. The safe window at a 1400 MHz ceiling is **one 25 MHz step wide** above
-> +300, and past it you get bad data rather than a stack trace. Run four sweeps, not two, and
-> prefer margin whenever two settings measure equal.
+> 用全-VRAM 模式扫描作门测量：**+250** 在 142.2 W 通过 3 次扫描、0 错误；**+300** 在 138.5 W 通过 4 次扫描、0 错误；**+325** 在 132.7 W 给出 **6 个错误、然后 3 个、然后 0 个** 跨 3 次扫描；**+375** 在负载下取了一次 CUDA 设备故障。1400 MHz 上限下安全窗口在 +300 之上**只有一个 25 MHz 步宽**，而越过它你得到坏数据而非栈迹。跑四次扫描、不要跑两次、两个设置测量相等时偏好余量。
 
 ---
 
-## Clocks
+## 时钟
 
-| Quantity | Value | Notes |
+| 量 | 值 | 备注 |
 |---|---|---|
-| Base clock | 1140 MHz | also what CPU-RM runs at when GSP is disabled |
-| Sustained SM clock, stock | **1410 MHz** | canonical; every sustained measurement sits here |
-| Sustained SM clock at `-pl 300` | **1470 MHz** | 300 W requires the OC VBIOS, see below |
-| Sustained SM clock, tuning reference card | ~1425 MHz at +0, ~1571 MHz at +150, ~1647 MHz at +300 | single card |
-| VBIOS table max graphics clock | 1695 MHz | reference card, VBIOS 92.00.6D.00.0A |
-| Practical silicon ceiling | ~1604-1614 MHz at +350 offset | delivered work, not the reported number |
-| `clocks.max.sm` as reported by `nvidia-smi` | 1935 MHz | **reported field only, low confidence, not an operating clock**; single report, never re-checked |
-| Graphics clock steps | 100 steps, 1695 MHz down to 210 MHz in 15 MHz decrements | `nvidia-smi -q` on 580.159.04 / CUDA 13.0 |
-| Memory clock domain | exactly **one** entry, `Supported Clocks / Memory: 1728 MHz` | there is nothing to select. The *stock* 8 GB memory clock is unresolved, see the box below |
-| Core clock floor | 210 MHz | will not go lower, which is part of why idle power stays high |
+| 基础时钟 | 1140 MHz | 也是 GSP 被禁用时 CPU-RM 跑的东西 |
+| 持续 SM 时钟、出厂 | **1410 MHz** | 规范；每次持续测量都坐在这 |
+| `-pl 300` 下的持续 SM 时钟 | **1470 MHz** | 300 W 需要 OC VBIOS、见下 |
+| 持续 SM 时钟、调优参考卡 | +0 处约 1425 MHz、+150 处约 1571 MHz、+300 处约 1647 MHz | 单卡 |
+| VBIOS 表最大图形时钟 | 1695 MHz | 参考卡、VBIOS 92.00.6D.00.0A |
+| 实际硅片天花板 | +350 偏移下约 1604-1614 MHz | 交付的工作、不是报告的数字 |
+| `nvidia-smi` 报告的 `clocks.max.sm` | 1935 MHz | **纯报告字段、低置信度、不是工作时钟**；单一报告、从未复查 |
+| 图形时钟步进 | 100 步、1695 MHz 以 15 MHz 递减到 210 MHz | `nvidia-smi -q` on 580.159.04 / CUDA 13.0 |
+| 显存时钟域 | 恰好**一个**条目、`Supported Clocks / Memory: 1728 MHz` | 没什么可选。*出厂* 8 GB 显存时钟未解决、见下面方框 |
+| 核心时钟下限 | 210 MHz | 不会更低、这是空转功耗居高不下的部分原因 |
 
-The 10 GB card has **no clock headroom at all**: `nvidia-smi -q` reports Graphics 1140 MHz,
-SM 1140 MHz, Memory 1215 MHz at capture, with Max Clocks Graphics 1410 MHz, SM 1410 MHz, Memory
-1215 MHz (current equals max). Core-clock offset and memory-clock locks remain in place after
-the unlock on 10 GB cards specifically.
+10 GB 卡**完全没有时钟余量**：`nvidia-smi -q` 在捕获时报告 Graphics 1140 MHz、SM 1140 MHz、Memory 1215 MHz，Max Clocks Graphics 1410 MHz、SM 1410 MHz、Memory 1215 MHz（当前等于最大）。10 GB 卡上、核心时钟偏移和显存时钟锁在解锁后**特别地**仍保持原地。
 
 > [!NOTE]
-> **Open problem: the stock 8 GB memory clock is unresolved**
+> **未解问题：出厂 8 GB 显存时钟未解决**
 >
-> The stock 8 GB memory clock is unresolved: 1458 MHz (one sweep and TechPowerUp), 1728 MHz
-> (`nvidia-smi -q` Supported Clocks, noted as "432 MHz x 4"), 1890 MHz (`nvtop` during an
-> unlocked 64 GB `gpu_burn` at 300 W). 1215 MHz is the 10 GB card and is solid. The plausible
-> reconciliation (1458 stock, 1728 OC VBIOS, 1890 overclocked OC VBIOS) is unproven; a raw
-> FBPA PLL read would settle it. This page prints 1728, 1890 and 1215 in different places for
-> that reason.
+> 出厂 8 GB 显存时钟未解决：1458 MHz（一次扫描和 TechPowerUp）、1728 MHz（`nvidia-smi -q` Supported Clocks、标注 "432 MHz x 4"）、1890 MHz（300 W 下解锁 64 GB `gpu_burn` 期间 `nvtop`）。1215 MHz 是 10 GB 卡、很可靠。貌似合理的调和（1458 出厂、1728 OC VBIOS、1890 超频 OC VBIOS）未证实；一次原始 FBPA PLL 读就能解决。本页为此在不同的地方打印 1728、1890 和 1215。
 
 > [!NOTE]
-> **Open problem: the 1470 MHz ceiling on the 8 GB OC VBIOS is unexplained**
+> **未解问题：8 GB OC VBIOS 上的 1470 MHz 上限无法解释**
 >
-> VBIOS 92.00.6D.00.0A advertises Max Customer Boost Clocks of 1695 MHz graphics/SM, 1728 MHz
-> memory (noted as 432 MHz x 4) and 1545 MHz video. Under `mmapeak` the card sat at
-> **1470 MHz** with the power limit at 300 W, GPU-T reporting `PerfCap: None`, and the GPU
-> drawing only ~150 W. Neither power nor an explicit performance cap explains it.
+> VBIOS 92.00.6D.00.0A 宣告 Max Customer Boost Clocks 图形/SM 1695 MHz、显存 1728 MHz（标注 432 MHz x 4）、视频 1545 MHz。`mmapeak` 下卡坐在 **1470 MHz**、功耗上限 300 W、GPU-T 报告 `PerfCap: None`、GPU 只抽约 150 W。功耗和显式性能上限都解释不了它。
 
-Memory clock locking is simply refused:
+显存时钟锁定被直接拒绝：
 
 ```console
 $ nvidia-smi -lmc 1000
 Setting locked Memory clocks is not supported for GPU 00000000:21:00.0.
 ```
 
-Only the power limit and the GPC VF offset are adjustable through that path.
+那条路径上只有功耗限制和 GPC VF 偏移可调。
 
 ---
 
-## The overclock / undervolt lever
+## 超频 / 降压杠杆
 
-### Validated tuning profiles
+### 验证过的调优档位
 
-All rows below come from a **single reference card** (64 GB, driver 610.43.03, VBIOS
-92.00.6D.00.0A, PCIe Gen2 x4). Conditions: sustained BF16 tensor GEMM, n=8192, 10-15 s soak,
-NVML power sampled in-process. Every row passed the full-VRAM pattern sweep with
-`mem_errors=0` at least twice.
+下面所有行都来自一张**单一参考卡**（64 GB、驱动 610.43.03、VBIOS 92.00.6D.00.0A、PCIe Gen2 x4）。条件：持续 BF16 张量 GEMM、n=8192、10-15 s 浸泡、进程内采样 NVML 功耗。每一行都至少两次以 `mem_errors=0` 通过全-VRAM 模式扫描。
 
-| Profile | Offset | Clock ceiling | BF16 TFLOPS | Draw | GFLOPS/W | Versus stock |
+| 档位 | 偏移量 | 时钟上限 | BF16 TFLOPS | 功耗 | GFLOPS/W | 对比出厂 |
 |---|---|---|---|---|---|---|
-| stock | +0 | none | 184.3 | 199.2 W | 925 | baseline |
-| dense | +250 | 1200 MHz | 160.8 | 120.2 W | 1337 | -13% performance / -40% power |
-| **eff (default)** | **+250** | **1350 MHz** | **180.3** | **132.0 W** | **1366** | **-2% performance / -34% power** |
-| match | +250 | 1400 MHz | 186.5 | 142.2 W | 1311 | stock throughput at -29% power |
+| stock | +0 | 无 | 184.3 | 199.2 W | 925 | 基线 |
+| dense | +250 | 1200 MHz | 160.8 | 120.2 W | 1337 | -13% 性能 / -40% 功耗 |
+| **eff（默认）** | **+250** | **1350 MHz** | **180.3** | **132.0 W** | **1366** | **-2% 性能 / -34% 功耗** |
+| match | +250 | 1400 MHz | 186.5 | 142.2 W | 1311 | 出厂吞吐 -29% 功耗 |
 | balanced | +300 | 1470 MHz | 196.2 | 149.7 W | 1311 | +6% / -25% |
 | perf | +350 | 1590 MHz | 212.2 | 181.2 W | 1171 | +15% / -9% |
-| max | +350 | 1650 MHz | 215.3 | 186.1 W | 1157 | +17% at stock power |
+| max | +350 | 1650 MHz | 215.3 | 186.1 W | 1157 | +17% 在出厂功耗 |
 
-The highest *validated* point at a 1400 MHz ceiling is **+250 to +300** (+300 passed 4 sweeps
-with 0 errors). The companion GFLOP/W table's 1390 GFLOP/W peak is at 1400/+350, which was never
-sweep-validated and sits between two failures (+325 corrupted, +375 faulted). The 1376 GFLOP/W
-cell at 1350/+300 is in the same category: a single completed run, never gated by a pattern
-sweep. The same 1350 ladder also contains 1350/+400, which passed two sweeps and then returned
-`mem_errors=1` on a later one. The highest **sweep-validated** efficiency point is the shipped
-`eff` profile: **1366 GFLOP/W at +250 / 1350 MHz** (180.3 TFLOPS, 132.0 W). Efficiency at a 1650
-ceiling runs 1067 GFLOP/W at +250 to about 1149 GFLOP/W at +350; higher figures there come only
-from offsets that faulted. The `eff` profile is the shipped default because it gives up 2% of
-throughput for a third of the power.
+1400 MHz 上限下最高的 *验证过* 点是 **+250 到 +300**（+300 通过 4 次扫描、0 错误）。配套 GFLOP/W 表的 1390 GFLOP/W 峰值在 1400/+350、它从未被扫描验证、且坐在两个失败之间（+325 损坏、+375 故障）。1350/+300 处的 1376 GFLOP/W 格同类：一次完成运行、从不被模式扫描把关。同一个 1350 阶梯也含 1350/+400、它通过两次扫描、随后一次返回 `mem_errors=1`。最高的 **扫描验证过** 效率点是出货 `eff` 档位：**+250 / 1350 MHz 处 1366 GFLOP/W**（180.3 TFLOPS、132.0 W）。1650 上限下效率跑 +250 处 1067 GFLOP/W 到 +350 处约 1149 GFLOP/W；那里更高的数字只来自故障的偏移。`eff` 档位是出货默认、因为它用三分之一的功耗换来 2% 的吞吐。
 
-### The voltage floor
+### 电压下限
 
-At a 1350 MHz ceiling, everything above +250 draws the same power, so the correct choice is the
-**lowest** offset that reaches the floor:
+在 1350 MHz 上限下、+250 之上的一切抽相同的功耗，所以正确选择是达到下限的**最低**偏移：
 
-| Offset | +150 | +200 | +250 | +300 | +350 | +400 | +450 |
+| 偏移量 | +150 | +200 | +250 | +300 | +350 | +400 | +450 |
 |---|---|---|---|---|---|---|---|
-| Draw | 146.0 W | 140.9 W | **132.4 W** | 131.3 W | 132.1 W | 131.5 W | 132.5 W |
+| 功耗 | 146.0 W | 140.9 W | **132.4 W** | 131.3 W | 132.1 W | 131.5 W | 132.5 W |
 
-No better floor point exists between 1350 and 1400 MHz: `+400/1380` and `+375/1395` both fault
-on the first run. This SKU reports no voltage telemetry at all (`nvidia-smi -q -d VOLTAGE` is
-empty), so watts-at-fixed-clock is the only available proxy for voltage.
+1350 到 1400 MHz 之间不存在更好的下限点：`+400/1380` 和 `+375/1395` 都在第一次运行就故障。这个 SKU 完全报告不出电压遥测（`nvidia-smi -q -d VOLTAGE` 是空的），所以固定时钟下的瓦数是唯一可用的电压代理。
 
-### Fault and hang boundaries
+### 故障和挂起边界
 
-Same reference card. **+350 is the highest validated offset at a 1650 MHz ceiling.** The safe
-offset is ceiling-dependent: at a 1400 MHz ceiling the highest validated offset is **+300**,
-because 1400/+325 silently corrupts.
+同一张参考卡。**+350 是 1650 MHz 上限下最高的验证偏移。** 安全偏移是上限依赖的：1400 MHz 上限下最高验证偏移是 **+300**、因为 1400/+325 静默损坏。
 
-| Clock ceiling | Offset | TFLOPS | Power | Outcome |
+| 时钟上限 | 偏移量 | TFLOPS | 功耗 | 结果 |
 |---|---|---|---|---|
-| 1650 | +350 | 214.7 | 187 W | clean, 2 sweeps plus a selftest PASS (highest validated) |
-| 1650 | +355 | 215.0 | 183 W | faulted by the third run, `illegal instruction` |
-| 1650 | +360 | 217.3 | 182 W | fault |
-| 1650 | +375 | 219.3 | 182 W | best single result on the card, then fault plus 1 memory error on the next sweep |
-| 1650 | +400 | 210.7 | 179 W | clean but **slower** |
-| 1590 | +400 | n/a | n/a | HANG |
-| 1700 | +375 | n/a | n/a | HANG, "GPU requires reset", power cycle needed |
-| any | +450 | n/a | n/a | hard crash; a warm reboot is not always sufficient |
+| 1650 | +350 | 214.7 | 187 W | 干净、2 次扫描加一次自检 PASS（最高验证） |
+| 1650 | +355 | 215.0 | 183 W | 第三次运行前故障、`illegal instruction` |
+| 1650 | +360 | 217.3 | 182 W | 故障 |
+| 1650 | +375 | 219.3 | 182 W | 卡上最佳单次结果、随后故障加下一次扫描 1 个显存错误 |
+| 1650 | +400 | 210.7 | 179 W | 干净却**更慢** |
+| 1590 | +400 | n/a | n/a | 挂起 |
+| 1700 | +375 | n/a | n/a | 挂起、"GPU requires reset"、需要断电循环 |
+| any | +450 | n/a | n/a | 硬崩；热重启不总是足够 |
 
-Fault strings observed: `illegal instruction`, `illegal memory access`, `misaligned address`,
-`cublas 14`.
+观察到的故障字符串：`illegal instruction`、`illegal memory access`、`misaligned address`、`cublas 14`。
 
-**Why +400 can benchmark slower than +375:** Ampere's NAFLL has droop detection and stretches
-the clock when voltage is inadequate. At +400 the requested VF point is far enough past the
-curve that the stretcher engages continuously, so the clock *reads* 1650 MHz while delivered
-work drops about 4% below +375. Between roughly +355 and +390 the part runs at the full
-requested speed with too little margin, and that is exactly where the intermittent faults live.
-**A higher offset that benchmarks slower is a warning sign, not a win.**
+**为什么 +400 能比 +375 基准更慢：** Ampere 的 NAFLL 有下垂检测、电压不足时拉伸时钟。在 +400、请求的 VF 点越过曲线足够远、拉伸器持续接合，所以时钟*读* 1650 MHz 而交付的工作相对 +375 掉约 4%。在约 +355 到 +390 之间部件以完整请求速度运行、余量太少、那正是间歇故障所在。**一个基准更慢的更高偏移是一个警告信号、不是胜利。**
 
-### Qualification ladder
+### 资格阶梯
 
-Per-card silicon varies enough that a validated offset on one card must not be assumed on
-another. The documented procedure:
+每卡硅片差异足够大、一张卡上验证过的偏移绝不能假设到另一张上。文档化流程：
 
-1. Run `sudo nvml_oc` and confirm the GPC range is **not** `[0..0]`. (This doubles as the
-   quickest test that a card is actually unlocked.)
-2. `sudo 170hx-oc stock`, then `sudo oc_eff 10` for a baseline.
-3. Ladder +150 to +300 with `oc_eff` at each step.
-4. At the candidate point run the full-VRAM memory sweep and compute checksum
-   (`170hx-test.sh --no-unlock`).
-5. Stop at the first device fault and back off **one full step, not one bin**.
-6. Record results per card.
+1. 跑 `sudo nvml_oc` 并确认 GPC 范围**不是** `[0..0]`。（这也充当卡真被解锁的最快测试。）
+2. `sudo 170hx-oc stock`、然后 `sudo oc_eff 10` 作基线。
+3. 用 `oc_eff` 在每一步把 +150 阶梯升到 +300。
+4. 在候选点跑全-VRAM 显存扫描和计算校验和（`170hx-test.sh --no-unlock`）。
+5. 在第一次设备故障处停下并回退**一个完整步、不是一个 bin**。
+6. 每卡记录结果。
 
-### Real-workload gain
+### 真实工作负载增益
 
-Overclocking buys far less on real workloads than on GEMM microbenchmarks. llama.cpp with MTP on
-short chats:
+超频在真实工作负载上买的远少于 GEMM 微基准测试。llama.cpp 带 MTP 在短聊天上：
 
-| Model | Setting | Decode | Power | Core clock |
+| 模型 | 设置 | 解码 | 功耗 | 核心时钟 |
 |---|---|---|---|---|
-| Qwen3.6-35B-A3B-UD-Q8_K_XL | stock | 130 t/s | 170 W | 1445 MHz |
-| Qwen3.6-35B-A3B-UD-Q8_K_XL | +200 offset | 144 t/s | 185 W | 1650 MHz |
-| Qwen3.6-27B-UD-Q8_K_XL | stock | 55 t/s | 268 W | 1390 MHz |
-| Qwen3.6-27B-UD-Q8_K_XL | +200 offset | 59 t/s | 287 W | 1565 MHz |
+| Qwen3.6-35B-A3B-UD-Q8_K_XL | 出厂 | 130 t/s | 170 W | 1445 MHz |
+| Qwen3.6-35B-A3B-UD-Q8_K_XL | +200 偏移 | 144 t/s | 185 W | 1650 MHz |
+| Qwen3.6-27B-UD-Q8_K_XL | 出厂 | 55 t/s | 268 W | 1390 MHz |
+| Qwen3.6-27B-UD-Q8_K_XL | +200 偏移 | 59 t/s | 287 W | 1565 MHz |
 
-That is a **7-11% token-generation gain**. A second tester independently reported +200 MHz as
-their own stable maximum.
+那是 **7-11% 的 token 生成增益**。第二位测试者独立报告 +200 MHz 是他们自己稳定的最大值。
 
-### The 8 GB card overclocks; the 10 GB card does not
+### 8 GB 卡超频、10 GB 卡不
 
-| Step | Clock | FP32 |
+| 步骤 | 时钟 | FP32 |
 |---|---|---|
-| session start | 1410 MHz | 12.08 TF/s |
+| 会话开始 | 1410 MHz | 12.08 TF/s |
 | `nvidia-smi -pl 300` | 1470 MHz | 12.99 TF/s |
-| offset +60 | 1515 MHz | 13.40 TF/s |
-| offset +225 | 1695 MHz | **14.97 TF/s (+24%)** |
+| 偏移 +60 | 1515 MHz | 13.40 TF/s |
+| 偏移 +225 | 1695 MHz | **14.97 TF/s（+24%）** |
 
-This works on the 8 GB part because VBIOS entries `0x47177` / `0x47179` hold
-`freqDelta = +/-1000` there. Both read 0 on the A100 and on the CMP 10 GB. See
-[vbios.md](../hardware/vbios.md).
+这在 8 GB 部件上工作、因为 VBIOS 条目 `0x47177` / `0x47179` 那里持有 `freqDelta = +/-1000`。两者在 A100 和 CMP 10 GB 上都读 0。见[VBIOS](../hardware/vbios.md)。
 
 ---
 
-## Power limits
+## 功耗限制
 
-| Quantity | Value | Source |
+| 量 | 值 | 来源 |
 |---|---|---|
-| Default / Current / Requested power limit | 250.00 W | `nvidia-smi -q`, unlocked card, driver 610.43.02 |
-| Min power limit | 100.00 W | same capture |
-| Max power limit, stock CMP VBIOS | **250.00 W** | same capture |
-| Max power limit, NVIDIA 300 W "OC mining" VBIOS | **300 W** | `POW 278 / 300 W` observed under a 30-minute `gpu_burn` |
-| Slot power limit (DevCap) | 75 W | the card needs its EPS connector |
-| Power connector | 1 x EPS 8-pin (300 W rated), needs a 2 x PCIe-to-EPS adapter | see [power-and-psu.md](power-and-psu.md) |
+| 默认 / 当前 / 请求功耗限制 | 250.00 W | `nvidia-smi -q`、解锁卡、驱动 610.43.02 |
+| 最小功耗限制 | 100.00 W | 同一次捕获 |
+| 最大功耗限制、出厂 CMP VBIOS | **250.00 W** | 同一次捕获 |
+| 最大功耗限制、NVIDIA 300 W "OC mining" VBIOS | **300 W** | 30 分钟 `gpu_burn` 下观察到 `POW 278 / 300 W` |
+| 插槽功耗限制（DevCap） | 75 W | 卡需要它的 EPS 连接器 |
+| 电源连接器 | 1 x EPS 8-pin（额定 300 W）、需要 2 x PCIe-to-EPS 转接座 | 见[供电与 PSU](power-and-psu.md) |
 
-So on stock firmware `nvidia-smi -pl` can only **lower** the card, between 100 W and 250 W.
-There is no headroom above stock without the OC VBIOS, and that VBIOS is an 8 GB-card story:
-after the memory unlock, 10 GB cards were confirmed to still carry the core-clock-offset lock
-and the memory-clock lock, pinned at 1215 MHz. Nobody in the archive verified a 300 W VBIOS
-combined with the unlock on a 10 GB card.
+所以在出厂固件上 `nvidia-smi -pl` 只能**降低**卡、在 100 W 和 250 W 之间。出厂之上没有余量、除非带 OC VBIOS，而那个 VBIOS 是一个 8 GB 卡的故事：显存解锁后、10 GB 卡被确认仍携带核心时钟偏移锁和显存时钟锁、钉在 1215 MHz。档案里没人验证过 300 W VBIOS 与 10 GB 卡上解锁的组合。
 
 ```bash
-nvidia-smi -pl 160          # works; documented uses span 100/150/160/175/200/250 (and 300 on the OC VBIOS)
-nvidia-smi -q -d POWER      # confirm Current / Min / Max / Default
+nvidia-smi -pl 160          # 有效；文档化用途跨越 100/150/160/175/200/250（和 OC VBIOS 上的 300）
+nvidia-smi -q -d POWER      # 确认 Current / Min / Max / Default
 ```
 
-The recurring assertion that "there is no way to power limit these cards" is **wrong**.
+反复出现的 "there is no way to power limit these cards"（没有办法给这些卡做功耗限制）断言是**错的**。
 
-### Does raising the limit help?
+### 提高上限有帮助吗？
 
-Barely. Measured against the same tester's own 250 W baseline on a card with the faster-memory
-VBIOS and a large blower, going to 300 W moved BF16 from **~180 to 185 TFLOPS (about +2.8%)**,
-and thermals were not the limiter (core and memory both below 65 C). The conclusion drawn was
-that the core simply does not want to clock higher.
+几乎不。对照同一测试者自己的 250 W 基线、在一张带更快显存 VBIOS 和大鼓风机的卡上测量，去到 300 W 把 BF16 从 **约 180 移到 185 TFLOPS（约 +2.8%）**、而热不是限制（核心和显存都低于 65 C）。得出的结论是核心就是不想跑更高。
 
-Going the other way is nearly free. Power-limiting to **150 W cost no measured throughput** in
-raw throughput stress tests (single source, specific to that workload class), and the whole
-`eff` profile above exists because the power curve is steeply diminishing. In hashcat DES an
-overclock-VBIOS card gave 1800 MHash at 190 W against a stock card's 1700 MHash at 150 W: a
-26.7% power increase for 5.9% more performance, so power grows roughly 4.5x faster than
-performance. Silicon leakage rising with temperature makes the curve worse when hot.
+反方向几乎免费。功耗限制到 **150 W 在原始吞吐压力测试里没有测得任何吞吐损失**（单一来源、特定于那个工作负载类），而上面整个 `eff` 档位之所以存在、是因为功耗曲线急剧递减。在 hashcat DES 里、一张超频 VBIOS 卡在 190 W 给 1800 MHash、对比出厂卡 150 W 的 1700 MHash：26.7% 的功耗增长换 5.9% 的性能、所以功耗约比性能快 4.5 倍增长。硅片泄漏随温度上升、热时曲线更糟。
 
-### What the card actually draws
+### 卡实际抽多少
 
-| Workload | Draw |
+| 工作负载 | 功耗 |
 |---|---|
-| Idle | 27-46 W depending on card, temperature and residency; ~42 W typical on a running rig |
-| Idle with a model resident in VRAM | rises from about 33 W to about 45 W (a resident CUDA context raises clocks) |
-| `gpu_burn` FP32 / FP64 | ~60 W |
-| `gpu_burn` with tensor cores | ~75 W, spikes past 100 W |
-| CUTLASS BF16 (shape-optimised) | 186 W peak on a locked card; `mmapeak` post-unlock only ~150 W at 1470 MHz |
-| hashcat (pure integer) | 160+ W |
-| STREAM-like memory benchmark | 160+ W |
-| FluidX3D with FMA disabled, FP32/FP16S | 180 W |
-| llama.cpp, steady | 230-240 W |
-| Diffusion | 250-260+ W |
-| `gpu_burn` at a 300 W limit | 278 / 300 W |
+| 空转 | 27-46 W 取决于卡、温度和驻留；运行机架上约 42 W 典型 |
+| 模型驻留 VRAM 时空转 | 从约 33 W 升到约 45 W（一个驻留 CUDA 上下文提高时钟） |
+| `gpu_burn` FP32 / FP64 | 约 60 W |
+| 带张量核的 `gpu_burn` | 约 75 W、尖峰过 100 W |
+| CUTLASS BF16（形状优化） | 锁定卡上 186 W 峰值；解锁后 `mmapeak` 1470 MHz 下只有约 150 W |
+| hashcat（纯整数） | 160+ W |
+| STREAM 式显存基准测试 | 160+ W |
+| 禁用 FMA 的 FluidX3D、FP32/FP16S | 180 W |
+| llama.cpp、稳定 | 230-240 W |
+| 扩散 | 250-260+ W |
+| 300 W 限制下的 `gpu_burn` | 278 / 300 W |
 
 > [!WARNING]
-> **Do not validate cooling or stability with an FP32 burn-in**
+> **不要用 FP32 烧机验证散热或稳定性**
 >
-> This card is hard to load. A conventional FP32 burn-in reaches only 60-75 W where an integer
-> or memory benchmark reaches 160+ W. Validate with hashcat, a memory sweep, or `gpu_burn -tc`
-> plus a real workload, not with FP32 alone.
+> 这张卡很难加负载。一个常规 FP32 烧机只到 60-75 W、而整型或显存基准测试到 160+ W。用 hashcat、一次显存扫描、或 `gpu_burn -tc` 加一个真实工作负载验证、不要只用 FP32。
 
-**Cooling the card better lowers its idle power**, which is the benign half of the leakage
-feedback loop and the most likely explanation for the 30 W-versus-44 W idle spread across
-testers.
+**给卡散热更好会降低它的空转功耗**、那是泄漏反馈回路的良性一半、也是跨测试者 30 W-对比-44 W 空转分布最可能的解释。
 
-For rigs: 20 cards idling at ~30 W each is roughly 600-700 W just to sit there. A six-card
-llama.cpp layer-split system drew about **600 W total**, far under 6 x 250 W, because layer and
-pipeline split do not saturate all GPUs simultaneously. Host platform choice dominates: a
-dual-socket Xeon 6200 with Optane PMem 200 and 1.2 TB of memory idled at 400-600 W, against
-~200-250 W for a dual EPYC 7713 with 1 TB DDR4, 80 W for a single EPYC 7D12 system, and 30 W for
-an EPYC 7261 with one DIMM.
+对机架：20 张卡各空转约 30 W 是**只是放着约 600-700 W**。一个六卡 llama.cpp 层拆分系统抽约 **600 W 总计**、远低于 6 x 250 W、因为层和流水线拆分不会同时饱和所有 GPU。主机平台选择主导：双 socket Xeon 6200 带 Optane PMem 200 和 1.2 TB 显存空转 400-600 W、对比带 1 TB DDR4 的双 EPYC 7713 约 200-250 W、单 EPYC 7D12 系统 80 W、带一根内存条的 EPYC 7261 30 W。
 
 ---
 
-## Persistence mode and making settings survive
+## 持久化模式和让设置存活
 
-Overclock and power settings are **volatile**: they must be reapplied at every boot and after
-every driver reload. The reference deployment uses a systemd oneshot:
+超频和功耗设置是**易失的**：它们必须在每次引导和每次驱动重载后重新应用。参考部署用一个 systemd oneshot：
 
 ```ini
 [Unit]
@@ -285,203 +205,134 @@ ExecStart=/usr/local/bin/170hx-oc eff
 ExecStop=/usr/local/bin/170hx-oc stock
 ```
 
-The applier guards on PCI device ID `0x20C2` and loops over every GPU, so a non-170HX in the
-slot is skipped and logged rather than overclocked. A representative log line:
+应用器在 PCI 设备 ID `0x20C2` 上守卫、并循环每张 GPU，所以插槽里的非 170HX 被跳过并记录、而非被超频。一条代表性日志行：
 
 ```text
 170hx-oc: GPU 0 (…) profile=eff offset=+250 clk_max=1350 power_limit=300 W
 ```
 
-Notes on `nvidia-persistenced` itself:
+关于 `nvidia-persistenced` 本身的注记：
 
-- The patched module sets `NV_FLAG_PERSISTENT_SW_STATE` for both device IDs
-  (`0006-persistent-sw-state.patch`), so RM does not tear down software state when the last
-  client closes. That is effectively built-in persistence and is why no daemon is required;
-  `nvidia-smi -q` on a fresh card nonetheless reports `Persistence Mode: Disabled`.
-- **The unlock scripts require all NVIDIA services to be stopped.** `build.sh` stops
-  `nvidia-persistenced` as part of its hot reload. Tearing the driver down reliably means
-  stopping the display manager and the persistence daemon, not just `modprobe -r`. See
-  [troubleshooting.md](../procedures/troubleshooting.md).
+- 打过补丁的模块为两个设备 ID 设置 `NV_FLAG_PERSISTENT_SW_STATE`（`0006-persistent-sw-state.patch`），所以 RM 在最后一个客户端关闭时不会拆除软件状态。那实际就是内置持久化、也是不需要守护进程的原因；不过、一张新卡上的 `nvidia-smi -q` 仍报告 `Persistence Mode: Disabled`。
+- **解锁脚本要求所有 NVIDIA 服务被停止。** `build.sh` 在它的热重载里停 `nvidia-persistenced`。可靠地拆除驱动意味着停止显示管理器和持久化守护进程、不只 `modprobe -r`。见[排障](../procedures/troubleshooting.md)。
 
 > [!CAUTION]
-> **Do not install `nvidia-pstated` as a systemd service on an unlocked host**
+> **不要在一台解锁主机上把 `nvidia-pstated` 装成一个 systemd 服务**
 >
-> The unlock scripts need every NVIDIA service killed, and the interaction with a pstate daemon
-> is untested. If you want to experiment with it, run it from a launcher instead.
+> 解锁脚本需要每个 NVIDIA 服务被杀掉、与 pstate 守护进程的交互未测试。如果你想实验它、从一个启动器跑、不要从服务。
 
 ---
 
-## Performance-state (pstate) management
+## 性能状态（pstate）管理
 
-**The 170HX exposes only P0.** `NvAPI_GPU_SetForcePstate` returns `NVAPI_ERROR`, and the
-community fork of `nvidia-pstated` that works on 2-P-state cards (P100, V100) was tried on a
-170HX and produced **no change**. The daemon's defaults, for reference, are
-`iterationsBeforeSwitch = 30`, `performanceStateHigh = 16`, `performanceStateLow = 8`,
-`sleepInterval = 100`, `temperatureThreshold = 80`.
+**170HX 只暴露 P0。** `NvAPI_GPU_SetForcePstate` 返回 `NVAPI_ERROR`，而在 2-P 状态卡（P100、V100）上工作的 `nvidia-pstated` 社区 fork 在一张 170HX 上试过、产生**零变化**。该守护进程的默认值、供参考：`iterationsBeforeSwitch = 30`、`performanceStateHigh = 16`、`performanceStateLow = 8`、`sleepInterval = 100`、`temperatureThreshold = 80`。
 
-This is card-specific, not a fault in the tool: `nvidia-pstated` took a **CMP 90HX from 75 W to
-5 W** idle, working across a multi-GPU setup and persisting across reboot.
+这是卡专属的、不是工具故障：`nvidia-pstated` 把一张 **CMP 90HX 从 75 W 带到 5 W** 空转、跨多-GPU 设置工作、跨重启持久。
 
 > [!NOTE]
-> **Open problem: one P-state or two?**
+> **未解问题：一个还是两个 P 状态？**
 >
-> One account says the 170HX has two P-states; every posted capture shows only a single
-> default P0, which is why the NvAPI call fails. The practical consequence is the same either
-> way. `nvidia-smi -q -d PERFORMANCE` listing the supported P-state set would settle it.
+> 一个说法说 170HX 有两个 P 状态；每一份贴出的捕获只显示一个单一的默认 P0、这正是 NvAPI 调用失败的原因。实际后果无论哪种方式都相同。`nvidia-smi -q -d PERFORMANCE` 列出受支持的 P 状态集能解决它。
 
-The one untried lead for idle power is flashing PCIe A100 logic, which does contain several
-P-states. Nobody has attempted it, and VBIOS work on this card is signature-constrained; see
-[vbios.md](../hardware/vbios.md).
+空转功耗唯一未尝试的线索是刷写 PCIe A100 逻辑、它确实含几个 P 状态。没人尝试过、而且这张卡上的 VBIOS 工作受签名约束；见[VBIOS](../hardware/vbios.md)。
 
 ---
 
-## Memory allocation limits and practical usable VRAM
+## 显存分配限制和实际可用 VRAM
 
-| Card | Stock | Unlocked | What tools report |
+| 卡 | 出厂 | 解锁 | 工具报告什么 |
 |---|---|---|---|
-| 8 GB (`10de:20c2`) | 8192 MiB | **65536 MiB (64 GB)** | `nvidia-smi` 65536 MiB; `gpu_burn` "Initialized device 0 with 65052 MB of memory (64733 MB available, using 58259 MB of it)" |
-| 10 GB (`10de:2082`) | 10240 MiB | **40960 MiB (40 GB)** | 40459 MB reported in one capture; a controlled run used 17464 MiB of 40960 MiB |
-| 10 GB fired to 80 GB | n/a | reports ~81920 MiB / 79.7 GiB | **unusable above ~40 GB** |
+| 8 GB（`10de:20c2`） | 8192 MiB | **65536 MiB（64 GB）** | `nvidia-smi` 65536 MiB；`gpu_burn` "Initialized device 0 with 65052 MB of memory (64733 MB available, using 58259 MB of it)" |
+| 10 GB（`10de:2082`） | 10240 MiB | **40960 MiB（40 GB）** | 一次捕获报告 40459 MB；一次受控运行用了 40960 MiB 中的 17464 MiB |
+| 发射到 80 GB 的 10 GB | n/a | 报告约 81920 MiB / 79.7 GiB | **约 40 GB 之上不可用** |
 
-Practical allocation guidance:
+实际分配指导：
 
-- Budget roughly **1 GB of the 64 GB for driver and context overhead**: the gpu_burn capture
-  above shows 65052 MB total and 64733 MB available before the tool takes 90%.
-- **vLLM**: the 8-card GLM-5.2 recipe uses `--gpu-memory-utilization 0.90` and achieved 0.92
-  utilisation in practice, yielding 438,107 tokens of KV. Keep utilisation at or below 0.90:
-  0.95 crashed a card, because the unlocked geometry exposes 65052 MB with only 64733 MB
-  actually available, so headroom at 0.95 is thin. The recipe also sets
-  `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`.
-- **llama.cpp**: observed steady-state residency on a 4-card rig was 53G/64G, 60G/64G, 60G/64G
-  and 56G/64G, with a prompt cache of 8192.000 MiB / 65536 tokens.
-- The RM models the whole unlocked range as **uniform-performance memory**
-  (`supportCompressed = NV_TRUE`, `supportISO = NV_TRUE`, `performance = 20` on the extended
-  region), so allocation policy cannot prefer the fast region even where one exists. The
-  measured bandwidth step above an 8 GiB offset (98% of peak below, a flat 79% above, closing
-  entirely at a 32 GB chunk size) is invisible to the allocator. See
-  [performance.md](performance.md).
-- Shipping `master` clamps the BAR0/PRAMIN window to 8 GiB for both device IDs
-  (`0004-bar0-pramin-clamp.patch`). This is a CPU-side aperture, not a device-side allocation
-  limit, but it is the reason PRAMIN-based tools see only the first 8 GiB.
-- The installer's **profile auto-detection** reads `nvidia-smi --query-gpu=memory.total` and
-  maps `>= 60000 MiB` to the 8 GB profile and `35000-59999 MiB` to the 10 GB profile, so an
-  already-unlocked card re-detects correctly. Stock windows are 7680-8704 MiB and
-  9728-10752 MiB, with a ±512 MiB tolerance for reserved FB.
+- 把 64 GB 中的**约 1 GB 预算给驱动和上下文开销**：上面的 gpu_burn 捕获显示总 65052 MB、工具取 90% 前可用 64733 MB。
+- **vLLM**：8 卡 GLM-5.2 配方用 `--gpu-memory-utilization 0.90` 并在实践中达到 0.92 利用率、产出 438,107 个 token 的 KV。把利用率保持在 0.90 或以下：0.95 崩过一张卡、因为解锁的几何布局暴露 65052 MB、实际只有 64733 MB 可用、所以 0.95 处余量很薄。配方也设置 `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`。
+- **llama.cpp**：一个 4 卡机架上观察到的稳定态驻留是 53G/64G、60G/64G、60G/64G 和 56G/64G、带一个 8192.000 MiB / 65536 token 的提示缓存。
+- RM 把整个解锁范围建模为**统一性能内存**（扩展区域上 `supportCompressed = NV_TRUE`、`supportISO = NV_TRUE`、`performance = 20`），所以分配策略无法偏好快速区域、即使那里存在一个。8 GiB 偏移之上实测的带宽台阶（下面 98% 峰值、上面平坦 79%、在 32 GB 块大小完全闭合）对分配器不可见。见[性能](performance.md)。
+- 出货 `master` 把两个设备 ID 的 BAR0/PRAMIN 窗口钳到 8 GiB（`0004-bar0-pramin-clamp.patch`）。这是一个 CPU 侧孔径、不是设备侧分配限制，但它是基于 PRAMIN 的工具只看到前 8 GiB 的原因。
+- 安装器的**档位自动检测**读 `nvidia-smi --query-gpu=memory.total` 并把 `>= 60000 MiB` 映射到 8 GB 档位、`35000-59999 MiB` 到 10 GB 档位，所以一张已解锁的卡正确重新检测。出厂窗口是 7680-8704 MiB 和 9728-10752 MiB、为保留 FB 带 ±512 MiB 容差。
 
 > [!CAUTION]
-> **The 80 GB geometry is not more VRAM, it is less**
+> **80 GB 几何布局不是更多 VRAM、是更少**
 >
-> A 10 GB card fired to 80 GB reports ~81920 MiB and 85,545,582,592 bytes, and `cudaMalloc` of
-> 77 GiB even succeeds, but kernels touching more than roughly 40 GB cause fatal GPU loss,
-> independent of power limit. Reported Xid codes include Xid 31 (described as harmless) and
-> Xid 154 after CUDA memory tests; the dominant reported symptom is hangs. Xid 31 alone was
-> suggested by a bystander and was not corroborated as *the* signature by the operator with the
-> failing card. For one tester model loading hung after roughly 20 GB, while a second tester
-> with multiple cards saw failures in the 40 to 60 GB band; either way models
-> that previously fit the 40 GB unlock stopped loading. Physical DRAM is present (a PRAMIN
-> walk proved 80 distinct GiB), and on this branch the wall behaves like address decode. A
-> script-driven coherent register set does reach real memory past 40 GiB, but it is unshipped
-> and delivers roughly one CUDA context per fire. **8 GB cards go to 64 GB;
-> 10 GB cards go to 40 GB.** See [80gb.md](../frontier/80gb.md) and
-> [memory-geometry.md](../unlock/memory-geometry.md).
+> 一张发射到 80 GB 的 10 GB 卡报告约 81920 MiB 和 85,545,582,592 字节、`cudaMalloc` 77 GiB 甚至成功，但触碰超过约 40 GB 的内核造成致命 GPU 丢失、与功耗上限无关。报告的 Xid 码包括 Xid 31（被描述为无害）和 CUDA 显存测试后的 Xid 154；主导报告症状是挂起。Xid 31 单独是一个旁观者提出的、并未被带故障卡的操作者佐证为*那个*签名。对一位测试者模型加载在约 20 GB 后挂起、而第二位多卡测试者在 40 到 60 GB 波段看到失败；无论哪种方式、之前装进 40 GB 解锁的模型都停止加载。物理 DRAM 存在（一次 PRAMIN 走查证明 80 个不同的 GiB），而这个分支上那堵墙行为像地址解码。一个脚本驱动的连贯寄存器集确实在 40 GiB 后到达真实内存、但它未出货、且每次发射约交付一个 CUDA 上下文。**8 GB 卡到 64 GB；10 GB 卡到 40 GB。** 见[80 GB 问题](../frontier/80gb.md) 和[显存几何布局](../unlock/memory-geometry.md)。
 
 > [!WARNING]
-> **There is no ECC and no ECC telemetry**
+> **没有 ECC、也没有 ECC 遥测**
 >
-> ECC is fused off with no known lever, so a marginal overclock has no error-counter safety
-> net. That is precisely why the qualification ladder above gates on a full-VRAM pattern sweep
-> with a compute checksum. See [ecc.md](../frontier/ecc.md).
+> ECC 熔断关闭、没有已知杠杆，所以一个边缘超频没有错误计数器安全网。那正是上面资格阶梯以带计算校验和的全-VRAM 模式扫描作门的原因。见[ECC](../frontier/ecc.md)。
 
 ---
 
-## Workload tuning
+## 工作负载调优
 
-### Build and launch flags that matter
+### 要紧的构建和启动标志
 
-| Setting | Value | Why |
+| 设置 | 值 | 为什么 |
 |---|---|---|
-| CUDA architecture | `-DCMAKE_CUDA_ARCHITECTURES=80` | compute capability 8.0 is GA100; SM86 also works but 80 is correct |
-| Backend | vLLM where it supports your model | "~1.8x" llama.cpp, from one tester on Qwen3.6 27B, one card, quants not matched |
-| Parallelism across cards | pipeline, never tensor | TP is 2.3-2.8x worse at prefill at Gen1 x4 |
-| MTP | on for single-stream llama.cpp, off for vLLM on the 35B MoE | +21% on one backend, -23% on the other |
-| Quantisation | q4-class is the practical sweet spot on a 64 GB card | bf16 Qwen3.6 27B is 54-56 GB and leaves no KV headroom |
-| Model family | prefer MoE for multi-card | less cross-device activation traffic per token |
+| CUDA 架构 | `-DCMAKE_CUDA_ARCHITECTURES=80` | 计算能力 8.0 是 GA100；SM86 也行但 80 正确 |
+| 后端 | vLLM 在它支持你的模型的地方 | "约 1.8x" llama.cpp、一位测试者、Qwen3.6 27B、一张卡、量化未匹配 |
+| 跨卡并行 | 流水线、绝不要张量 | Gen1 x4 下 TP 在 prefill 时差 2.3-2.8x |
+| MTP | 单流 llama.cpp 开、35B MoE 上 vLLM 关 | 一个后端 +21%、另一个 -23% |
+| 量化 | q4 类是一个 64 GB 卡上的实际甜点 | bf16 Qwen3.6 27B 是 54-56 GB、留不下 KV 余量 |
+| 模型家族 | 多卡偏好 MoE | 每 token 更少的跨设备激活流量 |
 
-### Roofline guidance
+### 峰值线指导
 
-For a **locked** card the 2023 selection rule still stands: the card is useful below
-**0.3 FLOPs/byte** of arithmetic intensity with stock FMA, or below **4.6 FLOPs/byte** after
-disabling FMA (ridge points from 394 and 6250 GFLOPS over a 1355 GB/s measured ceiling). After
-the compute unlock FP32 rises by roughly 30x while bandwidth is unchanged, so the ridge moves
-out by the same factor and the rule stops binding: an unlocked card behaves like an ordinary
-memory-bound GA100 for most kernels. (That last sentence is a derivation from the two canonical
-figures, not a separately measured result.)
+对一张**锁定**卡 2023 选择规则仍成立：算术强度在带出厂 FMA 时低于 **0.3 FLOPs/byte**、或禁用 FMA 后低于 **4.6 FLOPs/byte** 的卡有用（脊点来自 394 和 6250 GFLOPS 除以 1355 GB/s 实测上限）。算力解锁后 FP32 升约 30x、带宽不变，所以脊点以同样因子外移、该规则停止约束：一张解锁卡对大多数内核表现得像一颗普通显存绑定 GA100。（那句是从两个规范数字的推导、不是一个单独测量的结果。）
 
-### The cheapest untested tuning lead
+### 最便宜的未测试调优线索
 
-On a CMP 100-210, setting `n_ubatch 56` raised llama.cpp pp512 from 353.59 to **977.20 t/s**
-with flash attention off and from 380.96 to **1159.39 t/s** with it on, a **3.04x** gain from one
-flag, while tg128 was essentially unchanged. Small further gains held up to uBatch 62, then
-performance collapsed. That card has 68 of 84 SMs, so the analogous tuning point on a 70-SM
-170HX would be just below 70.
+在 CMP 100-210 上、设置 `n_ubatch 56` 把 llama.cpp pp512 从 353.59 提到 **977.20 t/s**（关 flash attention）和从 380.96 到 **1159.39 t/s**（开）、一个标志 **3.04x** 增益，而 tg128 基本不变。小进一步增益坚持到 uBatch 62、然后性能崩塌。那张卡有 84 个 SM 中的 68 个、所以 70-SM 170HX 上的类似调优点应正好在 70 之下。
 
 > [!NOTE]
-> **Open problem: does the uBatch cliff exist on the 170HX?**
+> **未解问题：uBatch 悬崖存在于 170HX 上吗？**
 >
-> Nobody has run the sweep. `llama-bench` with `n_ubatch` from 48 to 80 on a compute-unlocked
-> 170HX is a single afternoon of work and is the largest untested upside in the archive.
+> 没人跑过这个扫描。在一张算力解锁的 170HX 上用 `llama-bench` 把 `n_ubatch` 从 48 扫到 80 是一个下午的工作、也是档案里最大的未测试上行。
 
-### Validating a tuning point
+### 验证一个调优点
 
 ```bash
-# 1. compute stability and sustained flops
+# 1. 算力稳定性和持续 flops
 make COMPUTE=80                       # github.com/wilicc/gpu-burn
 ./gpu_burn -tc -m 90% 1200
 
-# 2. memory integrity: the gate that catches silent corruption
-./170hx-test.sh --no-unlock           # full-VRAM pattern sweep + compute checksum
+# 2. 显存完整性：抓住静默损坏的门
+./170hx-test.sh --no-unlock           # 全-VRAM 模式扫描 + 计算校验和
 
-# 3. link and geometry sanity
+# 3. 链路和几何布局健全
 nvidia-smi --query-gpu=memory.total,clocks.max.sm,pcie.link.gen.current,pcie.link.gen.max --format=csv
 ```
 
-A clean 30-minute `gpu_burn` at a 300 W limit on an unlocked 8 GB to 64 GB card looked like
-this: 225 iterations, checkpoints holding **12,472-12,485 GFLOP/s** with `errors: 0`,
-temperatures rising only 75 C to 77 C, live telemetry `PCIe GEN 1@ 4x`,
-`GPU 1440MHz MEM 1890MHz TEMP 76C FAN N/A POW 278 / 300 W`,
-`GPU 100% MEM 57.534Gi/64.000Gi`, finishing `Tested 1 GPUs: GPU 0: OK`.
+一张解锁 8 GB 到 64 GB 卡上、300 W 限制下一次干净的 30 分钟 `gpu_burn` 看起来像这样：225 次迭代、checkpoint 保持 **12,472-12,485 GFLOP/s** 带 `errors: 0`、温度只升 75 C 到 77 C、活遥测 `PCIe GEN 1@ 4x`、`GPU 1440MHz MEM 1890MHz TEMP 76C FAN N/A POW 278 / 300 W`、`GPU 100% MEM 57.534Gi/64.000Gi`、以 `Tested 1 GPUs: GPU 0: OK` 结束。
 
-Thermals are not usually the constraint: a sustained GEMM burn held flat flops while the die
-went 62 to 73 C over roughly 25-30 seconds, and a full-capability part throttles only above
-~85 C. What does matter is that idle power and leakage rise together, so better cooling pays
-twice. See
-[cooling.md](cooling.md) and [thermals.md](../hardware/thermals.md).
+热通常不是约束：一次持续 GEMM 烧机在晶片约 25-30 秒内从 62 到 73 C 时保持平坦 flops、一个全能力部件只在约 85 C 之上节流。要紧的是空转功耗和泄漏一起上升、所以更好散热付两次。见[散热](cooling.md) 和[热设计](../hardware/thermals.md)。
 
-### Efficiency reference points
+### 效率参考点
 
-| Metric | Value | Conditions |
+| 指标 | 值 | 条件 |
 |---|---|---|
-| Best measured GFLOPS/W | 1390 GFLOP/W | ceiling 1400 MHz, offset +350. **Never sweep-validated, and bracketed by 1400/+325 CORRUPT and 1400/+375 fault. Not an operating point.** |
-| Second-best measured | 1376 GFLOP/W | ceiling 1350 MHz, offset +300. **A single completed run, never gated by a pattern sweep. Not an operating point.** |
-| Best *sweep-validated* GFLOPS/W | 1366 GFLOP/W | `eff` (shipped default), +250 / 1350 MHz, 180.3 TFLOPS at 132.0 W; passed the full-VRAM pattern sweep with `mem_errors=0` at least twice |
-| Stock | 925 GFLOP/W | 184.3 TFLOPS at 199.2 W |
-| LLM serving | 2.16 tok/s per watt | vLLM, Qwen3.6 27B int8, one card |
-| Memory overclock (reported) | +2.5% flops for about +5 C | no clock or p-state code exists in any archived branch, so this cannot be checked against code |
+| 最佳实测 GFLOPS/W | 1390 GFLOP/W | 上限 1400 MHz、偏移 +350。**从未被扫描验证、并被 1400/+325 CORRUPT 和 1400/+375 fault 夹住。不是一个工作点。** |
+| 次佳实测 | 1376 GFLOP/W | 上限 1350 MHz、偏移 +300。**一次完成运行、从不被模式扫描把关。不是一个工作点。** |
+| 最佳 *扫描验证过* GFLOPS/W | 1366 GFLOP/W | `eff`（出货默认）、+250 / 1350 MHz、132.0 W 下 180.3 TFLOPS；至少两次以 `mem_errors=0` 通过全-VRAM 模式扫描 |
+| 出厂 | 925 GFLOP/W | 199.2 W 下 184.3 TFLOPS |
+| LLM 服务 | 每瓦 2.16 tok/s | vLLM、Qwen3.6 27B int8、一张卡 |
+| 显存超频（报告） | +2.5% flops 换约 +5 C | 任何归档分支都不存在时钟或 p 状态代码、所以这无法对代码核对 |
 
 ---
 
-## What does not work, in one list
+## 不起作用的东西、一份清单
 
-- Memory clock locking (`nvidia-smi -lmc`): refused by the driver.
-- Memory VF offset: range is `[0 .. 0]`.
-- Raising the power limit above 250 W on stock VBIOS: not offered.
-- P-state forcing (`nvidia-pstated`, `NvAPI_GPU_SetForcePstate`): the card exposes only P0.
-- Core-clock offset on the 10 GB card: `freqDelta` is 0 in its VBIOS.
-- Offsets above the ceiling-specific validated maximum: faults, hangs, or silent corruption. That
-  maximum is +350 at a 1650 MHz ceiling but only **+300** at a 1400 MHz ceiling.
-- Gaming, at any tuning point: 15 fps in BeamNG.drive at Gen1 x16 with the capacitor mod, 5 fps
-  at x4, "still awful" either way. This is not a gaming card.
-- ECC as a safety net: fused off.
+- 显存时钟锁定（`nvidia-smi -lmc`）：被驱动拒绝。
+- 显存 VF 偏移：范围是 `[0 .. 0]`。
+- 在出厂 VBIOS 上把功耗上限提到 250 W 之上：不提供。
+- P 状态强制（`nvidia-pstated`、`NvAPI_GPU_SetForcePstate`）：卡只暴露 P0。
+- 10 GB 卡上的核心时钟偏移：`freqDelta` 在它的 VBIOS 里是 0。
+- 上限专属验证最大值之上的偏移：故障、挂起或静默损坏。那个最大值是 1650 MHz 上限下的 +350、但 1400 MHz 上限下只有 **+300**。
+- 游戏、任何调优点：BeamNG.drive 在 Gen1 x16、带电容改装下 15 fps、x4 下 5 fps、"无论哪种方式仍然糟糕"。这不是一张游戏卡。
+- 作为安全网的 ECC：熔断关闭。
 
-See [open-questions.md](../frontier/open-questions.md) and
-[dead-ends.md](../history/dead-ends.md).
+见[未解问题](../frontier/open-questions.md) 和[死路](../history/dead-ends.md)。

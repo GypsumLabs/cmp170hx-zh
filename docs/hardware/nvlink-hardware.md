@@ -1,180 +1,103 @@
-# NVLink hardware
+# NVLink 硬件
 
-## What this page covers
+## 本页内容
 
-The state of NVLink on the CMP 170HX: what is physically on the board, what the fuses say, what
-you see in the boot log and why it is misleading, and precisely which doors are closed. The
-unlock attempts, proposals and open research live on [NVLink frontier](../frontier/nvlink.md);
-this page is the hardware description.
+CMP 170HX 上 NVLink 的状态：板上物理上有什么、熔丝怎么说、你在启动日志里看到什么以及它为什么有误导性，以及精确地说哪些门是关着的。解锁尝试、提案和开放研究在 [NVLink 前沿](../frontier/nvlink.md)；本页是硬件描述。
 
-**Bottom line: NVLink on the CMP 170HX does not work, has never worked for anyone, and is
-disabled by an OTP fuse rather than by software.** The links are not damaged, the connectors are
-physically present on the PCB, the die scales to the full twelve-link GA100 complement, and none
-of that helps, because `FUSE_NVLINK_DIS` at `0x00820684` reads `0x00000007` and no override
-register exists that could countermand it. No code in the unlocker touches NVLink, on master or
-on any of the twelve unreleased branches.
+**一句话总结：CMP 170HX 上的 NVLink 不工作，对任何人都从来没工作过，而且是被一颗 OTP 熔丝而非软件禁用的。** 链路没有损坏，连接器物理上存在于 PCB 上，晶片按完整十二链路 GA100 配置扩展，而这些都无济于事，因为 `0x00820684` 处的 `FUSE_NVLINK_DIS` 读 `0x00000007`，且不存在能推翻它的覆盖寄存器。解锁器中没有任何代码碰 NVLink，在 master 或十二个未发布分支上都一样。
 
 ---
 
-## The fuse evidence
+## 熔丝证据
 
-Measured on both physical 170HX units in the May 2026 cross-card survey and re-read independently
-off BAR0 on live cards of both the `0x20C2` (8 GB) and `0x2082` (10 GB) SKUs, on at least five
-occasions between 2026-05-07 and 2026-07-27.
+在 2026 年 5 月跨卡调查的两块物理 170HX 单元上测得，并在 2026-05-07 至 2026-07-27 之间至少五次，在 `0x20C2`（8 GB）和 `0x2082`（10 GB）两个 SKU 的活卡上独立地从 BAR0 重读。
 
-| Register | Address | 170HX | A100 ×3 | A10 / A5000 / A6000 | RTX 3080 / 3080 Ti | RTX 3090 / 3090 Ti | Drive A100 32 GB | Meaning |
+| 寄存器 | 地址 | 170HX | A100 ×3 | A10 / A5000 / A6000 | RTX 3080 / 3080 Ti | RTX 3090 / 3090 Ti | Drive A100 32 GB | 含义 |
 |---|---|---|---|---|---|---|---|---|
-| `FUSE_NVLINK_DIS` (`OPT_NVLINK_DISABLE`) | `0x00820684` | `0x00000007` | `0x00000000` | `0x00000000` | `0x00000001` | `0x00000000` | `0x00000007` | Disable mask, field `[2:0]`. All three bits set |
-| `STATUS_OPT_NVLINK` | `0x00820DB8` | `0x00000007` | `0x00000000` | `0x00000000` | `0x00000001` | `0x00000000` | `0x00000007` | Read-only effective state, annotated 16-bit |
-| `FUSE_NVLINK_DEFECTIVE` | `0x0082068C` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | Defective-link mask. **Zero: the silicon is intact** |
-| `FUSE_NVLINK_DIS_CP` (`..._DISABLE_CP`) | `0x00820688` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | Critical-path disable, unused |
-| `FUSE_NVLINK_MASK_SEC` | `0x00820704` | `0x00000005` | `0x00000005` | `0x00000085` | `0x00000085` | `0x00000085` | `0x00000005` | Mask write-security, 8-bit. Splits by architecture, not by tier |
-| `FUSE_NVLINK_PHYS_DMG` | `0x00820BD4` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | Write-security bit on the damage flag. Uniform everywhere |
-| `FUSE_NVLIPT_RST_DIS` | `0x00821100` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | NVLink IP reset-condition disable |
-| `CTRL_OPT_NVLINK` | `0x008209B8` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | Effective per-link control, bits `[15:0]` |
-| `CTRL_OPT_PERLINK` | `0x00820820` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | Per-link control, bits `[11:0]` |
-| `PTOP_SCAL_NUM_NVLINK` | `0x0002246C` | `0x0000000c` | `0x0000000c` | `0x00000004` | `0x00000004` | `0x00000004` | `0x0000000c` | Links built into the die: **12** |
+| `FUSE_NVLINK_DIS`（`OPT_NVLINK_DISABLE`） | `0x00820684` | `0x00000007` | `0x00000000` | `0x00000000` | `0x00000001` | `0x00000000` | `0x00000007` | 禁用掩码，字段 `[2:0]`。三个位全部置位 |
+| `STATUS_OPT_NVLINK` | `0x00820DB8` | `0x00000007` | `0x00000000` | `0x00000000` | `0x00000001` | `0x00000000` | `0x00000007` | 只读有效状态，标注为 16 位 |
+| `FUSE_NVLINK_DEFECTIVE` | `0x0082068C` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | 有缺陷链路掩码。**零：硅片完好** |
+| `FUSE_NVLINK_DIS_CP`（`..._DISABLE_CP`） | `0x00820688` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | 关键路径禁用，未使用 |
+| `FUSE_NVLINK_MASK_SEC` | `0x00820704` | `0x00000005` | `0x00000005` | `0x00000085` | `0x00000085` | `0x00000085` | `0x00000005` | 掩码写安全，8 位。按架构而非按档位划分 |
+| `FUSE_NVLINK_PHYS_DMG` | `0x00820BD4` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | 损坏标志上的写安全位。各处一致 |
+| `FUSE_NVLIPT_RST_DIS` | `0x00821100` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | NVLink IP 复位条件禁用 |
+| `CTRL_OPT_NVLINK` | `0x008209B8` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | 有效每链路控制，位 `[15:0]` |
+| `CTRL_OPT_PERLINK` | `0x00820820` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | 每链路控制，位 `[11:0]` |
+| `PTOP_SCAL_NUM_NVLINK` | `0x0002246C` | `0x0000000c` | `0x0000000c` | `0x00000004` | `0x00000004` | `0x00000004` | `0x0000000c` | 晶片内建的链路：**12** |
 
-Three readings follow directly:
+三个读数直接得出结论：
 
-1. **The disable is deliberate segmentation, not salvage binning.** `FUSE_NVLINK_DEFECTIVE`, the
-   field that would record a bad link group, reads `0x00000000` on the 170HX and on every card in
-   the 15-card survey that returned a value; the A16 column reads the `BAR0` placeholder because
-   its BAR0 is too small to reach most fuse registers, and the ES column is blank. If NVIDIA had
-   fused these links off because they failed test, this register is where that would be written,
-   and it is empty.
-2. **The die carries the full GA100 NVLink complement.** `PTOP_SCAL_NUM_NVLINK = 0x0000000c`
-   describes twelve links built into the silicon and is unaffected by the disable fuse. It is
-   byte-identical to all three A100 SKUs and to the Drive A100.
-3. **The disable arrives through the STATUS path, not through a control override.** Both
-   `CTRL_OPT` registers read zero, so nothing set them; the raw fuse propagates straight into the
-   read-only status register. This is the same pattern as every other floorsweep on the card, and
-   it is documented on [Fuses and OTP](fuses-and-otp.md).
+1. **禁用是刻意的分区，不是报废分级。** `FUSE_NVLINK_DEFECTIVE` 这个会记录一条坏链路组的字段，在 170HX 以及 15 卡调查中每一个返回值的卡上都读 `0x00000000`；A16 列读的是 `BAR0` 占位符，因为它的 BAR0 太小够不到大多数熔丝寄存器，而 ES 列是空白的。如果 NVIDIA 因为这些链路测试失败而熔断它们，这个寄存器就是会被写入的地方，而它是空的。
+2. **晶片携带完整的 GA100 NVLink 配置。** `PTOP_SCAL_NUM_NVLINK = 0x0000000c` 描述内建在硅片里的十二条链路，且不受禁用熔丝影响。它与全部三个 A100 SKU 和 Drive A100 逐字节相同。
+3. **禁用经由 STATUS 路径到达，而不是经控制覆盖。** 两个 `CTRL_OPT` 寄存器都读零，所以没有东西设置它们；原始熔丝直接传播进只读状态寄存器。这与卡上其它每个地板清扫是同一个模式，在[熔丝与 OTP](fuses-and-otp.md) 中有记录。
 
-### It is not a mining-SKU restriction
+### 它不是挖矿 SKU 专属限制
 
-The DRIVE A100 32 GB (PG199, `GA100-550F-A1`, `FUSE_PCIE_DEVIDA` = `0x000020bb`,
-`FUSE_PCIE_DEVIDB` = `0x000020fb`), measured on two physical boards, reads exactly the same
-`FUSE_NVLINK_DIS` = `0x00000007` and `STATUS_OPT_NVLINK` = `0x00000007`. All three regular A100
-SKUs read `0x00000000`. An NVLink-fused-off GA100 is therefore a normal thing for NVIDIA to ship,
-which weakens any theory that this particular disable is a crypto-mining countermeasure that
-might have a corresponding escape hatch.
+DRIVE A100 32 GB（PG199、`GA100-550F-A1`、`FUSE_PCIE_DEVIDA` = `0x000020bb`、`FUSE_PCIE_DEVIDB` = `0x000020fb`），在两张物理板上测得，读取的 `FUSE_NVLINK_DIS` = `0x00000007` 和 `STATUS_OPT_NVLINK` = `0x00000007` 完全相同。全部三个常规 A100 SKU 读 `0x00000000`。因此一个 NVLink 熔断关闭的 GA100 对 NVIDIA 来说是正常发货的东西，这削弱了任何说这个特定禁用是加密货币挖矿对策、因此可能有个对应的逃生门的理论。
 
-Note also that the `0x20bb` "A100-class comparison card" referred to in some writeups as also
-reading `7` **is** this Drive A100, not a fourth A100 SKU. The device IDs match.
+还要注意，一些文章里提到的、也读 `7` 的 `0x20bb` "A100 级对比卡" **就是**这块 Drive A100，不是第四个 A100 SKU。设备 ID 匹配。
 
-### Two corrections worth carrying
+### 两条值得记住的更正
 
 > [!NOTE]
-> **Open problem: a 3-bit disable field against 12 physical links**
+> **未解问题：3 位禁用字段对 12 条物理链路**
 >
-> `FUSE_NVLINK_DIS[2:0]` = `0x7` with `PTOP_SCAL_NUM_NVLINK` = 12, and `STATUS_OPT_NVLINK` is
-> annotated as a 16-bit field yet also reads `0x00000007`. The working hypothesis, unconfirmed
-> by anything in the corpus, is **three link groups of four links each** (12 = 3 × 4), which
-> would explain both the recurring "all groups" phrasing and the RTX 3080's `0x1` against its
-> `PTOP_SCAL_NUM_NVLINK` of `0x4`. What would settle it: an A100 with a known *partial* NVLink
-> floorsweep to compare against, or vendor documentation of the
-> `NV_FUSE_OPT_NVLINK_DISABLE` field width on GA100. Neither exists in the corpus.
+> `FUSE_NVLINK_DIS[2:0]` = `0x7` 配 `PTOP_SCAL_NUM_NVLINK` = 12，而 `STATUS_OPT_NVLINK` 被标注为一个 16 位字段却也读 `0x00000007`。工作假设（语料库中没有任何东西确认）是**每组 4 条链路的 3 个链路组**（12 = 3 × 4），这能解释反复出现的 "all groups"（所有组）措辞以及 RTX 3080 相对其 `PTOP_SCAL_NUM_NVLINK` = `0x4` 的 `0x1`。什么能定论它：一块带已知 *部分* NVLink 地板清扫的 A100 作对比，或 GA100 上 `NV_FUSE_OPT_NVLINK_DISABLE` 字段宽度的厂商文档。语料库中两者都不存在。
 
 ---
 
-## The physical board
+## 物理板
 
-The CMP 170HX reuses the A100 board layout. **The gold fingers of the NVLink edge interface are
-physically present, and three bridge connector positions exist.** This was established by an
-external teardown in October 2023 and agreed by card owners in 2026.
+CMP 170HX 复用 A100 板布局。**NVLink 边缘接口的金手指物理上存在，且存在三个桥连接器位置。** 这一点由 2023 年 10 月的一次外部拆解确立，并在 2026 年得到卡主同意。
 
 > [!NOTE]
-> **Correction: 'the CMP PCB lacks the NVLink connector entirely' is about the 90HX**
+> **更正："CMP PCB 完全没有 NVLink 连接器"说的是 90HX**
 >
-> The observation "the case has an opening for the NVLink connector, but the PCB lacks it"
-> appears twice in the archive: once attributed to the 170HX, and once, with the fuller context
-> that "the same unknown brand also makes an RTX 3080 20 GB [which] uses a PCB with the NVLink
-> connectors", attributed to the **CMP 90HX**. The 90HX is a GA102 RTX 3080-class mining board,
-> which is exactly what that RTX 3080 20 GB sibling remark describes. Applied to the 170HX the
-> claim contradicts the teardown evidence. Treat the 170HX-attributed instance, and the
-> parenthetical "CMP boards have no NVLink connector" in one writeup, as mis-attributions.
+> "机箱有一个 NVLink 连接器的开口，但 PCB 没有它"这一观察在档案中出现两次：一次归因于 170HX，一次带更完整的上下文、即 "the same unknown brand also makes an RTX 3080 20 GB [which] uses a PCB with the NVLink connectors"（同一个不知名品牌也做一款用带 NVLink 连接器的 PCB 的 RTX 3080 20 GB），归因于 **CMP 90HX**。90HX 是一款 GA102 RTX 3080 级挖矿板，恰好就是那句 RTX 3080 20 GB 兄弟备注所描述的。应用到 170HX 上，这个说法与拆解证据矛盾。把归因于 170HX 的实例，以及一篇短文里的括注 "CMP boards have no NVLink connector"（CMP 板没有 NVLink 连接器），都当作误归属。
 
-### The shroud is in the way
+### 导流罩挡路
 
-The aluminium shroud covers the connector area. Nothing can be seated until it is machined,
-removed or replaced. This is the same situation as the Tesla P100: NVIDIA covers the connector
-with a rubber cap on the A100 and the official bridge clips onto the A100 housing, which the
-170HX does not have. One photograph exists of a P100 with dremeled cut-outs and its electrical
-outcome is unknown. One water block is reported to leave the NVLink area exposed. Redesigning the
-cooler for physical access was named as the practical first step in this domain, ahead of any
-electrical work. See [Cooling](../operations/cooling.md).
+铝导流罩盖住了连接器区域。在它被机械加工、移除或更换之前，什么都装不进去。这与 Tesla P100 情况相同：NVIDIA 在 A100 上用橡胶帽盖住连接器，官方桥卡扣在 A100 外壳上，而 170HX 没有这个外壳。存在一张用打磨机开了口的 P100 照片，其电气结果未知。有一款水冷头被报告为让 NVLink 区域裸露。重新设计冷却器以获得物理访问，被命名为这个领域的实用第一步，先于任何电气工作。参见[散热](../operations/cooling.md)。
 
-### Populated or depopulated: leans depopulated, not settled
+### 贴装还是缺件：倾向缺件，但未定论
 
-This is the most consequential open question about the board, because it decides whether a fuse
-bypass would even be useful. The weight of evidence is on the depopulated side: the only direct
-A100-versus-CMP board comparison in the record reports parts missing, and the counter-claim is
-read off schematics rather than off a board.
+这是关于这块板最有后果的开放问题，因为它决定熔丝绕过是否还有用。证据的份量在缺件一侧：记录中唯一的直接 A100-对-CMP 板卡对比报告缺件，而反方主张是从原理图而非从板卡读出来的。
 
-**Evidence for depopulated.** The 2023 teardown states that "because the CMP 170HX uses the same
-NVIDIA A100 circuit board, the gold fingers of the NVLink interface exist, but the feature is
-unsupported with all components unpopulated on the PCB", and separately that "ICs related to the
-NVLink interface are also missing". Working from A100 schematics, a researcher identified five
-specific depopulated resistors above the GPU: `R234` (000), `R237` (NP), `R236` (1k), `R1024`
-(000) and `R238` (000), all from page 17, plus `R976`, `R1029` and `R1030`, and three
-GPU-to-ground termination resistors with no visible tracks. A second participant recalled absent
-parts of the NVLink power supply.
+**缺件的证据。** 2023 年拆解称 "because the CMP 170HX uses the same NVIDIA A100 circuit board, the gold fingers of the NVLink interface exist, but the feature is unsupported with all components unpopulated on the PCB"（因为 CMP 170HX 用同一块 NVIDIA A100 电路板，NVLink 接口的金手指存在，但该功能不受支持、PCB 上所有元件都未贴装），并单独称 "ICs related to the NVLink interface are also missing"（与 NVLink 接口相关的 IC 也缺失）。据 A100 原理图，一位研究者识别出 GPU 上方五颗具体缺件的电阻：`R234`（000）、`R237`（NP）、`R236`（1k）、`R1024`（000）和 `R238`（000），全部来自第 17 页，外加 `R976`、`R1029` 和 `R1030`，以及三颗没有可见走线的 GPU 对地端接电阻。另一位参与者回忆起 NVLink 电源的缺失部件。
 
-That list was produced with both boards in view: the resistors "are populated on a genuine A100,
-but missing on CMP".
+那份清单是在两块板都在视野内时产出的：这些电阻 "are populated on a genuine A100, but missing on CMP"（在真 A100 上是贴装的，在 CMP 上缺失）。
 
-**Evidence for populated.** The project's own VBIOS comparison table records "NVLink bridge:
-external bridge absent (PCB fully populated)", which is a project document row rather than an
-inspection. Two hours before the resistor list was posted, another researcher said "I do not
-believe there are any missing NVLink components. According to the schematics, the GPU die is
-connected directly to the edge connectors", blaming the confusion on the bridge carrying active
-components "including a ROM chip". Direct inspection of an official A100 bridge later found no
-EEPROM and no clock generator, so that stated basis does not hold.
+**贴装的证据。** 项目自己的 VBIOS 对比表记录 "NVLink bridge: external bridge absent (PCB fully populated)"（NVLink 桥：外部桥缺失（PCB 完全贴装）），这是一行项目文档而非一次检查。在电阻清单贴出的两小时前，另一位研究者说 "I do not believe there are any missing NVLink components. According to the schematics, the GPU die is connected directly to the edge connectors"（我不认为有任何缺失的 NVLink 元件。根据原理图，GPU 晶片直接连接到边缘连接器），把混淆归咎于桥携带主动元件 "including a ROM chip"（包括一颗 ROM 芯片）。后来对一块官方 A100 桥的直接检查发现没有 EEPROM 也没有时钟发生器，所以那个陈述的依据不成立。
 
-**The complicating detail:** `R237` is marked **NP** (not populated) in the A100 schematic
-itself, so at least one of those five is expected absent on a genuine A100 too. That is a clean
-illustration of how easily a by-eye comparison misleads.
+**复杂化的细节：** `R237` 在 A100 原理图里自己就标着 **NP**（未贴装），所以那五颗里至少有一颗在真 A100 上也是预期缺失的。这干净地说明了用眼睛对比有多容易误导。
 
-**What would settle it:** side-by-side high-resolution photographs of a de-shrouded 170HX and a
-genuine A100 at those designators, or a continuity check from the NVLink edge fingers to BGA
-balls `F1` and `G1`. Neither exists. Note that `R976` lands on ball `F51`, under the chip, on a
-package with a minimum of 82 ball rows, so it cannot be reached without professional infrared SMD
-rework or die removal; `R1029` and `R1030` tie to `F1` and `G1` at the chip edge and could be
-reached with thin wire.
+**什么能定论它：** 一块去导流罩的 170HX 和一块真 A100 在这些设计编号处的并排高分辨率照片，或从 NVLink 边缘金手指到 BGA 球 `F1` 和 `G1` 的连通性检查。两者都不存在。注意 `R976` 落在这颗至少有 82 行球的封装上晶片下方的球 `F51`，没有专业红外 SMD 返工或晶片移除就无法够到；`R1029` 和 `R1030` 连接到晶片边缘的 `F1` 和 `G1`，可以用细线够到。
 
-Even a perfect rework leaves `FUSE_NVLINK_DIS` at `0x00000007`.
+即便完美的返工也把 `FUSE_NVLINK_DIS` 留在 `0x00000007`。
 
 ---
 
-## What appears in the boot log
+## 启动日志里出现什么
 
-Every 170HX boot with the NVIDIA driver loaded produces this line:
+每次带 NVIDIA 驱动加载的 170HX 启动都产生这一行：
 
 ```text
 nvidia-nvlink: Nvlink Core is being initialized, major device number 236
 ```
 
-**It is benign and it is not evidence of link training.** It originates at `nvlink_linux.c:344`
-in the `nvidia-nvlink.ko` software core library, announcing that the module loaded. It is logged
-at `DBG_INFO`, it fires during early module load before GPU and GSP bring-up, and it appears on
-essentially every driver load on any NVIDIA GPU. The "236" is a dynamically allocated Linux
-character-device major from `alloc_chrdev_region` and can differ from boot to boot, so a
-different number in your log means nothing either.
+**它是良性的，也不是链路训练的证据。** 它源于 `nvidia-nvlink.ko` 软件核心库里的 `nvlink_linux.c:344`，宣布模块已加载。它记录在 `DBG_INFO`，在早期模块加载期间、GPU 和 GSP 启动之前触发，并且在几乎任何 NVIDIA GPU 的每一次驱动加载时都会出现。"236" 是一个由 `alloc_chrdev_region` 动态分配的 Linux 字符设备主号，每次启动都可能不同，所以日志里出现不同的数字也不代表什么。
 
-The authoritative check takes one command:
+权威检查一条命令：
 
 ```console
 $ nvidia-smi nvlink -s
 Device does not have or support Nvlink.
 ```
 
-That output is recorded once in the corpus, from a rented 8-card host of unlocked 64 GiB cards on
-2026-07-24, so treat it as consistent with the fuse rather than as a broad survey. Corroborate it
-against the fuse if you want certainty:
+那个输出在语料库中只记录过一次，来自 2026-07-24 一台租用的、带解锁的 64 GiB 卡的 8 卡主机，所以把它当作与熔丝一致而非一次广泛调查。想要确定性就用熔丝佐证它：
 
 ```bash
-# STATUS_OPT_NVLINK, the read-only effective state
+# STATUS_OPT_NVLINK，只读有效状态
 sudo python3 - <<'EOF'
 import mmap, struct
 BDF = '0000:81:00.0'
@@ -188,30 +111,23 @@ with open(f'/sys/bus/pci/devices/{BDF}/resource0','rb') as f:
 EOF
 ```
 
-Expected on any CMP 170HX: `0x00000007`, `0x00000007`, `0x00000000`, `0x0000000c`.
+在任何 CMP 170HX 上预期：`0x00000007`、`0x00000007`、`0x00000000`、`0x0000000c`。
 
 ---
 
-## Why it stays locked
+## 为什么它保持锁定
 
-Four independent doors, each closed for a different reason. All four have to open. A fifth
-section records that the unlocker never tries any of them.
+四扇独立的门，每扇因不同原因关闭。四扇都必须打开。第五节记录解锁器从不尝试其中任何一扇。
 
-### 1. The value comes out of OTP, not software
+### 1. 这个值来自 OTP，不是软件
 
-The disable is read out of an OTP fuse at `0x00820684` and mirrored into a read-only status
-register. There is no software setting in the driver, in the VBIOS signed region, or in the
-unsigned FwSec tail that produces it. The claim "NVLink is software locked as well", still
-circulating on 2026-07-27, is simply wrong.
+禁用从一个 OTP 熔丝 `0x00820684` 读出，并镜像进一个只读状态寄存器。在驱动、VBIOS 签名区或未签名的 FwSec 尾部中，没有任何产生它的软件设置。2026-07-27 仍在流传的 "NVLink 也是软件锁" 的说法，就是错的。
 
-### 2. There is no FEAT_OVR register to write
+### 2. 没有可写的 FEAT_OVR 寄存器
 
-The compute unlock works by opening `FEAT_OVR_PLM` at `0x00823804` and writing the feature
-override registers in the same block. The obvious question is whether the same trick reaches
-NVLink. It does not, because the block contains no NVLink entry. The complete inventory of
-`0x00823800` to `0x0082382C`:
+算力解锁通过打开 `0x00823804` 的 `FEAT_OVR_PLM` 并写入同块的特性覆盖寄存器来工作。明显的问题是同样的招数能否够到 NVLink。它不能，因为这个块里没有任何 NVLink 条目。`0x00823800` 到 `0x0082382C` 的完整清单：
 
-| Address | Register |
+| 地址 | 寄存器 |
 |---|---|
 | `0x00823800` | `FEAT_OVR_ECC_PLM` |
 | `0x00823804` | `FEAT_OVR_PLM` |
@@ -226,53 +142,26 @@ NVLink. It does not, because the block contains no NVLink entry. The complete in
 | `0x00823828` | `FEAT_READOUT_2` |
 | `0x0082382C` | `FEAT_OVR_ECC_2` |
 
-Twelve registers, covering ECC, the Quadro classification word, SM speed select, the row
-remapper and three readouts. Nothing for NVLink. The argument that "`FUSE_FEAT_OVR_DIS` reads
-zero on all cards, so a FEAT_OVR-style attack on the NVLink mask is at least not obviously
-precluded" is therefore wrong in its conclusion though right about the fuse: it **is** precluded,
-because there is no such register to write.
+十二个寄存器，覆盖 ECC、Quadro 分类字、SM 速度选择、行重映射器，以及三个回读。没有任何给 NVLink 的。"`FUSE_FEAT_OVR_DIS` 在所有卡上都读零，所以对 NVLink 掩码的 FEAT_OVR 式攻击至少不是明显被排除的" 这个论证，结论是错的、关于熔丝却是对的：它**确实**被排除，因为没有这样的寄存器可写。
 
-### 3. The CTRL_OPT override path is fuse-disabled
+### 3. CTRL_OPT 覆盖路径被熔丝禁用
 
-`CTRL_OPT_NVLINK` at `0x008209B8` is documented as the effective per-link enable, it reads zero,
-and it is described as writable. It is the most-cited candidate lever in the entire corpus. It is
-also almost certainly inert here, because `FUSE_EN_SW_OVERRIDE` at `0x00820040` reads
-`0x00000000` on both 170HX units, on all three A100 SKUs and on the Drive A100, against
-`0x00000001` on every consumer and engineering-sample part. `FUSE_DIS_SW_OVR` at `0x00820084`
-reads `0x00000001` on every card. The 25-entry `NV_FUSE_CTRL_OPT_*` table found at offset
-`0x47341` inside the unsigned FwSec VBIOS tail (`0x43A00` to `0x47700`) reads all zero across 13
-probed GA100 cards and is inert on this hardware.
+`0x008209B8` 的 `CTRL_OPT_NVLINK` 被记录为有效的每链路使能，它读零，并被描述为可写。它是整个语料库中被引用最多的候选杠杆。它在这里也几乎肯定是惰性的，因为 `0x00820040` 的 `FUSE_EN_SW_OVERRIDE` 在两块 170HX 单元、全部三个 A100 SKU 和 Drive A100 上读 `0x00000000`，而每个消费级和工程样品部件读 `0x00000001`。`0x00820084` 的 `FUSE_DIS_SW_OVR` 在每张卡上都读 `0x00000001`。在未签名 FwSec VBIOS 尾部（`0x43A00` 到 `0x47700`）偏移量 `0x47341` 处找到的 25 项 `NV_FUSE_CTRL_OPT_*` 表，在 13 块被探测的 GA100 卡上都读全零，在这块硬件上是惰性的。
 
 > [!NOTE]
-> **Open problem: nobody has ever performed the write**
+> **未解问题：从来没人执行过那次写入**
 >
-> Across all 31 archived unlocker attachments and every clean-room artifact, NVLink appears
-> only as fuse read-outs. There is no probe script, no override attempt and no recorded write.
-> The strong prior is that a write to `0x008209B8` is dropped and `STATUS_OPT_NVLINK` stays
-> `0x00000007`. That negative is still worth having on record, because right now the corpus
-> cannot say whether it was tried. The experiment is a read-write-read on an expendable card
-> followed by a re-read of `0x00820DB8`.
+> 在所有 31 份归档的解锁器附件和每一个净室工件中，NVLink 只作为熔丝读出出现。没有探测脚本、没有覆盖尝试、没有记录的写入。强烈的先验是，对 `0x008209B8` 的一次写入会被丢弃，`STATUS_OPT_NVLINK` 保持 `0x00000007`。这个否定仍然值得记录在案，因为现在语料库无法说明它是否被尝试过。这个实验是在一张可牺牲的卡上做一次读-写-读，然后重读 `0x00820DB8`。
 
-### 4. No spoofable consumer of the fuse has been found
+### 4. 没有找到可欺骗的熔丝消费方
 
-The CMP DevInit firmware **reads** `0x820684`. The complete inventory of `0x1482xxxx` accesses
-(MMIO `0x82xxxx`) in the DevInit disassembly is `0x820C14` and `0x820D38` (FBIO and FBP
-floorsweep), `0x820684` (`FUSE_NVLINK_DIS`), `0x82380C` and `0x823814`, `0x820520` (`MAGIC_D`)
-and `0x820148`. Nothing in any source writes it, and no effective override consumer was ever
-named. Nobody has traced what DevInit does with the value after reading it, which is the one
-remaining tractable software question in this area.
+CMP DevInit 固件**读取** `0x820684`。DevInit 反汇编中 `0x1482xxxx` 访问（MMIO `0x82xxxx`）的完整清单是 `0x820C14` 和 `0x820D38`（FBIO 和 FBP 地板清扫）、`0x820684`（`FUSE_NVLINK_DIS`）、`0x82380C` 和 `0x823814`、`0x820520`（`MAGIC_D`）和 `0x820148`。任何源码中都没有写入它，也从未点名任何有效的覆盖消费方。没有人追踪过 DevInit 读取该值后拿它做了什么，这是这个领域里唯一一个仍可处理的软件问题。
 
-### 5. The unlocker contains no NVLink code at all
+### 5. 解锁器里根本没有 NVLink 代码
 
-A grep for `nvlink` and for every NVLink register address across the entire shipping `master`
-tree returns nothing: not in `common/constants.yaml`, `driver/build.sh`, `driver/VERSION`,
-`install.sh`, `remove.sh`, `README.md`, nor in any of the six patches. `constants.yaml` declares
-only the two driver versions, the two device IDs, the compute values and the two memory profiles.
+在整个出货 `master` 树上 grep `nvlink` 和每一个 NVLink 寄存器地址都一无所获：不在 `common/constants.yaml`、`driver/build.sh`、`driver/VERSION`、`install.sh`、`remove.sh`、`README.md`，也不在六个补丁的任何一补。`constants.yaml` 只声明两个驱动版本、两个设备 ID、算力值和两个显存档位。
 
-Across all twelve unreleased branches (`80`, `Gen2`, `PG199`, `clanker/driver-port`,
-`debug-gen2`, `deced`, `docs`, `ecc`, `far`, `housekeeping`, `memory`, `multiple-cards`) the
-entire NVLink presence is one word. The `housekeeping` and `memory` branches add a feature-status
-table whose relevant rows read:
+在全部十二个未发布分支（`80`、`Gen2`、`PG199`、`clanker/driver-port`、`debug-gen2`、`deced`、`docs`、`ecc`、`far`、`housekeeping`、`memory`、`multiple-cards`）中，NVLink 的全部存在就一个词。`housekeeping` 和 `memory` 分支加了一张特性状态表，相关行读：
 
 ```markdown
 | ECC          | Planned |
@@ -281,80 +170,65 @@ table whose relevant rows read:
 
 ---
 
-## What NVLink would have been worth
+## NVLink 本来会值多少钱
 
-Included because the cost of the missing feature keeps getting mis-stated in both directions.
+包含进来，因为缺失功能的代价不断被往两个方向错误陈述。
 
-| Quantity | Value | Confidence |
+| 量 | 值 | 置信度 |
 |---|---|---|
-| A100 PCIe NVLink per bridge | 200 GB/s | high |
-| A100 PCIe pairwise total, all three bridges | 600 GB/s | high |
-| Documented Ampere PCIe topology | 2 GPUs, all three bridges required | high |
-| Ampere port structure | 4 sub-ports × 4 lanes at 50 Gbps per lane = 800 Gbps raw per port (the source states 200 Gbps; the decomposition and the figure cannot both be right) | medium |
-| GA102 third-gen per link | 14.0625 GB/s bidirectional, four x4 links | high |
-| GA102 third-gen totals | 56.25 GB/s bidirectional, 112.5 GB/s total aggregate between two GPUs | high |
-| 170HX interconnect baseline today | PCIe Gen 1 x4, roughly 1 GB/s | high |
+| A100 PCIe 每桥 NVLink | 200 GB/s | 高 |
+| A100 PCIe 每对总计、全部三桥 | 600 GB/s | 高 |
+| 记录的 Ampere PCIe 拓扑 | 2 个 GPU，需要全部三桥 | 高 |
+| Ampere 端口结构 | 4 子端口 × 4 通道 @ 每通道 50 Gbps = 每端口 800 Gbps 原始（来源称 200 Gbps；分解和这个数字不可能都对） | 中等 |
+| GA102 第三代每链路 | 14.0625 GB/s 双向，四个 x4 链路 | 高 |
+| GA102 第三代总计 | 56.25 GB/s 双向，两 GPU 之间 112.5 GB/s 总聚合 | 高 |
+| 今天 170HX 的互连基线 | PCIe Gen 1 x4，约 1 GB/s | 高 |
 
-NVSwitch, and therefore anything wider than a pair, exists only inside SXM platforms such as DGX.
-The official A100 bridge is a **bare passive PCB**: no clock generator, no EEPROM, no retimer, no
-packet-processing ASIC, established by direct inspection and independently corroborated for SXM2
-baseboards. Consumer RTX 3090 bridges do carry a clock generator, believed to be because NVIDIA
-could not assume consumer motherboards supply the same PCIe reference clock. All bridges from
-Ampere through the H200 NVL generation are assessed as passive.
+NVSwitch，以及任何比一对更宽的东西，只存在于像 DGX 这样的 SXM 平台内。官方 A100 桥是一块**裸无源 PCB**：没有时钟发生器、没有 EEPROM、没有重定时器、没有包处理 ASIC，经直接检查确立，并对 SXM2 底板独立佐证。消费级 RTX 3090 桥确实带一个时钟发生器，据信是因为 NVIDIA 不能假定消费级主板提供相同的 PCIe 参考时钟。从 Ampere 到 H200 NVL 一代的所有桥都被评估为无源。
 
-How much this actually buys for inference is itself unsettled: one first-hand measurement on a
-pair of RTX 3090s under vLLM tensor parallel showed only about a 10 percent throughput
-improvement, while third-party published figures for the same class of setup show roughly 48
-percent. Model, quantisation, batch size and concurrency differ or are unstated. The argument
-that a 170HX would gain far more because its baseline is Gen 1 x4 rather than Gen 4 x16 is
-reasoning only, and cannot be tested while the fuse stands. See
-[LLM inference](../operations/llm-inference.md).
+这实际为推理买多少本身就未定论：一对 RTX 3090 在 vLLM 张量并行下的一个一手测量只显示约 10% 的吞吐提升，而同一类配置的第三方公布数字显示约 48%。模型、量化、批大小和并发度不同或未说明。说 170HX 因为基线是 Gen 1 x4 而非 Gen 4 x16 会多得多的论证，只是推理，在熔丝还在时无法测试。参见[LLM 推理](../operations/llm-inference.md)。
 
-For pooling arithmetic, note that four unlocked 8 GB cards give 256 GB (4 × 65536 MiB) and four
-unlocked 10 GB cards give 160 GB (4 × 40960 MiB). A widely quoted 320 GB figure for four 10 GB
-cards assumes the 80 GB configuration, which was attempted and found unstable. See
-[80 GB](../frontier/80gb.md).
+关于聚合算术，注意四张解锁的 8 GB 卡给出 256 GB（4 × 65536 MiB），四张解锁的 10 GB 卡给出 160 GB（4 × 40960 MiB）。一个被广泛引用的四张 10 GB 卡的 320 GB 数字假设了 80 GB 配置，而它被尝试过并发现不稳定。参见[80 GB](../frontier/80gb.md)。
 
-**The working alternative today is PCIe peer-to-peer, not NVLink.** See
-[Peer-to-peer](../frontier/p2p.md).
+**今天可用的替代方案是 PCIe 点对点，不是 NVLink。** 参见[点对点](../frontier/p2p.md)。
 
 ---
 
-## Common wrong answers
+## 常见错误答案
 
-| Claim | Why it looked right | What kills it |
+| 说法 | 为什么它看起来对 | 什么推翻它 |
 |---|---|---|
-| "NVLink is in the boot logs, just add a bridge" | The dmesg line genuinely appears on every boot | It is the software core library announcing it loaded, at `DBG_INFO`, before GPU bring-up |
-| "NVLink is software locked" | Several other 170HX restrictions genuinely are | The value comes out of OTP and is mirrored into a read-only register |
-| "Encryption named HULK is the blocker" | It was the only published explanation, on an authoritative-looking page | Disowned by that site's maintainer on 2026-07-20 and called outdated by the page's own author; nothing in any fuse readout, VBIOS dump or DevInit disassembly corroborates it |
-| "`PHYS_DMG = 1` means the links are marked damaged" | The register name says physical damage | It reads `1` on all fourteen probed cards including healthy A100s. It is a write-security bit |
-| "3090 reads `0` links, so the 170HX gives up 12 versus 0" | It is a comment in the project's own probe script | Measured `0x4` on every GA10x part except the A16 |
-| "The dies failed NVLink test, hence the binning" | It is how salvage binning usually works | `FUSE_NVLINK_DEFECTIVE` = `0x00000000` on every card probed |
-| "Titan V had NVLink disabled in VBIOS, so this is firmware-gated" | A real precedent on an earlier NVIDIA part | On the 170HX the value comes out of an OTP fuse, not a VBIOS setting. The mechanism does not transfer |
-| "Write `CTRL_OPT_NVLINK` and it opens" | Documented as the effective per-link enable, reads zero, described as writable | `FUSE_EN_SW_OVERRIDE` = `0`. Strong prior, never actually tested |
+| "NVLink 在启动日志里，加个桥就行" | dmesg 行真的每次启动都出现 | 那是软件核心库在 `DBG_INFO`、GPU 启动前宣布它加载了 |
+| "NVLink 是软件锁的" | 170HX 的其它几个限制确实如此 | 这个值来自 OTP，并镜像进一个只读寄存器 |
+| "名为 HULK 的加密是拦路虎" | 它是唯一已发表的解释，在一个看起来很权威的页面 | 该网站维护者于 2026-07-20 否认它，页面作者自己也称其过时；任何熔丝读取、VBIOS 转储或 DevInit 反汇编都没有佐证它 |
+| "`PHYS_DMG = 1` 意味着链路被标记损坏" | 寄存器名说物理损坏 | 它在包括健康 A100 在内的全部十四张被探测卡上读 `1`。它是一个写安全位 |
+| "3090 读 `0` 条链路，所以 170HX 相对 0 放弃 12 条" | 这是项目自己探测脚本里的一条注释 | 在除 A16 外的每个 GA10x 部件上都实测 `0x4` |
+| "这些晶片 NVLink 测试失败，因此分级" | 报废分级通常就是这样 | `FUSE_NVLINK_DEFECTIVE` 在每张被探测的卡上都 = `0x00000000` |
+| "Titan V 的 NVLink 在 VBIOS 里被禁用，所以这是固件门控的" | 在更早的 NVIDIA 部件上是个真实先例 | 在 170HX 上这个值来自一颗 OTP 熔丝，不是 VBIOS 设置。机制不迁移 |
+| "写 `CTRL_OPT_NVLINK` 就能打开" | 被记录为有效每链路使能，读零，被描述为可写 | `FUSE_EN_SW_OVERRIDE` = `0`。强烈先验，从未真正测试过 |
 
-More, with dates and sources, on [Dead ends](../history/dead-ends.md).
+更多，带日期和来源，见[死路](../history/dead-ends.md)。
 
 ---
 
-## Status
+## 状态
 
-| Question | State |
+| 问题 | 状态 |
 |---|---|
-| Is NVLink usable on a 170HX? | No, and no path is known |
-| Is the silicon damaged? | No. `DEFECTIVE` = `0x00000000` |
-| Are the connectors on the board? | Yes, gold fingers and three positions. Blocked by the shroud |
-| Is the connector area populated? | **Unresolved.** Direct evidence on both sides |
-| Has anyone attempted a register-level unlock? | No. Not once, on any card |
-| Has anyone seated a bridge on a 170HX? | No. Nobody in the corpus has ever had a card and a bridge at the same time |
-| Is there any NVLink code in the unlocker? | No. One word, "Planned", in two branch README tables |
+| NVLink 在 170HX 上可用吗？ | 否，而且没有已知路径 |
+| 硅片损坏吗？ | 否。`DEFECTIVE` = `0x00000000` |
+| 连接器在板上吗？ | 是，金手指和三个位置。被导流罩挡住 |
+| 连接器区域贴装了吗？ | **未解决。** 双方都有直接证据 |
+| 有人尝试过寄存器级解锁吗？ | 否。在任何卡上一次都没有 |
+| 有人在 170HX 上装过桥吗？ | 否。语料库中从来没有任何人同时有卡和桥 |
+| 解锁器里有 NVLink 代码吗？ | 否。两个分支 README 表里有一个词 "Planned" |
 
-## See also
+## 相关页面
 
-- [Fuses and OTP](fuses-and-otp.md) for the full fuse survey this page draws on
-- [NVLink frontier](../frontier/nvlink.md) for every attempt, proposal and open question
-- [Peer-to-peer](../frontier/p2p.md) for the working cross-GPU alternative
-- [PCIe subsystem](pcie-subsystem.md) for the interconnect you do have
-- [Board and variants](board-and-variants.md) for the PCB itself
-- [Multi-GPU](../procedures/multi-gpu.md) for running several cards without NVLink
-- [Open questions](../frontier/open-questions.md)
+- [熔丝与 OTP](fuses-and-otp.md)，本页所依据的完整熔丝调查
+- [NVLink 前沿](../frontier/nvlink.md)，每一次尝试、提案和开放问题
+- [点对点](../frontier/p2p.md)，可用跨 GPU 替代方案
+- [PCIe 子系统](pcie-subsystem.md)，你确实拥有的互连
+- [板卡与变体](board-and-variants.md)，PCB 本身
+- [多卡](../procedures/multi-gpu.md)，无 NVLink 运行多张卡
+- [未解问题](../frontier/open-questions.md)

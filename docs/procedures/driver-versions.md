@@ -1,93 +1,69 @@
-# Driver versions: what is supported, and why
+# 驱动版本：支持什么、为什么
 
-## What this page covers
+## 本页覆盖内容
 
-Which NVIDIA driver versions the CMP 170HX unlock builds against, why the list is that short,
-what happens if you point the installer at anything else, and what the unreleased backport branch
-actually offers for 595, 590 and 580.
+CMP 170HX 解锁针对哪些 NVIDIA 驱动版本构建、为什么清单这么短、把安装器指向任何其它东西会发生什么、以及未发布回移植分支对 595、590 和 580 实际提供什么。
 
-The short answer: **shipping `master` supports exactly two versions, `610.43.03` (the default)
-and `610.43.02`, matched as exact strings. The build hard-fails on anything else.** Both have
-been boot-tested on real hardware. Everything below 610 exists only on an unreleased branch, is
-source-verified, and has never been booted on a 170HX by anyone whose report survives in the
-record.
+短答案：**出货 `master` 恰好支持两个版本，`610.43.03`（默认）和 `610.43.02`，按精确字符串匹配。对任何其它版本构建硬失败。** 两者都在真实硬件上启动测试过。610 以下的一切只存在于一个未发布分支上、是源码验证的、而且从没被记录在案的任何人启动测试过。
 
-Note the distinction that trips people up: the 170HX runs perfectly well on ordinary stock
-NVIDIA drivers. It just does not **unlock** on them. Being driveable and being unlockable are
-separate questions.
+注意那个让人绊倒的区别：170HX 在普通出厂商 NVIDIA 驱动上完美运行。它只是不在它们上**解锁**。能被驱动和能被解锁是分开的问题。
 
 ---
 
-## The supported list on `master`
+## `master` 上的支持清单
 
-`driver/VERSION` contains two lines, in this order:
+`driver/VERSION` 含两行、按此顺序：
 
 ```text
 610.43.03
 610.43.02
 ```
 
-The first line is the default build target. `common/constants.yaml` mirrors the same two under
-`driver_versions`. Both `install.sh` and `driver/build.sh` read `driver/VERSION` into
-`SUPPORTED_VERSIONS` and call an exact-string `version_supported()`. There is no range check, no
-"610 or newer" comparison and no fuzzy match.
+第一行是默认构建目标。`common/constants.yaml` 在 `driver_versions` 下镜像同样的两个。`install.sh` 和 `driver/build.sh` 都把 `driver/VERSION` 读进 `SUPPORTED_VERSIONS` 并调用一次精确字符串 `version_supported()`。没有范围检查、没有 "610 or newer" 比较、没有模糊匹配。
 
-If your installed driver is not one of the two, the install dies with:
+如果你的已安装驱动不是那两个之一，安装死掉、带：
 
 ```text
 Installed driver is ${detected}, but cmpunlocker requires one of: 610.43.03,610.43.02.
 ```
 
-### How the installed version is detected
+### 如何检测已安装版本
 
-`install.sh` tries four sources, in order, and stops at the first that yields a version:
+`install.sh` 试四个来源、按顺序、在第一个产出版本的来源处停止：
 
-| Order | Source |
+| 顺序 | 来源 |
 |---|---|
 | 1 | `/proc/driver/nvidia/version` |
 | 2 | `nvidia-smi --query-gpu=driver_version` |
-| 3 | A directory probe for `/lib/firmware/nvidia/<supported>/` |
-| 4 | The highest-sorting directory under `/lib/firmware/nvidia/` |
+| 3 | 一次对 `/lib/firmware/nvidia/<supported>/` 的目录探测 |
+| 4 | `/lib/firmware/nvidia/` 下排序最高的目录 |
 
-The build then downloads the matching upstream source tarball:
+然后构建下载匹配的上游源码 tarball：
 
 ```text
 https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${VERSION}.tar.gz
 ```
 
-It is cached under `driver/.build/` and re-extracted clean on every run. No NVIDIA code ships in
-the cmpunlocker repository itself.
+它被缓存在 `driver/.build/` 下、每次运行干净重新解压。cmpunlocker 仓库本身不运送任何 NVIDIA 代码。
 
 > [!NOTE]
-> **No checksum on the download**
+> **下载无校验和**
 >
-> `build.sh` fetches the tarball with `curl -L --fail` and verifies nothing. There is no
-> recorded SHA-256 anywhere in the tree. Recording an expected hash per version in
-> `driver/VERSION` or `common/constants.yaml` is an obvious, unimplemented improvement.
+> `build.sh` 用 `curl -L --fail` 抓取 tarball、不验证任何东西。树里任何地方都没有记录的 SHA-256。在 `driver/VERSION` 或 `common/constants.yaml` 里记录每个版本的预期哈希是一个明显、未实现的改进。
 
 ---
 
-## Why 610.43.0x specifically
+## 为什么恰好 610.43.0x
 
-Four reasons, in decreasing order of hardness.
+四个原因、按硬度递减。
 
-**The patch hunks are anchored to that source tree.** Six patch files apply with `patch -p1`
-under `set -euo pipefail`. A single rejected hunk aborts the build. The line numbers, surrounding
-context and struct layouts in `kernel_gsp.c`, `g_kernel_gsp_nvoc.h`, `osinit.c`,
-`kernel_gsp_tu102.c` and `nv.c` all move between upstream releases. See
-[the six driver patches](../unlock/driver-patches.md).
+**补丁 hunk 锚定到那个源码树。** 六个补丁文件在 `set -euo pipefail` 下用 `patch -p1` 应用。单个被拒 hunk 就中止构建。`kernel_gsp.c`、`g_kernel_gsp_nvoc.h`、`osinit.c`、`kernel_gsp_tu102.c` 和 `nv.c` 里的行号、周围上下文和结构布局都在上游发布之间移动。见[六个驱动补丁](../unlock/driver-patches.md)。
 
-**The unlock must be a patch to the open kernel modules.** The proprietary NVIDIA driver "has
-different boot paths and cannot be patched the same way". The open modules are also GSP-only on
-GA100: loading with `NVreg_EnableGpuFirmware=0` fails outright with a `0x62` firmware-init error,
-so there is no CPU-RM escape hatch on this silicon.
+**解锁必须是开源内核模块的补丁。** 专有 NVIDIA 驱动 "has different boot paths and cannot be patched the same way"（有不同的引导路径、无法以同样方式打补丁）。开源模块在 GA100 上也是仅 GSP：用 `NVreg_EnableGpuFirmware=0` 加载直接以 `0x62` 固件初始化错误失败，所以这颗硅片上没有 CPU-RM 逃生口。
 
-**610 is the stated floor.** The maintainer's own phrasing when asked about coexisting with a
-third-party P2P driver was that "it needs to be **610 or above**". In practice `master` is
-stricter than that statement: it refuses anything that is not exactly one of the two whitelisted
-strings.
+**610 是既定下限。** 维护者本人被问及与第三方 P2P 驱动共存时的措辞是 "it needs to be **610 or above**"（它需要是 **610 或以上**）。实践中 `master` 比那句话更严格：它拒绝任何不是两个白名单字符串之一的东西。
 
-**Both versions are attested in the field.** Independent runtime captures from two machines:
+**两个版本都有野外证据。** 来自两台机器的独立运行时捕获：
 
 ```text
 NVRM version: NVIDIA UNIX Open Kernel Module for x86_64 610.43.02 Release Build
@@ -97,102 +73,78 @@ kernel:       6.8.0-136-generic
 ```
 
 > [!WARNING]
-> **That capture is from a rig where the unlock did not fire**
+> **那份捕获来自解锁没触发的一台机架**
 >
-> Read it as evidence that `610.43.02` exists and installs, not that it unlocked. The
-> `dvs-builder` build string is NVIDIA's own, so the module loaded there was the **stock** one,
-> not the patched one; on the same rig `verify.sh` reported every GPU `MISSING` and no
-> `SEC2_DEBUG` lines in `dmesg`. Do not read the gcc or kernel version in this block as a
-> known-good build environment.
+> 把它读作 `610.43.02` 存在且能安装的证据、不是它解锁了的证据。`dvs-builder` 构建字符串是 NVIDIA 自己的，所以那里加载的模块是**出厂**那个、不是打过补丁的；在同一台机架上 `verify.sh` 报告每张 GPU `MISSING`、`dmesg` 里没有 `SEC2_DEBUG` 行。不要把这个块里的 gcc 或内核版本读作一个已知良好的构建环境。
 
-and, separately, `NVIDIA-SMI 610.43.03 / KMD Version: 610.43.03 / CUDA UMD Version: 13.3`. A
-packaged NixOS module in circulation hard-asserts
-`config.hardware.nvidia.package.version == "610.43.03"`.
+以及，分开地，`NVIDIA-SMI 610.43.03 / KMD Version: 610.43.03 / CUDA UMD Version: 13.3`。一个流传的打包 NixOS 模块硬断言 `config.hardware.nvidia.package.version == "610.43.03"`。
 
-Every experimental branch, including the whole PCIe Gen2 lineage and the 80 GB attempt, also
-lists only `610.43.03` and `610.43.02`. The backport branch is the sole exception.
+每个实验性分支、包括整个 PCIe Gen2 谱系和 80 GB 尝试，也只列 `610.43.03` 和 `610.43.02`。回移植分支是唯一例外。
 
 ---
 
-## `610.43.02` or `610.43.03`?
+## `610.43.02` 还是 `610.43.03`？
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Nobody has answered this. The question "is 610.43.02 or 610.43.03 more reliable?" was asked
-> directly in-channel on 2026-07-24 and never answered. Successful unlocks exist on both.
-> `610.43.03` is the default only because it is the first line of `driver/VERSION`.
+> 没人回答过这个。"is 610.43.02 or 610.43.03 more reliable?"（610.43.02 还是 610.43.03 更可靠？）这个问题在频道里于 2026-07-24 被直接问、从未回答。两个版本上都有成功解锁。`610.43.03` 只是因为它排在 `driver/VERSION` 第一行才是默认。
 >
-> The experiment is trivial and nobody has run it: collect the `driver_version` metadata file
-> plus the `SEC2_DEBUG` PLM-open success rate from the existing installed base and compare.
+> 实验很琐碎、没人跑过：从现有已安装基收集 `driver_version` 元数据文件加 `SEC2_DEBUG` PLM-打开成功率并比较。
 
-Practical guidance: **take `610.43.03`, the default.** If a card refuses to unlock cleanly on one
-of the two, trying the other is a cheap and legitimate diagnostic step, but there is no evidence
-either way that it will help.
+实用指导：**取 `610.43.03`，默认那个。** 如果一张卡在其中之一上拒绝干净解锁，试另一个是廉价且合法的诊断步骤，但没有任何一方证据说它会有帮助。
 
 ---
 
-## Pinning
+## 钉住
 
 > [!WARNING]
-> **Reasoned advice, not a measured result**
+> **理性建议、不是测量结果**
 >
-> The recommended long-term mitigation against a future NVIDIA driver closing the hole is to
-> **pin the driver at 610**, the same way P100 and V100 operators pin around 580. At least one
-> operator had already pinned the package as a precaution. This is unchallenged reasoning
-> rather than a demonstrated need: no blocking driver exists, and the open kernel modules
-> already published on GitHub cannot be recalled.
+> 推荐的对未来 NVIDIA 驱动堵上这个洞的长期缓解是**把驱动钉在 610**、与 P100 和 V100 操作者钉在约 580 一样。至少一位操作者已经把包钉住作为预防。这是未受挑战的推理、而非被演示的需求：不存在阻断性的驱动，而且 GitHub 上已发布的开源内核模块无法被召回。
 
 ---
 
-## Stock drivers: driveable, not unlocked
+## 出厂驱动：能驱动、不解锁
 
-The 170HX enumerates and runs CUDA on completely unpatched drivers. `nvidia-driver-570` with
-CUDA 12.8 on Ubuntu 24.04 works out of the box, and `nvidia-driver-535-server` on Ubuntu 22.04
-was also reported working. `nvidia-smi` calls the card `NVIDIA Graphics Device` at compute
-capability 8.0, because the driver's PCI ID table carries no marketing name for `0x20C2`. That
-naming quirk is a fast way to confirm you are looking at a CMP part.
+170HX 在完全未打补丁的驱动上枚举并跑 CUDA。Ubuntu 24.04 上 `nvidia-driver-570` 配 CUDA 12.8 开箱即用，Ubuntu 22.04 上 `nvidia-driver-535-server` 也被报告可工作。`nvidia-smi` 在计算能力 8.0 下把卡叫 `NVIDIA Graphics Device`，因为驱动的 PCI ID 表没有 `0x20C2` 的市场名。那个命名怪癖是确认你在看一颗 CMP 部件的快捷方式。
 
-Under a stock driver the card is locked: stock capacity, stock compute throttle, PCIe Gen1 x4.
+出厂驱动下卡是锁定的：出厂容量、出厂算力节流、PCIe Gen1 x4。
 
 ---
 
-## Hard requirements that travel with the version
+## 随版本同行的硬要求
 
-| Requirement | Detail |
+| 要求 | 详情 |
 |---|---|
-| Secure Boot | Must be **off**. Patched modules are unsigned; with it on, dmesg shows `nvidia: module verification failed: signature and/or required key missing - tainting kernel`. `install.sh` dies with `Secure Boot is enabled. Disable it before installing unsigned patched modules.` if `/sys/firmware/efi` exists, `mokutil` is present and `mokutil --sb-state` reports it enabled. On a non-EFI system, or one without `mokutil` installed, the check is silently skipped. |
-| Driver family | nvidia-open only. The proprietary blob cannot be patched the same way. |
-| OS | **Linux only.** The GSP boot path is Linux-specific; the Windows WDDM driver is fundamentally different. |
-| Kernel headers | `/lib/modules/$(uname -r)/build` must exist. |
-| Toolchain | `python3` required. **No PyYAML** is used on `master`, and there is **no explicit GCC version check** anywhere in the shipping scripts. "Requires gcc 13+ and PyYAML" comes from the third-party `unlock-cmp-170hx` guide repository (plus a vestigial `requirements.txt` on six branches), not from cmpunlocker. The leaked package's README asks only for root and kernel headers. |
-| Network | Needed on first install, to fetch the upstream tarball. |
+| 安全启动 | 必须**关**。打过补丁的模块未签名；开着时 dmesg 显示 `nvidia: module verification failed: signature and/or required key missing - tainting kernel`。`/sys/firmware/efi` 存在、`mokutil` 存在且 `mokutil --sb-state` 报告启用时，`install.sh` 死掉、带 `Secure Boot is enabled. Disable it before installing unsigned patched modules.` 在非 EFI 系统、或没装 `mokutil` 的系统上，检查被静默跳过。 |
+| 驱动家族 | 仅 nvidia-open。专有 blob 无法以同样方式打补丁。 |
+| 操作系统 | **仅 Linux。** GSP 引导路径是 Linux 专属；Windows WDDM 驱动根本不同。 |
+| 内核头文件 | `/lib/modules/$(uname -r)/build` 必须存在。 |
+| 工具链 | 需要 `python3`。`master` 上**没有 PyYAML**、出货脚本里任何地方**没有显式 GCC 版本检查**。"Requires gcc 13+ and PyYAML" 来自第三方 `unlock-cmp-170hx` 指南仓库（加六个分支上的一个残留 `requirements.txt`），不是 cmpunlocker。泄露包的 README 只要 root 和内核头文件。 |
+| 网络 | 首次安装需要、用于抓取上游 tarball。 |
 
-See [Install](install.md) for the full procedure and [Uninstall](uninstall.md) for reverting.
+完整流程见[安装](install.md)、还原见[卸载](uninstall.md)。
 
 ---
 
-## The backport branch: `clanker/driver-port`
+## 回移植分支：`clanker/driver-port`
 
 > [!WARNING]
-> **Experimental: source-verified, never boot-tested**
+> **实验性：源码验证、从未启动测试**
 >
-> The 595, 590 and 580 support is an unreleased branch. Its own README states verbatim:
+> 595、590 和 580 支持是一个未发布分支。它自己的 README 逐字声明：
 >
-> > `595.71.05, 590.48.01, and 580.105.08 are source-verified (patches apply cleanly and the
-> > unlock logic matches the 610.43.0x path) but have not yet been boot-tested on physical CMP
-> > 170HX hardware.`
+> > `595.71.05, 590.48.01, and 580.105.08 are source-verified (patches apply cleanly and the unlock logic matches the 610.43.0x path) but have not yet been boot-tested on physical CMP 170HX hardware.`
+> > （`595.71.05、590.48.01 和 580.105.08` 是源码验证的（补丁干净应用、解锁逻辑匹配 610.43.0x 路径）但还没在物理 CMP 170HX 硬件上启动测试过。）
 >
-> The branch was announced on 2026-07-21 with an explicit request for testers. **No
-> confirmation of success appears anywhere in the record through 2026-07-28.** Treat a
-> successful build as evidence of nothing until a card boots.
+> 该分支于 2026-07-21 宣布、带一个明确的测试者请求。**截至 2026-07-28 记录任何地方都没有成功确认。** 在一张卡启动前、把一次成功构建当作无证据。
 
-Branch tip `153cd6d`, 2026-07-21.
+分支 tip `153cd6d`、2026-07-21。
 
-### What it changes
+### 它改变什么
 
-Almost nothing structural. `driver/patches/` becomes four per-major-version subdirectories, each
-holding the same six patch filenames, and `build.sh` gains a two-line edit:
+几乎没有结构性东西。`driver/patches/` 变成四个按主版本号的子目录、每个持有同样的六个补丁文件名，而 `build.sh` 获得一个两行编辑：
 
 ```diff
 -PATCH_DIR="${SCRIPT_DIR}/patches"
@@ -200,59 +152,53 @@ holding the same six patch filenames, and `build.sh` gains a two-line edit:
 +PATCH_DIR="${SCRIPT_DIR}/patches/${BRANCH}"
 ```
 
-`install.sh` on the branch is **byte-identical to master's**: single-GPU, `head -1`, no
-`verify.sh`, no `gpu_inventory`. If you want multi-GPU or PCIe Gen2 as well, you cannot have
-them from this branch. See [Multi-GPU](multi-gpu.md).
+分支上的 `install.sh` 与 master **逐字节相同**：单 GPU、`head -1`、没有 `verify.sh`、没有 `gpu_inventory`。如果你还想要多卡或 PCIe Gen2，你无法从这个分支得到它们。见[多卡](multi-gpu.md)。
 
-### It is a re-anchoring exercise, not a rewrite
+### 是一次重新锚定练习、不是重写
 
-Every register value, PLM entry, payload offset, static-info rewrite and PMA function is
-character-for-character the same across all four directories. Specifically:
+每个寄存器值、PLM 条目、载荷偏移量、静态信息重写和 PMA 函数在全部四个目录里都逐字符相同。具体说：
 
-- Patches `0004` and `0005` are byte-identical (same md5) across all four version directories.
-- Patches `0002` and `0006` are byte-identical between 590 and 610.
-- The added `+` lines of `0003` are identical across all four.
-- The added `+` lines of `0001` differ between 610 and 580/590/595 by **exactly one extra blank
-  added line**, and nothing else.
+- 补丁 `0004` 和 `0005` 在全部四个版本目录里逐字节相同（相同 md5）。
+- 补丁 `0002` 和 `0006` 在 590 和 610 之间逐字节相同。
+- `0003` 新增的 `+` 行在全部四个里相同。
+- `0001` 新增的 `+` 行在 610 与 580/590/595 之间按**恰好一个额外加的空行**不同、其它什么也不差。
 
-### Patch sizes per directory
+### 每个目录的补丁大小
 
-| Directory | 0001 | 0002 | 0003 | 0004 | 0005 | 0006 | Total |
+| 目录 | 0001 | 0002 | 0003 | 0004 | 0005 | 0006 | 总计 |
 |---|---|---|---|---|---|---|---|
 | `580` | 19,700 | 3,957 | 10,377 | 861 | 1,642 | 497 | **37,034** |
 | `590` | 19,647 | 3,988 | 10,377 | 861 | 1,642 | 603 | **37,118** |
 | `595` | 19,638 | 3,957 | 10,364 | 861 | 1,642 | 531 | **36,993** |
 | `610` | 19,741 | 3,988 | 10,580 | 861 | 1,642 | 603 | **37,415** |
 
-The `610` directory is a **byte-for-byte copy of `master`'s patch set**. Nothing in the port
-changes the shipping path.
+`610` 目录是 **`master` 补丁集的逐字节副本**。移植里没有任何东西改变出货路径。
 
-### The upstream divergences the port had to absorb
+### 移植必须吸收的上游分歧
 
-Only one of these is semantic; the rest are context and anchor drift.
+其中只有一个是语义的；其余是上下文和锚点漂移。
 
-| Divergence | 610 | 595 | 590 | 580 |
+| 分歧 | 610 | 595 | 590 | 580 |
 |---|---|---|---|---|
-| Memdesc flags in `_kgspCreateSignatureMemdesc` | gated on `if (confComputeForceUnprotAlloc(pGpu))` | `MEMDESC_FLAGS_ALLOC_IN_UNPROTECTED_MEMORY` unconditional | same as 595 | same as 595 |
-| Late-PMA hook context in `osinit.c` | follows `goto shutdown;` | follows `goto shutdown;` | follows `consoleDisabled = NV_FALSE;` | follows `consoleDisabled = NV_FALSE;` |
-| GSP static-info trailing context | `NV_ASSERT_OK_OR_GOTO(status, kgspInitGspTraceCrashBuffer(...), done);` | present | **absent** | present |
-| Static-info hunk anchor | `@@ -5164` | `@@ -5070` | `@@ -4065` | `@@ -4198` |
-| `KernelGsp` field-insert anchor | `@@ -544,6 +544,8 @@` | `@@ -541` | `@@ -525` | `@@ -524` |
-| Fields following the insert point | `GspSystemInfo *pSystemInfo; NvU32 regTableSize; PACKED_REGISTRY_TABLE *pRegTable;` | same as 610 | `LIBOS_LOG_DECODE logDecode; LIBOS_LOG_DECODE logDecodeVgpuPartition[48]; RM_LIBOS_LOG_MEM rmLibosLogMem[7];` | same as 590 |
-| Patch 0006 trailing context | `(void)rm_get_gpu_uuid_raw(sp, nv);` | same as 610 | same as 610 | `{ const NvU8 *uuid = rm_get_gpu_uuid_raw(sp, nv);` |
-| Patch 0006 anchor | `@@ -1521` | `@@ -1531` | `@@ -1521` | `@@ -1481` |
-| Patch 0002 neighbouring symbol | `void kgspConfigureFalcon_TU102(` | `static NvBool _kgspIsProcessorSuspended(OBJGPU *pGpu, void *pVoid);` | same as 610 | same as 595 |
-| Patch 0002 anchors | `@@ -57` / `@@ -545` / `@@ -565` | `@@ -55` / `@@ -500` / `@@ -520` | same as 610 | `@@ -54` / `@@ -516` / `@@ -536` |
+| `_kgspCreateSignatureMemdesc` 里的 Memdesc 标志 | 门控在 `if (confComputeForceUnprotAlloc(pGpu))` | `MEMDESC_FLAGS_ALLOC_IN_UNPROTECTED_MEMORY` 无条件 | 与 595 相同 | 与 595 相同 |
+| `osinit.c` 里晚期-PMA 钩子上下文 | 跟在 `goto shutdown;` 后 | 跟在 `goto shutdown;` 后 | 跟在 `consoleDisabled = NV_FALSE;` 后 | 跟在 `consoleDisabled = NV_FALSE;` 后 |
+| GSP 静态信息尾上下文 | `NV_ASSERT_OK_OR_GOTO(status, kgspInitGspTraceCrashBuffer(...), done);` | 存在 | **缺失** | 存在 |
+| 静态信息 hunk 锚点 | `@@ -5164` | `@@ -5070` | `@@ -4065` | `@@ -4198` |
+| `KernelGsp` 字段插入锚点 | `@@ -544,6 +544,8 @@` | `@@ -541` | `@@ -525` | `@@ -524` |
+| 插入点后跟的字段 | `GspSystemInfo *pSystemInfo; NvU32 regTableSize; PACKED_REGISTRY_TABLE *pRegTable;` | 与 610 相同 | `LIBOS_LOG_DECODE logDecode; LIBOS_LOG_DECODE logDecodeVgpuPartition[48]; RM_LIBOS_LOG_MEM rmLibosLogMem[7];` | 与 590 相同 |
+| 补丁 0006 尾上下文 | `(void)rm_get_gpu_uuid_raw(sp, nv);` | 与 610 相同 | 与 610 相同 | `{ const NvU8 *uuid = rm_get_gpu_uuid_raw(sp, nv);` |
+| 补丁 0006 锚点 | `@@ -1521` | `@@ -1531` | `@@ -1521` | `@@ -1481` |
+| 补丁 0002 邻近符号 | `void kgspConfigureFalcon_TU102(` | `static NvBool _kgspIsProcessorSuspended(OBJGPU *pGpu, void *pVoid);` | 与 610 相同 | 与 595 相同 |
+| 补丁 0002 锚点 | `@@ -57` / `@@ -545` / `@@ -565` | `@@ -55` / `@@ -500` / `@@ -520` | 与 610 相同 | `@@ -54` / `@@ -516` / `@@ -536` |
 
-The unprotected-allocation difference is the only behavioural one, and it makes the pre-610
-trees slightly more permissive rather than less.
+无保护分配差异是唯一行为性的、它让 610 前的树稍微更宽松而非更紧。
 
-### The version list is internally inconsistent
+### 版本清单内部不一致
 
 > [!CAUTION]
-> **Seven of twelve whitelisted versions have no verified patch anchor**
+> **十二个白名单版本里七个没有验证过的补丁锚点**
 >
-> The branch's `driver/VERSION` lists **twelve** versions:
+> 分支的 `driver/VERSION` 列出**十二**个版本：
 >
 > ```text
 > 610.43.03  610.43.02
@@ -261,104 +207,74 @@ trees slightly more permissive rather than less.
 > 580.105.08 580.95.05  580.82.09  580.82.07  580.76.05  580.65.06
 > ```
 >
-> but only **four** patch directories exist, and `build.sh` selects one by
-> `BRANCH="${VERSION%%.*}"`, that is, by **major version alone**. So `595.45.04` is patched
-> with `595.71.05` hunks and `580.65.06` with `580.105.08` hunks. Five of the twelve carry
-> some evidence: `610.43.03` and `610.43.02` are boot-tested, and `595.71.05`, `590.48.01`
-> and `580.105.08` are the three the branch README calls source-verified. The remaining
-> seven (`595.58.03`, `595.45.04`, `580.95.05`, `580.82.09`, `580.82.07`, `580.76.05`,
-> `580.65.06`) rely entirely on `patch -p1` fuzz matching.
+> 却只有**四**个补丁目录存在，而 `build.sh` 用 `BRANCH="${VERSION%%.*}"`、即**仅按主版本号**选一个。所以 `595.45.04` 用 `595.71.05` hunk 打补丁、`580.65.06` 用 `580.105.08` hunk 打补丁。十二个里五个带一些证据：`610.43.03` 和 `610.43.02` 启动测试过，`595.71.05`、`590.48.01` 和 `580.105.08` 是分支 README 叫源码验证的那三个。剩下七个（`595.58.03`、`595.45.04`、`580.95.05`、`580.82.09`、`580.82.07`、`580.76.05`、`580.65.06`）完全依赖 `patch -p1` 模糊匹配。
 >
-> Meanwhile `common/constants.yaml` on the same branch lists only **five** versions
-> (`610.43.03`, `610.43.02`, `595.71.05`, `590.48.01`, `580.105.08`), disagreeing with
-> `VERSION`. `install.sh` accepts any of the twelve, so a user can reach the unverified state
-> without doing anything unusual.
+> 同时同一分支上的 `common/constants.yaml` 只列**五**个版本（`610.43.03`、`610.43.02`、`595.71.05`、`590.48.01`、`580.105.08`）、与 `VERSION` 不一致。`install.sh` 接受十二个中任何一个，所以用户无需做任何不寻常的事就能到达未验证状态。
 >
-> The failure risk here is reasoned inference from reading the code, not an observed patch
-> reject. The test is purely offline and mechanical: download each of the seven extra tarballs
-> and run `patch -p1 --dry-run` against the major-version patch directory. No hardware needed.
+> 这里的失败风险是读代码的推理推断、不是观察到的补丁拒绝。测试完全离线且机械：下载七个额外 tarball 中的每一个、对着主版本补丁目录跑 `patch -p1 --dry-run`。不需要硬件。
 
 ---
 
-## Which should you run?
+## 你该跑哪个？
 
-| Situation | Recommendation |
+| 情况 | 推荐 |
 |---|---|
-| Normal install, one card, want it to work | `master` on **610.43.03**. This is the only combination with broad first-hand confirmation. |
-| One card, 610.43.03 misbehaves | Try **610.43.02**. Both are whitelisted and both have produced successful unlocks. |
-| Multiple 170HX cards | `master` works and has been confirmed on multi-GPU hosts, including 8 cards under Proxmox passthrough. Note the `install.sh` auto-detect hazard and pass `--profile` explicitly. See [Multi-GPU](multi-gpu.md). |
-| You need PCIe Gen2 | Branch only, and 610-only. See [PCIe Gen2](../unlock/pcie-gen2.md). |
-| You are pinned to 595, 590 or 580 by another application | The backport is your only option, and you would be the first person to boot it. Do this on a machine you can afford to break, and report the `POST-BooterLoad verify` line either way. |
-| You want to keep a 170HX alongside Volta or Maxwell cards | This is exactly the motivation for the 580 backport: 580 covers everything from a 980 Ti to an A100. The port answers it in source form and nowhere else. |
+| 正常安装、一张卡、想要它工作 | `master` 在 **610.43.03** 上。这是唯一有广泛一手确认的组合。 |
+| 一张卡、610.43.03 行为异常 | 试 **610.43.02**。两者都白名单、两者都产出过成功解锁。 |
+| 多张 170HX 卡 | `master` 有效、并已在多卡主机上确认过、包括 Proxmox 直通下的 8 张卡。注意 `install.sh` 自动检测危险、显式传 `--profile`。见[多卡](multi-gpu.md)。 |
+| 你需要 PCIe Gen2 | 仅分支、且仅 610。见[PCIe Gen2](../unlock/pcie-gen2.md)。 |
+| 你被另一个应用钉在 595、590 或 580 | 回移植是你唯一选择、而你会是第一个启动它的人。在你能承受弄坏的机器上做、并无论如何报告 `POST-BooterLoad verify` 行。 |
+| 你想让 170HX 与 Volta 或 Maxwell 卡共存 | 这正是 580 回移植的动机：580 覆盖从 980 Ti 到 A100 的一切。移植以源码形式、别无它处地回答了它。 |
 
 > [!CAUTION]
-> **Driver-patch development on bare metal is destructive**
+> **裸机上的驱动补丁开发是破坏性的**
 >
-> One developer reported needing to reinstall the OS after every botched `nvidia.ko` deploy.
-> The accepted remedy is to test modified drivers in a VM or container. For Proxmox
-> passthrough specifically, use **SeaBIOS, not UEFI/OVMF**: UEFI produces RM init and adapter
-> failures that look exactly like the exploit simply not working, and that misdiagnosis cost at
-> least two people significant time.
+> 一位开发者报告每次搞砸 `nvidia.ko` 部署后就需要重装操作系统。公认的补救是在 VM 或容器里测试修改过的驱动。对 Proxmox 直通具体说，用 **SeaBIOS、不要用 UEFI/OVMF**：UEFI 产生看起来恰好像利用根本不工作的 RM init 和适配器失败，而那个误诊让至少两人花掉大量时间。
 
 ---
 
-## Switching versions or branches
+## 切换版本或分支
 
-The supported path is **remove first, then install**. The maintainer's phrasing: "In fact, I
-would always recommend to remove the old one before adding the new one."
+受支持路径是**先卸载、再安装**。维护者的措辞："In fact, I would always recommend to remove the old one before adding the new one."（事实上，我总是建议在加新的之前移除旧的。）
 
 ```bash
 sudo ./remove.sh --yes
 ```
 
-There is no `uninstall.sh`, on `master` or on the `docs` branch, despite what
-`docs/INSTALLATION.md` says.
+没有 `uninstall.sh`、在 `master` 或 `docs` 分支上都没有、不管 `docs/INSTALLATION.md` 说什么。
 
-That said, this is guidance rather than a hard law. One tester who cloned a different branch and
-installed on top of an existing install reported it did not work, and uninstalling first fixed
-it; at least two other testers installed on top with no problem, and the informal consensus was
-that most people just install over the top. Nobody identified the differentiating factor.
+话虽如此，这是指导而非硬规则。一位克隆了不同分支、在现有安装之上安装的测试者报告它不工作、先卸载就修好了；至少另两位测试者在上层安装没有问题了，非正式共识是大多数人就直接装上去。没人识别出区分因素。
 
-After any install, three metadata files are written next to the modules at
-`/lib/modules/$(uname -r)/updates/cmpunlocker/`:
+任何安装后，三个元数据文件被写在模块旁的 `/lib/modules/$(uname -r)/updates/cmpunlocker/`：
 
-| File | Contents |
+| 文件 | 内容 |
 |---|---|
-| `driver_version` | e.g. `610.43.03` |
-| `card_profile` | `8gb` or `10gb` |
-| `unlock_geometry` | `64GB` or `40GB` |
+| `driver_version` | 例如 `610.43.03` |
+| `card_profile` | `8gb` 或 `10gb` |
+| `unlock_geometry` | `64GB` 或 `40GB` |
 
-**Nothing in the kernel modules reads any of them.** They are install-time bookkeeping. The only
-file the patched kernel reads at boot is the optional
-`/lib/firmware/nvidia/ga100/gsp/dmem.bin`. If you need to know which version is actually loaded,
-read `cat /proc/driver/nvidia/version` (it should **not** say `dvs-builder`) and confirm with
-`sudo dmesg | grep SEC2_DEBUG`.
+**内核模块里没有任何东西读它们。** 它们是安装时记账。打过补丁的内核引导时唯一读的文件是可选 `/lib/firmware/nvidia/ga100/gsp/dmem.bin`。如果你需要知道实际加载的是哪个版本，读 `cat /proc/driver/nvidia/version`（它**不应**说 `dvs-builder`）并用 `sudo dmesg | grep SEC2_DEBUG` 确认。
 
 ---
 
-## Open questions on this page
+## 本页的开放问题
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> 1. **Is 610.43.02 or 610.43.03 more reliable?** Asked repeatedly, never answered.
-> 2. **Do the 595 / 590 / 580 ports boot at all?** One tester per branch reporting
->    `dmesg | grep SEC2_DEBUG` and the `POST-BooterLoad verify` line settles it.
-> 3. **Do the seven non-verified point releases in the port branch's `VERSION` even apply?**
->    Answerable offline with `patch -p1 --dry-run`.
-> 4. **Whether the port branch and the Gen2 or multi-card lineages will ever merge.** They were
->    developed independently. Choosing one currently means giving up the other. The merge is
->    structurally simple, since the port only changes `PATCH_DIR` computation, but it requires
->    regenerating the Gen2 patches `0007` and `0008` against 580, 590 and 595 sources.
-> 5. **WSL and HiveOS support.** Both asked about, both unanswered, no evidence either way.
+> 1. **610.43.02 还是 610.43.03 更可靠？** 被反复问、从未回答。
+> 2. **595 / 590 / 580 移植能启动吗？** 每个分支一位测试者报告 `dmesg | grep SEC2_DEBUG` 和 `POST-BooterLoad verify` 行就定论了。
+> 3. **移植分支 `VERSION` 里那七个未验证的点发布能应用吗？** 可用 `patch -p1 --dry-run` 离线回答。
+> 4. **移植分支和 Gen2 或多卡谱系会不会合并。** 它们独立开发。当前选一个意味着放弃另一个。合并结构上简单、因为移植只改 `PATCH_DIR` 计算，但需要针对 580、590 和 595 源码重新生成 Gen2 补丁 `0007` 和 `0008`。
+> 5. **WSL 和 HiveOS 支持。** 两者都被问过、都没回答、任何一方都没有证据。
 
 ---
 
-## Related pages
+## 相关页面
 
-- [The six driver patches](../unlock/driver-patches.md)
-- [Install](install.md) and [Verify](verify.md)
-- [Troubleshooting](troubleshooting.md)
-- [Multi-GPU](multi-gpu.md)
+- [六个驱动补丁](../unlock/driver-patches.md)
+- [安装](install.md) 和[验证](verify.md)
+- [排障](troubleshooting.md)
+- [多卡](multi-gpu.md)
 - [PCIe Gen2](../unlock/pcie-gen2.md)
-- [Open questions](../frontier/open-questions.md)
+- [未解问题](../frontier/open-questions.md)

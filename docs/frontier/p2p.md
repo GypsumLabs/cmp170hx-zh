@@ -1,106 +1,71 @@
-# Peer-to-peer and multi-GPU
+# 点对点与多 GPU
 
-## What this page covers
+## 本页覆盖内容
 
-Whether two CMP 170HX cards can talk to each other directly, what the third-party
-`aikitoria/open-gpu-kernel-modules` P2P patch does, how it is layered on top of
-[cmpunlocker](../unlock/driver-patches.md) with a documented three-commit diff, what IOMMU and
-BAR sizing have to do with it, and what is still unknown.
+两张 CMP 170HX 卡能否直接互相通信、第三方 `aikitoria/open-gpu-kernel-modules` P2P 补丁做什么、它如何以一个文档化的三提交 diff 分层在[cmpunlocker](../unlock/driver-patches.md) 之上、IOMMU 和 BAR 尺寸与它有什么关系、以及什么仍未知。
 
-**The short answer: peer-to-peer is absent on this card by default.** No shipping code enables
-it and every measurement in the corpus reports it unavailable. The one third-party patch that
-could plausibly change that does build and load on top of the unlock, which is itself a useful
-result, because it proves the cmpunlocker build system composes with unrelated driver diffs.
-One builder has since reported that the patch half-works on GA100: peer *data movement* runs at
-6.25 GB/s while peer *synchronisation* does not work at all, which would leave NCCL and every
-other collective library hanging. That report is **unverified**, from one rig with no
-independent reproduction. See
-[Unverified report](#unverified-report-peer-dma-works-peer-synchronisation-does-not).
+**短答案：这张卡默认没有点对点。** 没有出货代码启用它、语料库里每个测量都报告它不可用。那个本可能合理改变它的第三方补丁确实构建并加载在解锁之上、那本身是一个有用结果、因为它证明 cmpunlocker 构建系统与无关驱动 diff 组合。一位构建者此后报告补丁在 GA100 上半个工作：对等*数据移动*以 6.25 GB/s 运行、而对等*同步*完全不管用、那会让 NCCL 和每个其它集合库挂起。那份报告**未验证**、来自一台机架、无独立复现。见[未验证报告](#未验证报告对等-dma-工作对等同步不)。
 
-**The second short answer: even if P2P worked, the link would still be the bottleneck.** At
-PCIe Gen1 x4 (about 1.0 GB/s) the position broadly agreed across the project is that P2P is
-bandwidth-bound and buys little before Gen3. The furthest the project has reached in software is Gen2 x4, which
-shipped in `master` on 2026-07-29; Gen2 x16 has been reproduced on two rigs, and only on cards
-carrying the 24-capacitor solder mod. See [PCIe Gen2](../unlock/pcie-gen2.md) and
-[Gen3/Gen4](pcie-gen3-gen4.md).
+**第二个短答案：即使 P2P 工作、链路仍会是瓶颈。** 在 PCIe Gen1 x4（约 1.0 GB/s）项目广泛同意的立场是 P2P 是带宽绑定、在 Gen3 前买不到什么。项目在软件里达到的最远是 Gen2 x4、它于 2026-07-29 在 `master` 出货；Gen2 x16 已在两架机上复现、而且只在携带 24 电容焊接改装的卡上。见[PCIe Gen2](../unlock/pcie-gen2.md) 和[Gen3/Gen4](pcie-gen3-gen4.md)。
 
 ---
 
-## The measured baseline: what "no P2P" looks like
+## 测得的基线："no P2P"（无 P2P）看起来什么样
 
-| Observation | Result | Conditions |
+| 观察 | 结果 | 条件 |
 |---|---|---|
-| `torch.cuda.can_device_access_peer(i,j)` | `False` for **all 56** pairs (P2P-capable pairs: 0 of 56) | 8 unlocked cards, all pairs, including within a `PIX` group |
-| ggml `-lv 5` log | zero `peer` / `p2p` / `rpc` occurrences | same rig |
-| `nvidia-smi nvlink` | `Device does not have or support Nvlink.` | same rig, 8 unlocked 64 GiB cards, 2026-07-24; the only capture in the corpus |
-| MIG profile listing | `1g.64gb`, ID 0, 63.00 GiB, 70 SMs, 5 CEs, **P2P No** | only profile offered by `nvidia-smi mig -lgip` on an unlocked card |
-| Active link during the sweep | Gen1 x4, ~1.0 GB/s, did not ramp under inference load | device maximum reported as Gen2 x16 |
+| `torch.cuda.can_device_access_peer(i,j)` | **全部 56** 对上 `False`（P2P 能力对：56 中 0） | 8 张解锁卡、全部对、包括一个 `PIX` 组内 |
+| ggml `-lv 5` 日志 | 零个 `peer` / `p2p` / `rpc` 出现 | 同一机架 |
+| `nvidia-smi nvlink` | `Device does not have or support Nvlink.` | 同一机架、8 张解锁 64 GiB 卡、2026-07-24；语料库里唯一捕获 |
+| MIG 档位列表 | `1g.64gb`、ID 0、63.00 GiB、70 SMs、5 CEs、**P2P No** | 解锁卡上 `nvidia-smi mig -lgip` 提供的唯一档位 |
+| 扫描期间的活链路 | Gen1 x4、约 1.0 GB/s、推理负载下不爬升 | 设备最大报告为 Gen2 x16 |
 
-The absence is also visible in the source tree rather than only in telemetry. A grep for `p2p`
-and `peer` across shipping `master` and all twelve unreleased branches returns exactly two kinds
-of hit: the stock `nvidia-peermem.ko` filename in the `build.sh` module install list, and one
-line of unmodified context (`nv_uvm_resume_P2P(pUuid)`) inside the Gen2 branch's
-`0008-pcie-gen2-probe-retrain.patch`. **No branch contains any P2P enablement.**
+缺失在源码树里也可见、不只在遥测里。对出货 `master` 和全部十二个未发布分支做 `p2p` 和 `peer` 的 grep 恰好返回两种命中：`build.sh` 模块安装列表里的出厂 `nvidia-peermem.ko` 文件名、和 Gen2 分支 `0008-pcie-gen2-probe-retrain.patch` 里一行未修改上下文（`nv_uvm_resume_P2P(pUuid)`）。**任何分支都不含 P2P 使能。**
 
 > [!NOTE]
-> **`nvidia-peermem` is not the same thing**
+> **`nvidia-peermem` 不是一回事**
 >
-> `build.sh` collects and installs five modules: `nvidia.ko`, `nvidia-modeset.ko`,
-> `nvidia-uvm.ko`, `nvidia-drm.ko` and `nvidia-peermem.ko`. `nvidia-peermem` is the stock
-> peer-memory client that lets third-party RDMA hardware reach GPU memory. Seeing it built and
-> loaded (including the harmless `Skipping BTF generation for ... nvidia-peermem.ko` line) is
-> **not** evidence that GPU-to-GPU peer access is available.
+> `build.sh` 收集并安装五个模块：`nvidia.ko`、`nvidia-modeset.ko`、`nvidia-uvm.ko`、`nvidia-drm.ko` 和 `nvidia-peermem.ko`。`nvidia-peermem` 是让第三方 RDMA 硬件到达 GPU 内存的出厂对等显存客户端。看到它被构建和加载（包括那个无害的 `Skipping BTF generation for ... nvidia-peermem.ko` 行）**不是** GPU 到 GPU 对等访问可用的证据。
 
-### Why it matters: the measured cost
+### 为什么它要紧：测得的代价
 
-With `-sm layer` split on an 8-card, 80-layer model (10 layers per GPU), every generated token
-makes **7 GPU to CPU RAM to GPU hops**, one of which crosses a NUMA/socket boundary at the layer
-49 to 50 transition. The consequence shows up as a concurrency ceiling:
+带 `-sm layer` 拆分在一个 8 卡、80 层模型（每 GPU 10 层）上、每个生成的 token 做 **7 次 GPU 到 CPU RAM 到 GPU 跳**、其中一次在层 49 到 50 过渡处跨一个 NUMA/socket 边界。后果以一个并发上限出现：
 
-| Concurrent users | 1 | 2 | 4 | 8 | 16 |
+| 并发用户 | 1 | 2 | 4 | 8 | 16 |
 |---|---|---|---|---|---|
-| Aggregate tok/s | 17.3 | 21.6 | 25.7 | 28.1 | 38.9 |
-| Per-user tok/s | 17.3 | 10.8 | 6.4 | 3.5 | 2.4 |
-| Batch wall time (s) | n/a | 11.9 | 20.0 | 36.5 | 52.6 |
-| Scaling versus 1 user | 1.00x | 1.25x | 1.49x | 1.62x | 2.25x |
+| 聚合 tok/s | 17.3 | 21.6 | 25.7 | 28.1 | 38.9 |
+| 每用户 tok/s | 17.3 | 10.8 | 6.4 | 3.5 | 2.4 |
+| 批墙钟时间 (s) | n/a | 11.9 | 20.0 | 36.5 | 52.6 |
+| 相对 1 用户的扩展 | 1.00x | 1.25x | 1.49x | 1.62x | 2.25x |
 
-That is **2.25x aggregate scaling from 1 to 16 users**, attributed in the source report to three
-causes together: the absence of P2P/NVLink, a cross-NUMA pipeline hop, and the link. It is one
-sweep on one virtualised host whose link read active Gen1 x4 with a device maximum of Gen2 x16. Tensor parallelism, the strategy that would benefit
-most from peer access, is a measured dead end on these links:
+那是 **1 到 16 用户 **2.25x** 聚合扩展**、源报告把它归因到三个原因一起：P2P/NVLink 缺失、一次跨-NUMA 流水线跳、和链路。它是一次在单个虚拟化主机上的扫描、其链路读作活 Gen1 x4、设备最大 Gen2 x16。张量并行、那个会从对等访问受益最多的策略、在这些链路上是一个测得的死路：
 
-| Configuration | Prefill 1k / 4k / 16k (t/s) | Decode (t/s) |
+| 配置 | Prefill 1k / 4k / 16k (t/s) | Decode (t/s) |
 |---|---|---|
-| 1 card | 839 / 1,092 / 960 | 27.3 |
-| PP2 (pipeline) | 829 / 1,084 / 1,167 | 29.1 |
-| TP2 (tensor) | 316 / 420 / 416 | 33.7 |
+| 1 卡 | 839 / 1,092 / 960 | 27.3 |
+| PP2（流水线） | 829 / 1,084 / 1,167 | 29.1 |
+| TP2（张量） | 316 / 420 / 416 | 33.7 |
 
-Qwen2.5-72B dense AWQ under vLLM at Gen1 x4. TP is 2.3-2.8x worse at prefill for +23% decode.
-More in [LLM inference](../operations/llm-inference.md).
+Qwen2.5-72B dense AWQ 在 vLLM、Gen1 x4。TP 在 prefill 时差 2.3-2.8x、换 +23% decode。更多在[LLM 推理](../operations/llm-inference.md)。
 
 ---
 
-## The aikitoria fork
+## aikitoria fork
 
-`github.com/aikitoria/open-gpu-kernel-modules` is a fork of
-`tinygrad/open-gpu-kernel-modules`, created 2024-10-14. Its default branch is **`610.43.03-p2p`**,
-which is the same driver version cmpunlocker targets, and branch names in the fork run from 515
-through 610.43.03. That version alignment is what makes the layering workable at all: master's
-`build.sh` hard-fails on any driver version not listed in `driver/VERSION`
-(`610.43.03`, `610.43.02`).
+`github.com/aikitoria/open-gpu-kernel-modules` 是 `tinygrad/open-gpu-kernel-modules` 的一个 fork、创建于 2024-10-14。它的默认分支是 **`610.43.03-p2p`**、与 cmpunlocker 瞄准的同一个驱动版本、fork 里的分支名从 515 跑到 610.43.03。那个版本对齐正是让分层可行的东西：master 的 `build.sh` 对任何不在 `driver/VERSION`（`610.43.03`、`610.43.02`）里的驱动版本硬失败。
 
-The branch is three commits on top of a plain NVIDIA release import:
+分支是在一次普通 NVIDIA 发布导入之上的三个提交：
 
-| Commit | Subject | Scope |
+| 提交 | 主题 | 范围 |
 |---|---|---|
-| `452cec62d827` | `610.43.03` (base import, 2026-07-07) | `README.md`, `kernel-open/Kbuild`, `dp_connectorimpl.cpp`, `nvBldVer.h`, `nvUnixVersion.h`, `version.mk` |
-| `9fb650447c7b` | Combined P2P mod | 8 files, **+83 / -28** |
-| `52670f7fd6a7` | Experimental hugepage `cudaHostRegister` | 7 files, **+383 / -97** |
-| `2849449f8cd6` | README update | **+245** |
+| `452cec62d827` | `610.43.03`（基础导入、2026-07-07） | `README.md`、`kernel-open/Kbuild`、`dp_connectorimpl.cpp`、`nvBldVer.h`、`nvUnixVersion.h`、`version.mk` |
+| `9fb650447c7b` | 组合 P2P mod | 8 个文件、**+83 / -28** |
+| `52670f7fd6a7` | 实验性巨页 `cudaHostRegister` | 7 个文件、**+383 / -97** |
+| `2849449f8cd6` | README 更新 | **+245** |
 
-The P2P commit itself touches:
+P2P 提交本身碰：
 
-| File | Delta |
+| 文件 | 差 |
 |---|---|
 | `install.sh` | +7 |
 | `kernel-open/nvidia-uvm/uvm_gpu.h` | +7 |
@@ -111,25 +76,18 @@ The P2P commit itself touches:
 | `src/nvidia/src/kernel/mem_mgr/io_vaspace.c` | +11 / -10 |
 | `src/nvidia/src/kernel/rmapi/nv_gpu_ops.c` | +39 / -9 |
 
-**Mechanism:** it enables **BAR1 peer-to-peer** on GPUs where NVLink is absent and falls back to
-NVLink where present. For a PCIe pair, transfers write directly into the other GPU's physical
-address over DMA rather than bouncing through host RAM.
+**机制：** 它在 NVLink 缺失的 GPU 上启用 **BAR1 点对点**、存在时回退到 NVLink。对 PCIe 对、传输经 DMA 直接写进另一颗 GPU 的物理地址、而非经主机 RAM 弹跳。
 
 > [!WARNING]
-> **Experimental: GA100 is not a supported configuration**
+> **实验性：GA100 不是一个受支持配置**
 >
-> The branch README lists RTX 3090 (pairwise NVLink where available, PCIe BAR1 otherwise),
-> RTX 4090 (PCIe BAR1) and RTX 5090 (PCIe BAR1), and states that P2P also works between
-> different devices of the same generation. **GA100 is not on that list, and the patch has
-> never been validated on a 170HX.** The code path it modifies is
-> `kern_bus_gp100.c` (Pascal-and-later bus code), `io_vaspace.c` and `nv_gpu_ops.c`, so a
-> working GA100 branch inside it may simply not exist.
+> 分支 README 列出 RTX 3090（有 NVLink 就两两、否则 PCIe BAR1）、RTX 4090（PCIe BAR1）和 RTX 5090（PCIe BAR1）、并陈述 P2P 也在同代的不同设备之间工作。**GA100 不在那个列表上、补丁从没在 170HX 上验证过。** 它修改的代码路径是 `kern_bus_gp100.c`（Pascal 及以后的 bus 代码）、`io_vaspace.c` 和 `nv_gpu_ops.c`、所以里面一个工作的 GA100 分支可能根本不存在。
 
 ---
 
-## The three-commit diff workflow
+## 三提交 diff 工作流
 
-This is the exact recipe posted with a working build screenshot on 2026-07-23:
+这是 2026-07-23 带一个工作构建截图贴出的精确配方：
 
 ```bash
 git clone https://github.com/aikitoria/open-gpu-kernel-modules open-gpu-kernel-modules-p2p
@@ -137,203 +95,133 @@ git -C open-gpu-kernel-modules-p2p diff --src-prefix=a/ HEAD~3 > ./cmpunlocker/d
 cd ./cmpunlocker && sudo install.sh
 ```
 
-### Why it composes
+### 为什么它组合
 
-`driver/build.sh` deletes and re-extracts a clean stock tree, then applies **every** file matching
-`driver/patches/*.patch` in glob (lexicographic) order with `patch -p1`:
+`driver/build.sh` 删除并重新解压一棵干净出厂树、然后按 glob（字典序）顺序用 `patch -p1` 应用**每个**匹配 `driver/patches/*.patch` 的文件：
 
 ```bash
 rm -rf "${SRC_DIR}"
-# ... re-extract open-gpu-kernel-modules-${VERSION}.tar.gz ...
+# ... 重新解压 open-gpu-kernel-modules-${VERSION}.tar.gz ...
 for p in "${patches[@]}"; do
     patch -p1 < "${p}"
 done
 ```
 
-The script runs under `set -euo pipefail`, so a failing hunk aborts the build rather than
-producing a half-patched module. Naming the third-party diff `0007-unlock-p2p.patch` sorts it
-after the shipping series `0001`-`0006`, so the unlock lands first and the P2P changes apply on
-top. `--src-prefix=a/` guarantees the `a/` and `b/` path prefixes that `patch -p1` expects.
-`HEAD~3` with no second revision diffs the working tree against three commits back, producing one
-squashed patch containing all three commits, not three separate ones.
+脚本在 `set -euo pipefail` 下运行、所以一个失败的 hunk 中止构建而非产生一个半打补丁的模块。把第三方 diff 命名成 `0007-unlock-p2p.patch` 把它排在出货系列 `0001`-`0006` 之后、所以解锁先落地、P2P 改动应用在其上。`--src-prefix=a/` 保证 `patch -p1` 预期的 `a/` 和 `b/` 路径前缀。`HEAD~3` 不带第二个修订对三个提交之前的工作树做 diff、产生一个含全部三个提交的压扁补丁、而非三个分开的。
 
-The mechanism is code-confirmed. The specific diff's compatibility with 610.43.0x was reported by
-one tester and not independently reproduced, so treat the recipe as medium confidence.
+机制被代码确认。特定 diff 与 610.43.0x 的兼容性由一位测试者报告、未被独立复现，所以把配方当中等置信度。
 
 > [!CAUTION]
-> **You are also installing the experimental hugepage commit**
+> **你也在安装实验性巨页提交**
 >
-> `HEAD~3..HEAD` includes `52670f7fd6a7`, which accelerates `cudaHostRegister` for
-> 1G-hugepage-backed buffers and shrinks the device page tables for those mappings. Its own
-> author records that it is enabled automatically and that "this path skips some of the
-> per-4K-page bookkeeping the stock driver performs, so it may misbehave in edge cases the
-> stock driver handles correctly". It has no GA100 validation of any kind. To take only the P2P
-> change, cherry-pick or format-patch **`9fb650447c7b` alone** instead of the whole range.
+> `HEAD~3..HEAD` 含 `52670f7fd6a7`、它为 1G 巨页支持的缓冲加速 `cudaHostRegister` 并为这类映射缩小设备页表。它自己的作者记录它被自动启用、且 "this path skips some of the per-4K-page bookkeeping the stock driver performs, so it may misbehave in edge cases the stock driver handles correctly"（这条路径跳过出厂商驱动执行的某些每-4K-页记账、所以它可能在出厂商驱动正确处理的边缘情况里出错）。它没有任何 GA100 验证。只取 P2P 改动、cherry-pick 或 format-patch **`9fb650447c7b` 单独**、不要整个范围。
 
-### Practical notes on the recipe
+### 配方的实际注意
 
-- As transcribed, the final line reads `sudo install.sh`. Master's installer is invoked as
-  `sudo ./install.sh`; `install.sh` without a path only works if `.` is on `PATH`.
-- The fork's own `install.sh` change (+7 lines) is swept into the diff but has no effect: the
-  file it patches is a stock NVIDIA installer script that cmpunlocker's `build.sh` never runs.
-- **Filename collision hazard.** Gen2 is now in `master` and already uses `0007-pcie-gen2.patch`
-  and `0008-pcie-gen2-probe-retrain.patch`, so the P2P diff has to be numbered `0009` or later
-  against any current checkout. This was a branch-merge hazard before 2026-07-29; it is now
-  simply the numbering every layered patch has to respect.
-- `build.sh` fetches the upstream tarball with `curl -L --fail` and performs **no checksum or
-  signature verification**. Layering a second unverified diff on top compounds that.
-- After install, `build.sh` compares `/sys/module/nvidia/srcversion` against
-  `modinfo -F srcversion` on the patched `nvidia.ko`. A mismatch means stock modules won the
-  load race and neither the unlock nor the P2P patch is active. See
-  [verification](../procedures/verify.md).
+- 按转写、最后一行读 `sudo install.sh`。Master 的安装器被调成 `sudo ./install.sh`；不带路径的 `install.sh` 只在 `.` 在 `PATH` 上时工作。
+- fork 自己的 `install.sh` 改动（+7 行）被扫进 diff 却无效果：它补丁的文件是一个 cmpunlocker 的 `build.sh` 从不运行的出厂商 NVIDIA 安装器脚本。
+- **文件名碰撞危险。** Gen2 现在在 `master` 里、已经用 `0007-pcie-gen2.patch` 和 `0008-pcie-gen2-probe-retrain.patch`、所以 P2P diff 必须对任何当前检出编号成 `0009` 或更晚。这在 2026-07-29 前是一个分支合并危险；现在它只是每个分层补丁必须遵守的编号。
+- `build.sh` 用 `curl -L --fail` 抓上游 tarball 且**不做任何校验和或签名验证**。在其上分层第二个未验证 diff 放大了那个。
+- 安装后、`build.sh` 对比 `/sys/module/nvidia/srcversion` 与打过补丁 `nvidia.ko` 上的 `modinfo -F srcversion`。不匹配意味着出厂模块赢得了加载竞争、解锁和 P2P 补丁都不活跃。见[验证](../procedures/verify.md)。
 
 ---
 
-## Measured results
+## 实测结果
 
-There are almost none, and the gap is the single most important thing on this page.
+几乎一个都没有、而那个差距是本页最重要的事。
 
-| Quantity | Value | Conditions | Confidence |
+| 量 | 值 | 条件 | 置信度 |
 |---|---|---|---|
-| `p2pBandwidthLatencyTest` on any 170HX | **not run** | nobody posted a matrix, with or without the patch | n/a |
-| P2P pairs reported capable, unpatched | 0 of 56 | 8 unlocked cards, PyTorch | high |
-| P2P patch builds and loads on cmpunlocker | yes | one tester, 2026-07-23, screenshot; rig also contained 2x RTX 3090 | medium |
-| Effect on 170HX-only pairs | reported **none** | one tester, no test output posted | low |
-| Reference P2P-disabled bandwidth | 42.69-43.91 GB/s | 9-GPU Blackwell system, Gen5 x16, **not a 170HX** | high (for that system) |
-| Reference P2P-enabled bandwidth | 55.59-56.58 GB/s | same system | high (for that system) |
-| Reference device-to-self | 1611.24-1665.83 GB/s | same system | high (for that system) |
+| 任何 170HX 上的 `p2pBandwidthLatencyTest` | **没跑** | 没人贴过矩阵、无论带不带补丁 | n/a |
+| 报告有能力的 P2P 对、未打补丁 | 56 中 0 | 8 张解锁卡、PyTorch | 高 |
+| P2P 补丁在 cmpunlocker 上构建并加载 | 是 | 一位测试者、2026-07-23、截图；机架也含 2x RTX 3090 | 中等 |
+| 对纯-170HX 对的效果 | 报告**无** | 一位测试者、没贴测试输出 | 低 |
+| 参考 P2P 禁用带宽 | 42.69-43.91 GB/s | 9-GPU Blackwell 系统、Gen5 x16、**不是 170HX** | 高（对该系统） |
+| 参考 P2P 启用带宽 | 55.59-56.58 GB/s | 相同系统 | 高（对该系统） |
+| 参考设备-到-自身 | 1611.24-1665.83 GB/s | 相同系统 | 高（对该系统） |
 
-The Blackwell reference numbers do **not** transfer. A 170HX at Gen1 x4, or even Gen2 x4, moves
-roughly one thirtieth to one sixtieth of those figures, and that system's driver branch lists only
-3090/4090/5090 as supported.
+Blackwell 参考数字**不**迁移。一张 Gen1 x4、甚至 Gen2 x4 的 170HX 移动那些数字的大约三十分之一到六十分之一、而那个系统的驱动分支只把 3090/4090/5090 列为受支持。
 
 > [!NOTE]
-> **Open problem: does the patch do anything on a 170HX-only host?**
+> **未解问题：补丁在纯-170HX 主机上做任何事吗？**
 >
-> Two reports exist from the same day. One records getting "p2p + cmpunlock working" with a
-> screenshot, in a rig that also contained two RTX 3090s. Another records that after a
-> successful build "it doesn't seem to take effect on the 170HX ... it only has an effect on
-> them if there are other models of GPUs on the same machine". Those two may not actually
-> conflict: the successful rig is precisely the mixed-model case the negative report says is
-> the only one that works. Nobody posted `simpleP2P` or `p2pBandwidthLatencyTest` output either
-> way. **What would settle it:** the connectivity matrix from a 170HX-only two-card host, with
-> and without the layered patch. The test is cheap and the result is unambiguous.
+> 同日存在两份报告。一份记录带截图拿到 "p2p + cmpunlock working"、在一个也含两张 RTX 3090 的机架上。另一份记录成功构建后 "it doesn't seem to take effect on the 170HX ... it only has an effect on them if there are other models of GPUs on the same machine"（它在 170HX 上似乎没生效……只有当机器上有其它型号 GPU 时才对它们有效）。那两份可能实际不冲突：成功的机架恰恰是负面报告说唯一工作的混合型号情况。两边都没人贴过 `simpleP2P` 或 `p2pBandwidthLatencyTest` 输出。**什么能定论它：** 一个纯-170HX 双卡主机的连通性矩阵、带和不带分层补丁。测试便宜、结果不含糊。
 
 ---
 
-## Unverified report: peer DMA works, peer synchronisation does not
+## 未验证报告：对等 DMA 工作、对等同步不
 
 > [!CAUTION]
-> **Unverified community claim**
+> **未验证社区声称**
 >
-> Everything in this section is from a single builder on a single four-card rig, posted with
-> logs but never independently reproduced. It contradicts the "effect unproven" position above.
-> Treat it as a lead worth checking, not as a result.
+> 本节一切来自一个单台四卡机架上的单一构建者、带日志贴出、从没被独立复现。它矛盾上面的 "effect unproven"（效果未证明）立场。把它当一个值得检查的线索、不是一个结果。
 
-The claim is that the layered `aikitoria` P2P patch does take effect on GA100, but only halfway:
-peer *data movement* works and peer *synchronisation* does not.
+声称是分层的 `aikitoria` P2P 补丁确实在 GA100 上生效、但只一半：对等*数据移动*工作、对等*同步*不。
 
-| Test | Reported result |
+| 测试 | 报告结果 |
 |---|---|
-| `torch.cuda.can_device_access_peer(i,j)` | `True` for all 12 ordered pairs on a 4-card host |
-| `cudaMemcpyPeer` across cards | **6.25 GB/s**, against 5.70 GB/s for the same copy staged through host memory |
-| Cross-process CUDA IPC handle sharing | works |
-| Any NCCL collective | **hangs** at transport connect: no error, no timeout, both GPUs pinned at 100 % |
-| vLLM custom all-reduce | **hangs** the same way |
+| `torch.cuda.can_device_access_peer(i,j)` | 4 卡主机上全部 12 个有序对 `True` |
+| 跨卡的 `cudaMemcpyPeer` | **6.25 GB/s**、对经主机内存分阶段的同一拷贝 5.70 GB/s |
+| 跨进程 CUDA IPC 句柄共享 | 工作 |
+| 任何 NCCL 集合 | **在传输连接处挂起**：无错误、无超时、两颗 GPU 都钉在 100 % |
+| vLLM 自定义 all-reduce | 同样方式**挂起** |
 
-The offered explanation is that the two halves have different requirements. A peer copy is a DMA
-engine walking a mapping. A collective additionally needs one GPU to write a flag into another
-GPU's memory and have a kernel on that second GPU spin until it observes the write. It is that
-second pattern that reportedly does not work, which would explain why a raw copy succeeds while
-every collective library hangs rather than failing.
+提供的解释是两半有不同的要求。一次对等拷贝是一个 DMA 引擎走一个映射。一个集合额外地需要一颗 GPU 把标志写进另一颗 GPU 的内存、并让第二颗 GPU 上的一个内核旋转直到它观察到那次写。正是第二个模式被报告不工作、那会解释为什么一次原始拷贝成功、而每个集合库都挂起而非失败。
 
-The mechanism offered for it, also unverified:
+为它提供的机制、也未验证：
 
-- `kbusIsPcieBar1P2PMappingSupported_GH100` requires **static BAR1** on both GPUs, and static
-  BAR1 requires BAR1 to span the whole framebuffer at a 512 MB-aligned offset. On the 170HX BAR1
-  is **64 MB**, so the check cannot pass. See
-  [BAR sizing](#bar-sizing-and-resizable-bar-limits), which is the same 64 MB constraint that
-  blocks other things on this page.
-- The mailbox fallback then fails its own alignment assertion, `(base & RM_PAGE_MASK) == 0` in
-  `kern_bus.c`, followed by `remoteWMBoxLocalAddr != ~0ULL` in `kern_bus_gm200.c`.
-- Separately, the reporter claims cmpunlocker's own `P2P` branch gates `p2pOverride` and
-  `pcieP2PType` behind `devId == 0x20C2` read from `pGpu->idInfo.PCIDeviceID` inside
-  `_kbifInitRegistryOverrides`, but that field is not populated until later in `gpu.c`, so the
-  gate never opens. Upstream `aikitoria` commit `9fb650447c7b` sets both unconditionally.
+- `kbusIsPcieBar1P2PMappingSupported_GH100` 要求两颗 GPU 上**静态 BAR1**、而静态 BAR1 要求 BAR1 在一个 512 MB 对齐偏移量上横跨整个帧缓冲。在 170HX 上 BAR1 是 **64 MB**、所以检查无法通过。见[BAR 尺寸](#bar-尺寸与-resizable-bar-限制)、它是阻塞本页其它东西的同一个 64 MB 约束。
+- 邮箱回退随后失败它自己的对齐断言、`kern_bus.c` 里 `(base & RM_PAGE_MASK) == 0`、随后 `kern_bus_gm200.c` 里 `remoteWMBoxLocalAddr != ~0ULL`。
+- 分开地、报告者声称 cmpunlocker 自己的 `P2P` 分支把 `p2pOverride` 和 `pcieP2PType` 门控在 `_kbifInitRegistryOverrides` 里从 `pGpu->idInfo.PCIDeviceID` 读的 `devId == 0x20C2` 之后、但那个字段直到 `gpu.c` 里更晚才被填充、所以门从不打开。上游 `aikitoria` 提交 `9fb650447c7b` 无条件设置两者。
 
-If this holds up, the practical consequence is narrow but real: hand-written multi-GPU code that
-moves buffers between cards and leaves coordination to the **host** could use peer DMA, while
-every collective library, and therefore tensor parallelism in every mainstream inference server,
-could not. The reporter's working configuration for multi-card vLLM is `NCCL_P2P_DISABLE=1` plus
-`--disable-custom-all-reduce`, which is exactly the configuration that works with no P2P patch at
-all. On that rig the patch therefore bought nothing for inference.
+如果这站住、实际后果窄而真实：手写多 GPU 代码在卡之间移动缓冲并把协调留给**主机**、能用对等 DMA、而每个集合库、因此主流推理服务器里的张量并行、都不能。报告者多卡 vLLM 的工作配置是 `NCCL_P2P_DISABLE=1` 加 `--disable-custom-all-reduce`、那恰恰是根本没有 P2P 补丁也工作的配置。在那架机上补丁因此为推理没买到任何东西。
 
-**What would settle it.** A second rig running three tests: `can_device_access_peer`, a timed
-`cudaMemcpyPeer`, and any NCCL collective. The third is the decisive one, and it is a two-minute
-test for anyone who already has two cards and the patch built.
+**什么能定论它。** 第二架机跑三个测试：`can_device_access_peer`、一次定时的 `cudaMemcpyPeer`、和任何 NCCL 集合。第三个是决定性的、而且对任何已经有两张卡和补丁构建的人来说是一个两分钟测试。
 
 ---
 
-## IOMMU interaction
+## IOMMU 交互
 
-BAR1 peer DMA writes a raw physical address at the other device. That only works if the IOMMU is
-not translating those addresses.
+BAR1 对等 DMA 在另一颗设备处写一个原始物理地址。那只在 IOMMU 不翻译那些地址时工作。
 
-The P2P branch's documented setup is:
+P2P 分支的文档化设置是：
 
 ```bash
 # /etc/default/grub, GRUB_CMDLINE_LINUX_DEFAULT
 amd_iommu=on iommu=pt        # AMD
 intel_iommu=on iommu=pt      # Intel
 sudo update-grub
-# install the 610.43.03 driver, run ./install.sh, reboot
+# 安装 610.43.03 驱动、跑 ./install.sh、重启
 ```
 
-The README states the requirement flatly: IOMMU must be in **passthrough** mode, not translating,
-or DMA goes through IOMMU page tables and transfers fail.
+README 直接陈述要求：IOMMU 必须处于 **passthrough** 模式、不翻译、否则 DMA 走 IOMMU 页表、传输失败。
 
 > [!CAUTION]
-> **Passthrough mode weakens DMA isolation**
+> **Passthrough 模式削弱 DMA 隔离**
 >
-> The same README warns that this configuration "is very dangerous if you run untrusted
-> software or devices". `iommu=pt` means devices DMA with host-physical addresses and the IOMMU
-> is not policing them. Do not apply this to a multi-tenant host.
+> 同一个 README 警告这个配置 "is very dangerous if you run untrusted software or devices"（如果你跑不受信任的软件或设备非常危险）。`iommu=pt` 意味着设备用主机物理地址 DMA、IOMMU 不在管束它们。不要把它应用到一个多租户主机。
 
-**ACS is the second half of the problem.** If P2P is enabled but slow, Access Control Services on
-the root ports forces all GPU-to-GPU traffic up through the CPU root complex, which destroys the
-bandwidth the patch exists to provide. Remedies given, in order of preference: disable ACS in
-BIOS; boot with `pcie_acs_override=downstream,multifunction`; or apply an ACS override kernel
-patch. Note that ACS override is also what breaks IOMMU group isolation, so this compounds the
-warning above.
+**ACS 是问题的另一半。** 如果 P2P 被启用却慢、根端口上的 Access Control Services 把所有 GPU 到 GPU 流量都往 CPU 根复合体推、那摧毁补丁存在来提供的带宽。给出的补救、按偏好顺序：在 BIOS 里禁用 ACS；用 `pcie_acs_override=downstream,multifunction` 引导；或应用一个 ACS 覆盖内核补丁。注意 ACS override 也正是打破 IOMMU 组隔离的东西、所以这与上面的警告复合。
 
-For A/B testing, 3090 pairs can be forced onto the PCIe BAR1 path instead of NVLink with:
+对 A/B 测试、3090 对可以被强制到 PCIe BAR1 路径而非 NVLink、用：
 
 ```conf
 # /etc/modprobe.d/nvidia.conf
 options nvidia NVreg_RegistryDwords="RMForceP2PType=1"
 ```
 
-### What cmpunlocker itself does about IOMMU
+### cmpunlocker 自己对 IOMMU 做什么
 
-| Tree | IOMMU handling |
+| 树 | IOMMU 处理 |
 |---|---|
-| `master` (shipping) | **none**. `install.sh` and `remove.sh` contain no `iommu` or kernel-cmdline handling at all |
-| Gen2 code (now in `master`) | appends `intel_iommu=on iommu=pt` (GenuineIntel) or `amd_iommu=on iommu=pt` (AuthenticAMD) to `/etc/default/grub` or `/etc/kernel/cmdline`, with a `--no-iommu` opt-out |
+| `master`（出货） | **无。** `install.sh` 和 `remove.sh` 完全不含 `iommu` 或内核命令行处理 |
+| Gen2 代码（现在在 `master` 里） | 把 `intel_iommu=on iommu=pt`（GenuineIntel）或 `amd_iommu=on iommu=pt`（AuthenticAMD）追加到 `/etc/default/grub` 或 `/etc/kernel/cmdline`、带一个 `--no-iommu` 退出 |
 
-The Gen2 installer also verifies at runtime with
-`grep -qw iommu=pt /proc/cmdline && [[ -d /sys/class/iommu ]] && [[ -n "$(ls -A /sys/class/iommu)" ]]`,
-printing `IOMMU is already active in passthrough mode on the running kernel` or
-`IOMMU passthrough takes effect after the next reboot` plus a reminder that VT-d / AMD-Vi / SVM
-must also be on in BIOS. `remove.sh` on that branch restores from `*.cmpunlocker.bak` and prints
-`Reverted IOMMU kernel parameters (effective after reboot)`, or reports that no IOMMU config
-backup was found and the kernel command line was left as-is. That is commit `6a85e6c`
-"IOMMU enablement as part of install script", branch code, not shipping.
+Gen2 安装器还在运行时用 `grep -qw iommu=pt /proc/cmdline && [[ -d /sys/class/iommu ]] && [[ -n "$(ls -A /sys/class/iommu)" ]]` 验证、打印 `IOMMU is already active in passthrough mode on the running kernel`（IOMMU 已在运行中的内核上处于 passthrough 模式）或 `IOMMU passthrough takes effect after the next reboot`（IOMMU passthrough 在下一次重启后生效）加一个 VT-d / AMD-Vi / SVM 也必须 BIOS 里开的提醒。那个分支上的 `remove.sh` 从 `*.cmpunlocker.bak` 恢复并打印 `Reverted IOMMU kernel parameters (effective after reboot)`（已还原 IOMMU 内核参数（重启后生效））、或报告没有找到 IOMMU 配置备份、内核命令行保持原样。那是提交 `6a85e6c` "IOMMU enablement as part of install script"、分支代码、不出货。
 
-The practical consequence: **the Gen2 code already configures exactly what the P2P patch
-requires**, which makes Gen2-plus-P2P the closest thing to a pre-configured stack anyone could
-assemble today. Nobody has assembled it.
+实际后果：**Gen2 代码已经配置恰好 P2P 补丁要求的东西**、这让 Gen2 加 P2P 成为任何人今天能组装的最接近预配置栈的东西。没人组装过它。
 
-A verified passthrough boot from a test rig, for comparison:
+一个测试机架的一次已验证 passthrough 引导、供对比：
 
 ```text
 Linux 7.1.3-arch2-2, cmdline: intel_iommu=on iommu=pt nowatchdog nvme_load=YES
@@ -343,177 +231,118 @@ iommu: Default domain type: Passthrough (set via kernel command line)
 GPU at 0000:65:00.0, alone in IOMMU group 3
 ```
 
-A separate `lspci -vvv` capture shows a card at `0000:81:00.0` in IOMMU group 31. A card alone in
-its own group is what passthrough setups want, but it says nothing about ACS behaviour between
-root ports, which is the part that governs P2P throughput.
+一次分开的 `lspci -vvv` 捕获显示一张 `0000:81:00.0` 的卡在 IOMMU 组 31。一张独自在自己组里的卡是 passthrough 设置想要的、但它对根端口之间的 ACS 行为什么都不说、而那正是管束 P2P 吞吐的部分。
 
-The driverless [refire chain](../history/tool-lineage.md) has the same class of requirement for a
-different reason: it needs `intel_iommu=off` **or** `iommu=pt` so that DMA physical addresses
-equal host-physical addresses when it hands the Booter a hugepage address.
+免驱动 [refire 链](../history/tool-lineage.md) 出于不同原因有同类要求：它需要 `intel_iommu=off` **或** `iommu=pt`、这样它把巨页地址交给 Booter 时 DMA 物理地址等于主机物理地址。
 
 ---
 
-## BAR sizing and Resizable BAR limits
+## BAR 尺寸与 Resizable BAR 限制
 
-The 170HX exposes three BARs and a Resizable BAR capability that cannot actually resize anything.
+170HX 暴露三个 BAR 和一个实际上不能调整任何东西的 Resizable BAR 能力。
 
-| BAR | Size | Type | Observed region base | ReBAR supported sizes |
+| BAR | 大小 | 类型 | 观察到的区域基址 | ReBAR 受支持大小 |
 |---|---|---|---|---|
-| BAR0 | 16 MB (`0x1000000`) | 32-bit, non-prefetchable | `f0000000` (`0xfa000000` on another host) | 16MB only |
-| BAR1 | **64 MB** | 64-bit, prefetchable | `20048000000` | 64MB only |
-| BAR3 | 32 MB | 64-bit, prefetchable | `2004c000000` | 32MB only |
+| BAR0 | 16 MB（`0x1000000`） | 32 位、不可预取 | `f0000000`（另一台主机 `0xfa000000`） | 仅 16MB |
+| BAR1 | **64 MB** | 64 位、可预取 | `20048000000` | 仅 64MB |
+| BAR3 | 32 MB | 64 位、可预取 | `2004c000000` | 仅 32MB |
 
-`lspci -vvv` reports `Capabilities: [bb0 v1] Physical Resizable BAR` with exactly one supported
-size per BAR, and `nvidia-smi` agrees: `BAR1 Memory Usage Total: 64 MiB`. A MIG instance created
-on an unlocked card reports `0MiB / 64MiB` shared BAR1 alongside `1MiB / 65053MiB` of memory.
+`lspci -vvv` 报告 `Capabilities: [bb0 v1] Physical Resizable BAR` 带每个 BAR 恰好一个受支持大小、`nvidia-smi` 同意：`BAR1 Memory Usage Total: 64 MiB`。在一张解锁卡上创建的一个 MIG 实例报告 `0MiB / 64MiB` 共享 BAR1 连同 `1MiB / 65053MiB` 显存。
 
-**BAR1 stays at 64 MiB even when the card advertises 81920 MiB of framebuffer.** Large-BAR or
-full-VRAM host mapping is therefore not available on this card, which is exactly why the
-[PRAMIN window](../unlock/memory-geometry.md) matters for the memory unlock.
+**即使卡宣告 81920 MiB 帧缓冲 BAR1 也停在 64 MiB。** 大-BAR 或全-VRAM 主机映射因此在这张卡上不可用、那正是[PRAMIN 窗口](../unlock/memory-geometry.md) 对显存解锁要紧的确切原因。
 
-Since the aikitoria patch works by mapping peer memory through **BAR1**, this 64 MiB non-resizable
-aperture is the structural question hanging over the whole approach on GA100. No source in the
-corpus establishes whether the driver's BAR1 P2P path can operate inside a 64 MiB window, or
-whether it assumes a large BAR the way consumer 4090/5090 setups have. Nobody has tested it.
+因为 aikitoria 补丁通过 **BAR1** 映射对等显存工作、这个 64 MiB 不可调整大小的孔径是悬在 GA100 整个方法上的结构问题。语料库里没有来源确立驱动 BAR1 P2P 路径能否在一个 64 MiB 窗口内工作、或它是否假设消费级 4090/5090 设置那样的一个大 BAR。没人测过它。
 
-### The shipping BAR0/PRAMIN clamp
+### 出货 BAR0/PRAMIN 钳制
 
-`0004-bar0-pramin-clamp.patch` is 20 lines and applies to **both** device IDs. When
-`devId == 0x20C2 || devId == 0x2082` and `Ram.fbAddrSpaceSizeMb > 0x2000` (8192 MB):
+`0004-bar0-pramin-clamp.patch` 是 20 行、应用到**两个**设备 ID。当 `devId == 0x20C2 || devId == 0x2082` 且 `Ram.fbAddrSpaceSizeMb > 0x2000`（8192 MB）时：
 
 ```c
 offsetBar0 = (0x2000ULL << 20) - DRF_SIZE(NV_PRAMIN);
 ```
 
-A 10 GB card at 10240 MB already exceeds `0x2000`, so the clamp engages there too, and a 10 GB
-card unlocked to 40 GB gets the 8192 MiB-based PRAMIN window rather than a 10240 MiB-based one.
-This is a deliberate two-line-scale constant that anyone experimenting with BAR behaviour can
-change and rebuild against.
+一张 10240 MB 的 10 GB 卡已经超过 `0x2000`、所以钳制也在那里接合、一张解锁到 40 GB 的 10 GB 卡得到一个基于 8192 MiB 的 PRAMIN 窗口、而非基于 10240 MiB 的。这是一个刻意的两行级常量、任何实验 BAR 行为的人可以改动并重新构建。
 
-### Resizable BAR: what is settled and what is not
+### Resizable BAR：什么已定论、什么没有
 
 > [!NOTE]
-> **Open problem: Large BAR / ReBAR / Above 4G Decoding**
+> **未解问题：Large BAR / ReBAR / Above 4G Decoding**
 >
-> The question was posted on 2026-07-22 at 14:11 and never answered. It matters because the
-> shipping unlock deliberately clamps the BAR0/PRAMIN window and the card advertises a ReBAR
-> capability that appears to offer no alternative sizes. **Next step:** boot with Above 4G
-> Decoding enabled and read back the ReBAR capability sizes on a Gen2-trained card. If the
-> capability structure genuinely lists a single supported size per BAR, no host-side workaround
-> helps, including `github.com/xCuri0/ReBarUEFI` for hosts whose UEFI lacks ReBAR support.
+> 问题在 2026-07-22 14:11 被贴出、从没被回答。它要紧、因为出货解锁刻意钳制 BAR0/PRAMIN 窗口、卡宣告一个看似不提供替代大小的 ReBAR 能力。**下一步：** 带 Above 4G Decoding 启用引导、在一张 Gen2 训练过的卡上回读 ReBAR 能力大小。如果能力结构真列出每个 BAR 单个受支持大小、没有主机侧变通方案帮忙、包括对 UEFI 缺 ReBAR 支持的主机的 `github.com/xCuri0/ReBarUEFI`。
 
-### BAR pressure with many cards
+### 多卡时的 BAR 压力
 
-A second-hand report describes BAR address-space problems above eight high-VRAM GPUs in a single
-server, with no error string or platform captured. The important qualification: the unlock does
-**not** grow any BAR, so BAR pressure comes from the per-device resizable-BAR aperture, not from
-the 64 GB framebuffer. Lane arithmetic for a 128-lane single-socket platform gives roughly seven
-cards at x16 (eight with no NVMe) or far more at x4 for the same aggregate bandwidth. Operators
-are running 8-card and 10-card servers in production.
+一份二手报告描述单台服务器里八颗以上高-VRAM GPU 之上的 BAR 地址空间问题、没捕获错误字符串或平台。重要的限定：解锁**不**增长任何 BAR、所以 BAR 压力来自每设备可调整大小-BAR 孔径、而非 64 GB 帧缓冲。128 通道单 socket 平台的通道算术对同一聚合带宽给出约七张 x16 卡（八张无 NVMe）或远多 x4 卡。操作者正在生产运行 8 卡和 10 卡服务器。
 
 ---
 
-## Multi-GPU install state
+## 多 GPU 安装状态
 
-P2P is inherently a multi-card topic, and cmpunlocker's multi-card support is branch-only.
+P2P 天生是一个多卡主题、cmpunlocker 的多卡支持仅分支。
 
-| Capability | `master` | `multiple-cards` / `Gen2` |
+| 能力 | `master` | `multiple-cards` / `Gen2` |
 |---|---|---|
-| Card enumeration | `lspci -nn \| grep -iE '10de:20b0\|10de:20c2\|10de:2082' \| head -1` (first match only) | `mapfile -t PCI_LINES`, every match, five parallel arrays (BDF, devid, profile, expected_mib, current_mib) |
-| Profile | `8gb` / `10gb` from `nvidia-smi memory.total` thresholds | `profile_from_devid()`: `20c2 → 8gb`, `2082 → 10gb`, plus a third `mixed` profile |
-| Inventory file | none | `/lib/modules/$(uname -r)/updates/cmpunlocker/gpu_inventory`, one line per GPU, e.g. `0000:0b:00.0 20c2 8gb 65536` |
-| `verify.sh` | does not exist | per-GPU `OK` / `STOCK` / `MISSING` / `UNEXPECTED`, thresholds `>= 60000 MiB` (8gb) and `35000-59999 MiB` (10gb) |
+| 卡枚举 | `lspci -nn \| grep -iE '10de:20b0\|10de:20c2\|10de:2082' \| head -1`（仅第一匹配） | `mapfile -t PCI_LINES`、每个匹配、五个平行数组（BDF、devid、档位、expected_mib、current_mib） |
+| 档位 | 从 `nvidia-smi memory.total` 阈值 `8gb` / `10gb` | `profile_from_devid()`：`20c2 → 8gb`、`2082 → 10gb`、加一个第三个 `mixed` 档位 |
+| 清单文件 | 无 | `/lib/modules/$(uname -r)/updates/cmpunlocker/gpu_inventory`、每 GPU 一行、例如 `0000:0b:00.0 20c2 8gb 65536` |
+| `verify.sh` | 不存在 | 每 GPU `OK` / `STOCK` / `MISSING` / `UNEXPECTED`、阈值 `>= 60000 MiB`（8gb）和 `35000-59999 MiB`（10gb） |
 
-The installer limitation is cosmetic for the unlock itself: patch `0001` reads
-`pGpu->idInfo.PCIDeviceID` on **every** GSP boot and picks geometry per device, so a multi-card
-host is fully unlocked even though master's installer inspects only one card. One build serves a
-host containing both 8 GB and 10 GB cards.
+安装器限制对解锁本身是表面的：补丁 `0001` 在**每次** GSP 引导读 `pGpu->idInfo.PCIDeviceID` 并按设备选几何布局、所以一个多卡主机被完全解锁、即使 master 的安装器只检查一张卡。一个构建服务一个含 8 GB 和 10 GB 卡两者的主机。
 
 > [!CAUTION]
-> **Mixed-GPU hosts mis-detect the profile**
+> **混合-GPU 主机误检测档位**
 >
-> `detect_card_profile()` reads `nvidia-smi --query-gpu=memory.total ... | head -1`, which is
-> the **first GPU in nvidia-smi order**, not the CMP that `lspci` found. A host with an
-> RTX 3080 10 GB alongside an 8 GB 170HX detected "10GB" from the 3080 and selected the wrong
-> profile. Reproduced by at least two testers; other CMP SKUs have been misdetected as 10 GB
-> 170HX cards too. **Always pass `--profile=8gb` or `--profile=10gb` explicitly on a mixed
-> host.** This bites P2P work specifically, because a mixed-model host is the one configuration
-> where the P2P patch is reported to have any effect at all.
+> `detect_card_profile()` 读 `nvidia-smi --query-gpu=memory.total ... | head -1`、那是 **nvidia-smi 顺序里的第一张 GPU**、不是 `lspci` 找到的 CMP。一张带 RTX 3080 10 GB 配 8 GB 170HX 的主机从 3080 检测出 "10GB" 并选错档位。被至少两位测试者复现；其它 CMP SKU 也被误检测为 10 GB 170HX 卡。**在混合主机上始终显式传 `--profile=8gb` 或 `--profile=10gb`。** 这特别咬 P2P 工作、因为混合型号主机是 P2P 补丁被报告有任何效果的那一个配置。
 
-Two further multi-GPU constraints worth carrying here:
+两个更多值得带在这的多 GPU 约束：
 
-- **Proxmox passthrough requires SeaBIOS, not UEFI/OVMF.** UEFI produces RM init / adapter
-  failures that look exactly like the exploit not working. Two people independently traced
-  non-reproductions to this.
-- **`verify.sh` never checks PCIe generation**, not even on the Gen2 branch lineage. Grepping
-  `Gen2/verify.sh`, `far/verify.sh` and `deced/verify.sh` for "pcie" returns zero hits. Link
-  state must be checked by hand with `nvidia-smi` or `pcielink.sh`.
+- **Proxmox 直通需要 SeaBIOS、不要 UEFI/OVMF。** UEFI 产生看起来恰好像利用根本不工作的 RM init / 适配器失败。两人独立把无法复现追到这个。
+- **`verify.sh` 从不检查 PCIe 代数**、即使在 Gen2 分支谱系上也如此。grep `Gen2/verify.sh`、`far/verify.sh` 和 `deced/verify.sh` 找 "pcie" 返回零命中。链路状态必须用 `nvidia-smi` 或 `pcielink.sh` 手工检查。
 
-See [multi-GPU procedures](../procedures/multi-gpu.md) for the full install path.
+完整安装路径见[多 GPU 流程](../procedures/multi-gpu.md)。
 
 ---
 
-## Where P2P sits against the alternatives
+## P2P 相对替代方案的位置
 
-| Path | Status | Blocker |
+| 路径 | 状态 | 阻塞者 |
 |---|---|---|
-| NVLink | Fuse-disabled (`FUSE_NVLINK_DIS` `0x00820684` = `0x00000007`), never brought up | OTP fuse plus depopulated board components; see [NVLink](nvlink.md) |
-| PCIe P2P, shipping unlock | Absent | No code anywhere in the tree |
-| PCIe P2P, layered patch | Builds and loads. One **unverified** report of peer DMA at 6.25 GB/s with peer synchronisation still broken | Unsupported configuration; collectives reported to hang |
-| Faster link (Gen2 x4) | Shipped in `master` since 2026-07-29 | Below the stated tensor-parallel threshold |
-| Faster link (Gen2 x16) | Reproduced on two rigs, 5.97 to 6.67 GB/s | Requires the 24-capacitor solder mod; burn-in beyond 90 minutes unmeasured |
-| Gen3 / Gen4 | Not achieved | Assessed as needing a GSP patch nobody has produced |
+| NVLink | 熔丝禁用（`FUSE_NVLINK_DIS` `0x00820684` = `0x00000007`）、从未带起 | OTP 熔丝加缺件板卡元件；见[NVLink](nvlink.md) |
+| PCIe P2P、出货解锁 | 缺失 | 树里任何地方都没有代码 |
+| PCIe P2P、分层补丁 | 构建并加载。一个**未验证**报告对等 DMA 在 6.25 GB/s、对等同步仍坏 | 受支持配置未确定；集合被报告挂起 |
+| 更快链路（Gen2 x4） | 自 2026-07-29 在 `master` 出货 | 在陈述的张量并行阈值之下 |
+| 更快链路（Gen2 x16） | 在两架机上复现、5.97 到 6.67 GB/s | 需要 24 电容焊接改装；90 分钟以上烧机未测 |
+| Gen3 / Gen4 | 未达成 | 被评估为需要一个没人生产出来的 GSP 补丁 |
 
-The stated threshold for tensor parallelism to become worth attempting at all is **PCIe Gen2 x16
-or Gen3 x4**. The unlocker delivers Gen2 **x4**, which is below it. Restoring x16 is a
-[physical modification](../operations/physical-mods.md) (24 x 0402 220 nF X7R capacitors), not a
-software change, and it changes lane count only, never link generation. The two mechanisms are
-independent and must not be conflated.
+张量并行变得值得尝试的陈述阈值是 **PCIe Gen2 x16 或 Gen3 x4**。解锁器交付 Gen2 **x4**、那在它之下。恢复 x16 是一个[物理改装](../operations/physical-mods.md)（24 x 0402 220 nF X7R 电容）、不是一个软件改动、它只改通道数、从不改链路代数。两个机制独立、绝不可混为一谈。
 
-Until then, the working guidance is unchanged: pipeline parallelism, not tensor parallelism, and
-MoE models to reduce cross-device activation traffic per token.
+在那之前、工作指导不变：流水线并行、不要张量并行、用 MoE 模型减少每 token 的跨设备激活流量。
 
 ---
 
-## Open problems
+## 未解问题
 
 > [!NOTE]
-> **Open problem: the P2P question set**
+> **未解问题：P2P 问题集**
 >
-> 1. **Does the layered patch enable P2P between two 170HX cards?** Run `simpleP2P` and
->    `p2pBandwidthLatencyTest` on a 170HX-only pair, with and without the patch, and post the
->    matrix. Nothing else in this domain is as cheap or as decisive.
-> 2. **Does a GA100 code path exist in the patch at all?** The modified files are Pascal-era bus
->    code plus the VA-space and RM API layers. Reading `kern_bus_gp100.c` against the GA100 HAL
->    would answer this without hardware.
-> 3. **Can BAR1 P2P work through a 64 MiB non-resizable aperture?** Unestablished. This may be
->    the reason the negative report exists.
-> 4. **Is P2P worth anything at Gen1 x4 or Gen2 x4?** The lead position on record is "I would
->    only implement P2P when we get at least PCIe Gen 3, otherwise it seems kind of a waste on
->    these cards". That precondition is currently unmet and there is no evidence either way that
->    it is reachable.
-> 5. **Does a P2P-capability bit exist in silicon?** One suggestion on record is to check
->    whether the register space governed by the FEAT PLM at `0x00823804` carries a P2P
->    capability bit, since the unlock already reaches that block. Nobody looked.
-> 6. **Do the tinygrad-lineage device tables even match a 170HX?** The upstream P2P driver
->    enumerates the A100s and CMP 40HX through CMP 90HX but omits the 170HX, and a fork updated
->    for 610.x still omits it. It is unknown whether an unlocked card would be accepted or
->    whether the `Graphics Device` identification string breaks device matching. Adding the two
->    device IDs to the table and testing is a trivial change.
-> 7. **Should multi-card, IOMMU and Gen2 merge to master, and in what order?** The
->    `multiple-cards` installer changes (`b1cb6d8`) are self-contained and could land alone; the
->    Gen2 branch bundles them with unverified PCIe register writes.
+> 1. **分层补丁在两颗 170HX 卡之间启用 P2P 吗？** 在一个纯-170HX 对上跑 `simpleP2P` 和 `p2pBandwidthLatencyTest`、带和不带补丁、并贴矩阵。这个领域里没有别的东西这么便宜或这么决定性。
+> 2. **补丁里到底存在 GA100 代码路径吗？** 修改的文件是 Pascal 时代 bus 代码加 VA 空间和 RM API 层。对 GA100 HAL 读 `kern_bus_gp100.c` 会在无需硬件的情况下回答这个。
+> 3. **BAR1 P2P 能在一个 64 MiB 不可调整大小孔径里工作吗？** 未确立。这可能是负面报告存在的原因。
+> 4. **P2P 在 Gen1 x4 或 Gen2 x4 值得任何东西吗？** 记录在案的头号立场是 "I would only implement P2P when we get at least PCIe Gen 3, otherwise it seems kind of a waste on these cards"（我只会在我们至少得到 PCIe Gen 3 时实现 P2P、否则在这些卡上似乎有点浪费）。那个前提目前未满足、而且没有证据说明它是否可达。
+> 5. **硅片里存在 P2P 能力位吗？** 记录在案的一个建议是检查 `0x00823804` 处 FEAT PLM 管辖的寄存器空间是否携带一个 P2P 能力位、因为解锁已经到达那个块。没人看过。
+> 6. **tinygrad 谱系设备表甚至匹配一张 170HX 吗？** 上游 P2P 驱动枚举 A100 和 CMP 40HX 到 CMP 90HX 却省略 170HX、一个为 610.x 更新的 fork 也仍省略它。未知一张解锁卡会被接受、还是 `Graphics Device` 识别字符串打破设备匹配。往表加两个设备 ID 并测试是一个琐碎改动。
+> 7. **多卡、IOMMU 和 Gen2 应该合并进 master 吗、以什么顺序？** `multiple-cards` 安装器改动（`b1cb6d8`）自包含、能单独落地；Gen2 分支把未验证 PCIe 寄存器写与它们捆绑。
 
 ---
 
-## Related pages
+## 相关页面
 
-- [PCIe subsystem](../hardware/pcie-subsystem.md) for link, BAR and config-space detail
-- [PCIe Gen2 unlock](../unlock/pcie-gen2.md) and [Gen3/Gen4](pcie-gen3-gen4.md)
-- [NVLink](nvlink.md) and [NVLink hardware](../hardware/nvlink-hardware.md)
-- [Driver patches](../unlock/driver-patches.md) for the `0001`-`0006` series and the build system
-- [Multi-GPU install](../procedures/multi-gpu.md) and [verification](../procedures/verify.md)
-- [Physical modifications](../operations/physical-mods.md) for the x16 capacitor mod
-- [LLM inference](../operations/llm-inference.md) for the parallelism measurements
-- [Status board](status-board.md) and [open questions](open-questions.md)
-- [Glossary](../start/glossary.md)
+- [PCIe 子系统](../hardware/pcie-subsystem.md) 看链路、BAR 和配置空间细节
+- [PCIe Gen2 解锁](../unlock/pcie-gen2.md) 和 [Gen3/Gen4](pcie-gen3-gen4.md)
+- [NVLink](nvlink.md) 和 [NVLink 硬件](../hardware/nvlink-hardware.md)
+- [驱动补丁](../unlock/driver-patches.md) 看 `0001`-`0006` 系列和构建系统
+- [多 GPU 安装](../procedures/multi-gpu.md) 和[验证](../procedures/verify.md)
+- [物理改装](../operations/physical-mods.md) 看 x16 电容改装
+- [LLM 推理](../operations/llm-inference.md) 看并行测量
+- [状态板](status-board.md) 和[未解问题](open-questions.md)
+- [术语表](../start/glossary.md)

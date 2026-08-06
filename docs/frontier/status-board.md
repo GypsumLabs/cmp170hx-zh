@@ -1,291 +1,186 @@
-# Capability status board
+# 能力状态板
 
 > [!WARNING]
-> **Status as of the corpus freeze, 2026-07-28**
+> **截至语料库冻结、2026-07-28 的状态**
 >
-> Everything below describes the state of things at the moment the sources were captured: the
-> chat archive ends 2026-07-28 at 00:01 and the repository snapshot was taken shortly after
-> midnight UTC the same day. **Nothing on this page has been re-verified since.** Drift has
-> already been observed: the remote `ecc` branch was force-updated within a day of the snapshot,
-> so the description of it below is a snapshot description, not a live one. See
-> [methodology](../appendix/methodology.md).
+> 下面一切描述的是来源被捕获那一刻的状态：聊天档案结束于 2026-07-28 00:01、仓库快照在 UTC 同日午夜后不久被取。**本页从那时起什么都没被重新验证。** 漂移已经被观察到：远程 `ecc` 分支在快照后一天内被强制更新，所以下面关于它的描述是一个快照描述、不是活描述。见[方法论](../appendix/methodology.md)。
 
-**What this page covers.** One table for every capability anyone has tried to unlock on the
-NVIDIA CMP 170HX, with its current status, the mechanism that achieves it, and where to read the
-detail. If you link one page from this wiki, link this one.
+**本页覆盖内容。** 一张表、为每个人在 NVIDIA CMP 170HX 上尝试解锁的每个能力、带它的当前状态、达成它的机制、以及去哪读细节。如果你从这个维基链接一页、就链接这一页。
 
-The short version: **compute and memory are solved and shipping.** An 8 GB card
-(`10de:20c2`) becomes a 64 GB card and a 10 GB card (`10de:2082`) becomes a 40 GB card, with full
-SM throughput restored, using a patched build of the NVIDIA open kernel modules. **PCIe link speed
-(Gen1 to Gen2) is solved and shipping**, merged to `master` on 2026-07-29. **PCIe link width
-(x4 to x16) is solved but requires soldering 24 capacitors**, and is a completely separate
-achievement from link speed. **Everything else** (80 GB on a 10 GB card, Gen3, Gen4, NVLink, ECC,
-P2P) is either unstable, blocked by a fuse with no known lever, unresolved, or untried. The 80 GB
-case is the subtle one: a script-driven coherent register set does reach real memory past 40 GiB,
-but nothing installable does, and 40 GB remains the supported configuration for a 10 GB card.
+短版：**算力和显存已解决并出货。** 一张 8 GB 卡（`10de:20c2`）变成一张 64 GB 卡、一张 10 GB 卡（`10de:2082`）变成一张 40 GB 卡、完整 SM 吞吐被恢复、用一份打过补丁的 NVIDIA 开源内核模块构建。**PCIe 链路速度（Gen1 到 Gen2）已解决并出货**、于 2026-07-29 合并进 `master`。**PCIe 链路位宽（x4 到 x16）已解决但需要焊接 24 颗电容**、并且是与链路速度完全独立的成果。**其它一切**（10 GB 卡上的 80 GB、Gen3、Gen4、NVLink、ECC、P2P）要么不稳定、被一颗无已知杠杆的熔丝阻塞、未解决、或未尝试。80 GB 情况是微妙的那个：一个脚本驱动的连贯寄存器集确实在 40 GiB 后到达真实内存、但没有任何可安装的东西能做到、而 40 GB 仍是 10 GB 卡受支持的配置。
 
-## How to read the status column
+## 如何读状态列
 
-| Label | Meaning |
+| 标签 | 含义 |
 |---|---|
-| **Working (shipped)** | In cmpunlocker `master`. Reproduced by many independent testers. |
-| **Working (hardware)** | Requires a physical board modification. No software component. |
-| **Working (shipped, partially)** | In `master`, but only part of the capability is delivered. |
-| **Working (with caveats)** | Works, with a documented limitation you must plan around. |
-| **Working (hardware + shipped)** | Needs the board modification plus shipped software. Both halves are settled. |
-| **Experimental** | Reproduced once or twice. No burn-in, no second rig, or a known defect in the reporting. |
-| **Attempted and failed** | A serious attempt exists; the result is negative, unstable, or unusable. |
-| **No known lever** | The blocking mechanism is identified and nobody has produced a path past it. |
-| **Not attempted** | Nobody in the record has tried it. |
+| **Working (shipped)** | 在 cmpunlocker `master` 里。被许多独立测试者复现。 |
+| **Working (hardware)** | 需要一次物理板卡改装。无软件成分。 |
+| **Working (shipped, partially)** | 在 `master` 里、但只交付能力的一部分。 |
+| **Working (with caveats)** | 工作、带一个你必须规划的文档化限制。 |
+| **Working (hardware + shipped)** | 需要板卡改装加出货软件。两半都已定论。 |
+| **Experimental** | 被复现一两次。没有烧机、没有第二台机架、或报告里有已知缺陷。 |
+| **Attempted and failed** | 存在一次严肃尝试；结果是负面、不稳定或不可用。 |
+| **No known lever** | 阻塞机制已被识别、没人生产出越过它的路径。 |
+| **Not attempted** | 记录里没人试过。 |
 
-## The board
+## 状态板
 
-| Capability | Status | How it is achieved | Read more |
+| 能力 | 状态 | 如何达成 | 读更多 |
 |---|---|---|---|
-| Compute unlock (SM throttle) | **Working (shipped)** | SEC2 Booter Load fired with an oversized signature buffer opens `FEAT_OVR_PLM 0x00823804`; the driver then writes `SS0 0x0082381c = 0x88888888` and `SS1 0x00823820 = 0x00000008` from the host | [Compute throttle](../unlock/compute-throttle.md) |
-| Memory: 8 GB card to **64 GB** | **Working (shipped)** | `CFG1 0x009a0204 = 0x02779000`, `LMR 0x00100ce0 = 0x0000020B`, `targetFbBytes = 0x0000001000000000` | [Memory geometry](../unlock/memory-geometry.md) |
-| Memory: 10 GB card to **40 GB** | **Working (shipped)** | `CFG1 = 0x02669000`, `LMR = 0x0000028A`, `targetFbBytes = 0x0000000A00000000` | [Memory geometry](../unlock/memory-geometry.md) |
-| Memory: 10 GB card to **80 GB** | **Experimental** (the `80` branch itself: attempted and failed) | The `80` branch reports 81920 MiB then dies above ~40 GB. Separately, a driverless refire chain firing the coherent `CFG1 = 0x02779000` + `LMR = 0x0000028B` (decode `0x10000300`) verified real distinct memory with **no fold** to 77.5 GiB, and 72 GiB at stock boot timings. Limits: roughly one CUDA context per fire before Xid 154, ~79 % of peak bandwidth above the boundary. Not shipped, not installable | [The 80 GB problem](80gb.md) |
-| PCIe **Gen2** (2.5 to 5 GT/s) | **Working (shipped)** | `0007-pcie-gen2.patch` (+ `0008` retrain): 25 Booter-routed register writes plus host BAR0 writes to the XVE / XP3G block. Merged to `master` 2026-07-29 in commit `2e0a2c02`; master's README now carries a `PCIe Gen 2 speeds | Working` row | [PCIe Gen2](../unlock/pcie-gen2.md) |
-| PCIe **x16 width** | **Working (hardware)** | Solder 24 × 0402 220 nF X7R AC-coupling capacitors onto lanes 4-15 (designators C1100-C1350) | [Physical mods](../operations/physical-mods.md) |
-| PCIe **Gen2 at x16 together** | **Working (hardware + shipped)** | Both of the above on one card; no extra step. Published captures: 6.63-6.67 GB/s on one card, 5.97 GB/s on each of four with zero AER errors | [Physical mods](../operations/physical-mods.md) |
-| PCIe **Gen3 / Gen4** | **Attempted and failed** | No mechanism. `FUSE_PCIE_GEN3_DIS 0x00820580 = 0x1`; the supported-speeds vector clips at `0x00000006` | [Gen3 and Gen4](pcie-gen3-gen4.md) |
-| **NVLink** | **No known lever** | Fuse-disabled (`0x00820684 = 0x7`). No FEAT_OVR entry exists for it, no code in any branch, no bridge ever seated | [NVLink](nvlink.md) |
-| **ECC** | **No known lever** | Fused off (`OPT_ECC_EN 0x00820228 = 0x00000000`); `FBPA_ECC_CTRL` MASTER_EN is read-only | [ECC](ecc.md) |
-| **P2P** (peer-to-peer DMA) | **Attempted, unresolved** | An out-of-tree P2P patch builds against a cmpunlocker tree; whether it does anything on a 170HX-only host is disputed | [P2P](p2p.md) |
-| **Multi-card** | **Working (shipped, partially)** | The in-driver patch is per-GPU by construction; the multi-card *installer* is branch-only | [Multi-GPU](../procedures/multi-gpu.md) |
-| **Driver backports** (595 / 590 / 580) | **Experimental** | `clanker/driver-port` branch, per-major-version patch directories. Source-verified, never boot-tested | [Driver versions](../procedures/driver-versions.md) |
+| 算力解锁（SM 节流） | **Working (shipped)** | 带一个超大签名缓冲区发射的 SEC2 Booter Load 打开 `FEAT_OVR_PLM 0x00823804`；驱动随后从主机写 `SS0 0x0082381c = 0x88888888` 和 `SS1 0x00823820 = 0x00000008` | [算力节流](../unlock/compute-throttle.md) |
+| 显存：8 GB 卡到 **64 GB** | **Working (shipped)** | `CFG1 0x009a0204 = 0x02779000`、`LMR 0x00100ce0 = 0x0000020B`、`targetFbBytes = 0x0000001000000000` | [显存几何布局](../unlock/memory-geometry.md) |
+| 显存：10 GB 卡到 **40 GB** | **Working (shipped)** | `CFG1 = 0x02669000`、`LMR = 0x0000028A`、`targetFbBytes = 0x0000000A00000000` | [显存几何布局](../unlock/memory-geometry.md) |
+| 显存：10 GB 卡到 **80 GB** | **Experimental**（`80` 分支本身：attempted and failed） | `80` 分支报告 81920 MiB 然后约 40 GB 之上死掉。分开地、一个免驱动 refire 链发射连贯的 `CFG1 = 0x02779000` + `LMR = 0x0000028B`（解码 `0x10000300`）验证了**无折叠**到 77.5 GiB 的真实不同内存、出厂引导时序下 72 GiB。限制：每次发射在 Xid 154 前约一个 CUDA 上下文、边界之上约 79% 峰值带宽。未出货、不可安装 | [80 GB 问题](80gb.md) |
+| PCIe **Gen2**（2.5 到 5 GT/s） | **Working (shipped)** | `0007-pcie-gen2.patch`（+ `0008` 重训练）：25 次 Booter 路由的寄存器写加对 XVE / XP3G 块的主机 BAR0 写。2026-07-29 在提交 `2e0a2c02` 合并进 `master`；master 的 README 现在带 `PCIe Gen 2 speeds | Working` 行 | [PCIe Gen2](../unlock/pcie-gen2.md) |
+| PCIe **x16 位宽** | **Working (hardware)** | 把 24 × 0402 220 nF X7R 交流耦合电容焊到通道 4-15（设计编号 C1100-C1350） | [物理改装](../operations/physical-mods.md) |
+| PCIe **Gen2 与 x16 一起** | **Working (hardware + shipped)** | 一张卡上上面两者；无额外步骤。已发布捕获：一张卡 6.63-6.67 GB/s、四张各 5.97 GB/s 零 AER 错误 | [物理改装](../operations/physical-mods.md) |
+| PCIe **Gen3 / Gen4** | **Attempted and failed** | 无机制。`FUSE_PCIE_GEN3_DIS 0x00820580 = 0x1`；受支持速度向量裁剪在 `0x00000006` | [Gen3 和 Gen4](pcie-gen3-gen4.md) |
+| **NVLink** | **No known lever** | 熔丝禁用（`0x00820684 = 0x7`）。特性覆盖块里不存在它的条目、任何分支都没有代码、从未插过桥 | [NVLink](nvlink.md) |
+| **ECC** | **No known lever** | 熔断关闭（`OPT_ECC_EN 0x00820228 = 0x00000000`）；`FBPA_ECC_CTRL` MASTER_EN 只读 | [ECC](ecc.md) |
+| **P2P**（点对点 DMA） | **Attempted, unresolved** | 一个树外 P2P 补丁对着一个 cmpunlocker 树构建；它在纯-170HX 主机上是否做任何事有争议 | [P2P](p2p.md) |
+| **多卡** | **Working (shipped, partially)** | 驱动内补丁按构造是每-GPU 的；多卡*安装器*仅分支 | [多卡](../procedures/multi-gpu.md) |
+| **驱动回移植**（595 / 590 / 580） | **Experimental** | `clanker/driver-port` 分支、按主版本的补丁目录。源码验证、从未启动测试 | [驱动版本](../procedures/driver-versions.md) |
 
-## Row-by-row detail
+## 逐行细节
 
-### Compute unlock
+### 算力解锁
 
-Shipped, stable, and the only part of the unlock that survives a Function Level Reset (FLR).
-`FEAT_OVR_PLM 0x00823804` sits on the always-on power island, so once opened it stays open;
-`SS0` and `SS1` likewise persist. This asymmetry is the reason compute shipped before memory.
+已出货、稳定、而且是唯一挺过功能级复位（FLR）的解锁部分。`FEAT_OVR_PLM 0x00823804` 坐在常电功率岛上，所以一旦打开它保持打开；`SS0` 和 `SS1` 也如此持久。这种不对称就是算力先于显存出货的原因。
 
-| Item | Value |
+| 项 | 值 |
 |---|---|
-| SS0 `0x0082381c` | `0x88888888` (a locked card reads a per-die value, e.g. `0x53540175`) |
+| SS0 `0x0082381c` | `0x88888888`（锁定卡读一个按晶片值、例如 `0x53540175`） |
 | SS1 `0x00823820` | `0x00000008` |
-| `FEAT_OVR_PLM 0x00823804` | opened to `0xffffffff` (stock `0xffffff8f`) |
-| Master kill fuse `0x008203f0` | `0x00000000`, unblown. This is why any of it works |
-| Practical success test | `FEATURE_READOUT_1 0x00823818 == 0x00000000` |
-| Survives FLR | Yes |
+| `FEAT_OVR_PLM 0x00823804` | 打开到 `0xffffffff`（出厂 `0xffffff8f`） |
+| 主灭杀熔丝 `0x008203f0` | `0x00000000`、未烧断。这是为什么它任何一个能行 |
+| 实用成功测试 | `FEATURE_READOUT_1 0x00823818 == 0x00000000` |
+| 挺过 FLR | 是 |
 
 > [!WARNING]
-> **Experimental**
+> **实验性**
 >
-> A MIG enable via bit 0 of `0x820840` was demonstrated with three corroborating `nvidia-smi`
-> outputs and reported persistent, but it is not in the shipping tree and only the `1g.64gb`
-> profile exists. INT8/IMMA throughput remains gated after the unlock for reasons nobody has
-> explained.
+> 经 `0x820840` 位 0 的 MIG 使能被演示、带三份佐证的 `nvidia-smi` 输出、并被报告为持久，但它不在出货树里、而且只存在 `1g.64gb` 档位。解锁后 INT8/IMMA 吞吐仍被门控、原因没人解释过。
 
-### Memory geometry
+### 显存几何布局
 
-Geometry does **not** survive an FLR or a power cycle. The patched driver re-applies it on every
-GSP boot, which is why the fix is a driver patch and not a one-shot tool.
+几何布局**不**挺过 FLR 或断电循环。打过补丁的驱动在每次 GSP 引导时重新应用它、这正是修复是一个驱动补丁而非一次性工具的原因。
 
-| Quantity | 8 GB card (`10de:20c2`) | 10 GB card (`10de:2082`) |
+| 量 | 8 GB 卡（`10de:20c2`） | 10 GB 卡（`10de:2082`） |
 |---|---|---|
-| Stock capacity | 8192 MiB | 10240 MiB |
-| Stock `CFG1 0x009a0204` | `0x02449000` | `0x02449000` |
-| Stock `LMR 0x00100ce0` | `0x00000208` | `0x00000288` |
-| Unlocked capacity | **65536 MiB** | **40960 MiB** |
-| Unlocked CFG1 | `0x02779000` | `0x02669000` |
-| Unlocked LMR | `0x0000020B` | `0x0000028A` |
+| 出厂容量 | 8192 MiB | 10240 MiB |
+| 出厂 `CFG1 0x009a0204` | `0x02449000` | `0x02449000` |
+| 出厂 `LMR 0x00100ce0` | `0x00000208` | `0x00000288` |
+| 解锁容量 | **65536 MiB** | **40960 MiB** |
+| 解锁 CFG1 | `0x02779000` | `0x02669000` |
+| 解锁 LMR | `0x0000020B` | `0x0000028A` |
 | `targetFbBytes` | `0x0000001000000000` | `0x0000000A00000000` |
-| Active FBPAs / bus width | 16 FBPAs (8 FBPs), 4096-bit | 20 FBPAs (10 FBPs), 5120-bit |
+| 活动 FBPA / 总线宽度 | 16 个 FBPA（8 个 FBP）、4096-bit | 20 个 FBPA（10 个 FBP）、5120-bit |
 
-A third device ID, `10de:20b0`, is detected by `install.sh` but is **not** unlocked: the in-driver
-gate `_kgspSec2PostblTimingEnabled()` accepts only `0x20C2` and `0x2082`.
+第三个设备 ID `10de:20b0` 会被 `install.sh` 检测到、但**不**被解锁：驱动内门 `_kgspSec2PostblTimingEnabled()` 只接受 `0x20C2` 和 `0x2082`。
 
 > [!CAUTION]
-> **80 GB on a 10 GB card is not a usable configuration**
+> **10 GB 卡上的 80 GB 不是一个可用配置**
 >
-> The `80` branch reports 81920 MiB (85,545,582,592 bytes) and a 77 GiB `cudaMalloc` succeeds,
-> but at 80 GB, kernels touching more than roughly 40 GB cause fatal GPU loss, independent of
-> power limit. Reported Xid codes include Xid 31 (described as harmless) and Xid 154 after CUDA
-> memory tests; the dominant reported symptom is hangs. Xid 31 alone was suggested by a
-> bystander and was not corroborated as *the* signature by the operator with the failing card.
-> As actually built the branch programs CFG1 `0x02779000`, LMR `0x0000028A` and
-> `fb_length 0x0000001400000000`, which is a three-way disagreement and is itself a candidate
-> cause. The `0x0000028B` in that branch's `constants.yaml` is inert metadata: `build.sh` never
-> reads the file. See [The 80 GB problem](80gb.md).
+> `80` 分支报告 81920 MiB（85,545,582,592 字节）、77 GiB 的 `cudaMalloc` 成功，但在 80 GB、触碰超过约 40 GB 的内核造成致命 GPU 丢失、与功耗上限无关。报告的 Xid 码包括 Xid 31（被描述为无害）和 CUDA 显存测试后的 Xid 154；主导报告症状是挂起。Xid 31 单独是一个旁观者提出的、并未被带故障卡的操作者佐证为*那个*签名。按实际构建、分支编程 CFG1 `0x02779000`、LMR `0x0000028A` 和 `fb_length 0x0000001400000000`、那是一个三路不一致、它本身就是一个候选原因。那个分支 `constants.yaml` 里的 `0x0000028B` 是惰性元数据：`build.sh` 从不读那个文件。见[80 GB 问题](80gb.md)。
 
 > [!WARNING]
-> **Experimental: the coherent 80 GB set exists, but not as an install path**
+> **实验性：连贯的 80 GB 集存在、但不是一个安装路径**
 >
-> Separately from the branch, a clean-room refire script fired the *coherent* set
-> (CFG1 `0x02779000` + LMR `0x0000028B`, L2 decode `0x10000300`) on 10 GB cards between
-> 2026-07-23 and 2026-07-27, including at least one unmodded card. Dense tagged write/readback
-> found **no fold** at 77.5 GiB, and 72 GiB passed at stock boot timings. The limits are real:
-> roughly one CUDA context per fire before Xid 154, and about 79 % of peak bandwidth above the
-> boundary. Two operators, no burn-in. Shipping master gives a 10 GB card **40 GB** and that
-> remains the supported configuration.
+> 与分支分开、一个净室 refire 脚本在 2026-07-23 到 2026-07-27 之间在 10 GB 卡上发射了*连贯*集（CFG1 `0x02779000` + LMR `0x0000028B`、L2 解码 `0x10000300`）、包括至少一张未改装卡。稠密带标签写/回读发现 77.5 GiB **无折叠**、出厂引导时序下 72 GiB 通过。限制是真实的：每次发射在 Xid 154 前约一个 CUDA 上下文、边界之上约 79% 峰值带宽。两位操作者、无烧机。出货 master 给 10 GB 卡 **40 GB**、那仍是受支持的配置。
 
-### PCIe: speed and width are two different problems
+### PCIe：速度和位宽是两个不同的问题
 
 > [!NOTE]
-> **Do not conflate these**
+> **不要混为一谈**
 >
-> Gen1 to Gen2 is a **software** change to link speed. x4 to x16 is a **hardware** change to
-> link width, caused by NVIDIA depopulating AC-coupling capacitors on 12 of the 16 lanes.
-> Neither one affects the other. A capacitor mod alone gives Gen1 x16; the Gen2 patch alone
-> gives Gen2 x4.
+> Gen1 到 Gen2 是对链路**速度**的一个**软件**改动。x4 到 x16 是对链路**位宽**的一个**硬件**改动、由 NVIDIA 在 16 条通道中 12 条上缺件交流耦合电容引起。任一不影响另一个。单独一个电容改装给出 Gen1 x16；单独一个 Gen2 补丁给出 Gen2 x4。
 
-| Aspect | Stock, no unlock | With the unlocker | After capacitor mod |
+| 方面 | 出厂、无解锁 | 带解锁器 | 电容改装后 |
 |---|---|---|---|
-| `LnkCap` | `0x00456101` | `0x00456102` | unchanged |
-| `LnkCap2` | `0x00000002` | `0x00000006` | unchanged |
-| `LnkSta` | `0x1041` (2.5 GT/s, x4) | `0x1042` (5 GT/s, x4) | 2.5 GT/s, **x16** |
+| `LnkCap` | `0x00456101` | `0x00456102` | 不变 |
+| `LnkCap2` | `0x00000002` | `0x00000006` | 不变 |
+| `LnkSta` | `0x1041`（2.5 GT/s、x4） | `0x1042`（5 GT/s、x4） | 2.5 GT/s、**x16** |
 | `nvidia-smi` cur/max/width | 1, 1, 4 | 2, 2, 4 | 1, 1, 16 |
-| Measured bandwidth | ~0.85 GB/s (Gen1 x4) | ~1.71 GB/s (Gen2 x4) | 2.88 GB/s (Gen1 x16) |
+| 实测带宽 | 约 0.85 GB/s（Gen1 x4） | 约 1.71 GB/s（Gen2 x4） | 2.88 GB/s（Gen1 x16） |
 
-Capacitor mod specification: **24 parts** (2 per differential pair × 12 depopulated lanes),
-**0402, 220 nF (0.22 µF), X7R, ≥6.3 V**, designators in the **C1100-C1350** range. Confirmed part:
-Taiyo Yuden `MAASJ105SB7224KFCA01`. The value comes from the NVIDIA A100 GA100-883 reference schematic
-P1001-B02 page 3 ("IO: PCIe CONNECTOR"). Populating only 12 of the 24 yields x8, because PCIe
-width negotiation falls back to the next legal width (16 to 8 to 4 to 1). An x8 result after a mod
-means incomplete or bridged solder work, not a distinct hardware limit.
+电容改装规格：**24 颗部件**（每差分对 2 颗 × 12 条缺件通道）、**0402、220 nF（0.22 µF）、X7R、≥6.3 V**、设计编号在 **C1100-C1350** 范围。确认部件：Taiyo Yuden `MAASJ105SB7224KFCA01`。该值来自 NVIDIA A100 GA100-883 参考原理图 P1001-B02 第 3 页（"IO: PCIe CONNECTOR"）。24 颗中只装 12 颗得到 x8、因为 PCIe 位宽协商回退到下一个合法位宽（16 到 8 到 4 到 1）。改装后一个 x8 结果意味着不完整或桥接的焊锡工作、不是一个不同的硬件限制。
 
-Gen2 is **absent from shipping master**: master carries patches `0001` through `0006` only, with
-no `pcie:` block in `constants.yaml`. `0007-pcie-gen2.patch` exists on branches `debug-gen2`,
-`Gen2`, `far` and `deced`; `0008-pcie-gen2-probe-retrain.patch` on `Gen2`, `far` and `deced`.
+Gen2 **不在出货 master 里**：master 只带补丁 `0001` 到 `0006`、`constants.yaml` 里没有 `pcie:` 块。`0007-pcie-gen2.patch` 存在于分支 `debug-gen2`、`Gen2`、`far` 和 `deced` 上；`0008-pcie-gen2-probe-retrain.patch` 在 `Gen2`、`far` 和 `deced` 上。
 
 > [!WARNING]
-> **Experimental**
+> **实验性**
 >
-> Gen2 does not train on every host. One Intel platform (ASUS W890 SAGE, Ubuntu 24.04) never
-> reached Gen2 across two branches, an external fork, two slots, and both modded and unmodded
-> cards, while an AMD HiveOS host reached it with no kernel command line changes at all. Gen2
-> also does not train inside a VM under VFIO passthrough, and Thunderbolt 3 enclosures fail the
-> *unlock itself*, not merely the link (`Booter Load 0x15 / 0xffff`,
-> `RmInitAdapter failed! (0x62:0xffff:2119)`). Oculink works because it is essentially a riser.
+> Gen2 不在每个主机上训练。一个 Intel 平台（ASUS W890 SAGE、Ubuntu 24.04）跨两个分支、一个外部 fork、两个插槽、改装和未改装卡都没到过 Gen2，而一个 AMD HiveOS 主机根本不做内核命令行改动就到了。Gen2 也不在 VFIO 直通下的 VM 内训练、而且 Thunderbolt 3 坞彻底失败*解锁本身*、不只链路（`Booter Load 0x15 / 0xffff`、`RmInitAdapter failed! (0x62:0xffff:2119)`）。Oculink 有效、因为它本质上是一块转接卡。
 >
-> **This may already be fixed.** On 2026-07-27, the last Gen2 status change in the record, the
-> maintainer published branch `deced` and stated the hardcoded `0a:00.0` PCI address was "the big
-> bug that I think was causing all the issues", with VM passthrough named as the only known
-> remaining case. No tester report came back before the corpus froze, and the wiki's own analysis
-> holds that the file `deced` changed (`tools/retrain.sh`) is dead code on that lineage, which is
-> an unresolved conflict. See [dead ends](../history/dead-ends.md).
+> **这可能已经被修复。** 在 2026-07-27、记录里最后一次 Gen2 状态变化、维护者发布了分支 `deced` 并陈述硬编码的 `0a:00.0` PCI 地址是 "the big bug that I think was causing all the issues"（我认为造成所有问题的那个大 bug）、VM 直通被点名作唯一已知剩余情况。语料库冻结前没有测试者报告回来、维基自己的分析认为 `deced` 改变的那个文件（`tools/retrain.sh`）在那个谱系上是死代码、那是一个未解决冲突。见[死路](../history/dead-ends.md)。
 
 > [!NOTE]
-> **Gen2 at x16 needs no extra step**
+> **Gen2 在 x16 无需额外步骤**
 >
-> It is the capacitor mod plus the shipped Gen2 code, with nothing additional to do. First
-> captured 2026-07-26: `PCIe GEN 2@16x`, `ocl_pcie_bw` 6.63-6.67 GB/s, nvtop TX 7.061 GiB/s.
-> A second builder posted four cards across two board revisions with `lspci` captures and zero
-> AER correctable or fatal errors over 90 minutes of continuous load. Long burn-in figures
-> have not been published by anyone.
+> 它是电容改装加出货 Gen2 代码、没有任何额外要做的事。首次捕获 2026-07-26：`PCIe GEN 2@16x`、`ocl_pcie_bw` 6.63-6.67 GB/s、nvtop TX 7.061 GiB/s。第二位构建者贴出跨两个板修订的四张卡、带 `lspci` 捕获、90 分钟持续负载零 AER 可纠正或致命错误。没人发布过长时间烧机数字。
 
-### Gen3 and Gen4
+### Gen3 和 Gen4
 
-Attempted repeatedly and failed. Two fuses read `0x00000001` on both 170HX SKUs:
-`FUSE_PCIE_GEN23_DIS 0x0082057c` and `FUSE_PCIE_GEN3_DIS 0x00820580`. The Gen2 patch attempts to
-write `0x0082057c` to zero through the Booter and **the write fails**
-(`status=0xffff rd=0x00000001`, followed by
-`SEC2_DEBUG: PCIe xp3g booter FAILED to set OPT_GEN23`). Gen2 is reached instead by the `CYA_0` /
-`LINK_CONFIG_0` / XP3G / `PRIV_MISC_1` overrides plus a root-port retrain. `0x00820580` has never
-been written by anyone and no code path ever requests a target link speed above 2. Forcing the PHY
-rate to a Gen3-capable `0x00340036` left the link at Gen1. Gen4 is additionally blocked on
-equipment: the researcher who pursued it had no Gen4-capable host.
+被反复尝试并失败。两个熔丝在两个 170HX SKU 上都读 `0x00000001`：`FUSE_PCIE_GEN23_DIS 0x0082057c` 和 `FUSE_PCIE_GEN3_DIS 0x00820580`。Gen2 补丁尝试经 Booter 把 `0x0082057c` 写零、**写失败**（`status=0xffff rd=0x00000001`、随后 `SEC2_DEBUG: PCIe xp3g booter FAILED to set OPT_GEN23`）。Gen2 改经 `CYA_0` / `LINK_CONFIG_0` / XP3G / `PRIV_MISC_1` 覆盖加一次根端口重训练达到。`0x00820580` 从没被任何人写过、也没有代码路径请求过高于 2 的目标链路速度。把 PHY 速率强制到一个 Gen3 能力的 `0x00340036` 让链路留在 Gen1。Gen4 额外被设备阻塞：追它的研究者没有 Gen4 能力的主机。
 
 ### NVLink
 
-| Register | Value on 170HX | Meaning |
+| 寄存器 | 170HX 上的值 | 含义 |
 |---|---|---|
-| `FUSE_NVLINK_DIS 0x00820684` | `0x00000007` | all three bits of the `[2:0]` disable field set |
-| `STATUS_OPT_NVLINK 0x00820DB8` | `0x00000007` | read-only mirror agrees |
-| `FUSE_NVLINK_DEFECTIVE 0x0082068C` | `0x00000000` | the silicon is intact; this is segmentation, not yield repair |
-| `PTOP_SCAL_NUM_NVLINK 0x0002246C` | `0x0000000c` | the die carries the full 12-link GA100 complement |
-| `CTRL_OPT_NVLINK 0x008209B8` | `0x00000000` | and `FUSE_EN_SW_OVERRIDE = 0x0`, so this path is inert |
+| `FUSE_NVLINK_DIS 0x00820684` | `0x00000007` | `[2:0]` 禁用字段的三个位全部置位 |
+| `STATUS_OPT_NVLINK 0x00820DB8` | `0x00000007` | 只读镜像一致 |
+| `FUSE_NVLINK_DEFECTIVE 0x0082068C` | `0x00000000` | 硅片完好；这是分区、不是产量修复 |
+| `PTOP_SCAL_NUM_NVLINK 0x0002246C` | `0x0000000c` | 晶片携带完整 12 链路 GA100 配置 |
+| `CTRL_OPT_NVLINK 0x008209B8` | `0x00000000` | 而 `FUSE_EN_SW_OVERRIDE = 0x0`、所以这条路径惰性 |
 
-There is no NVLink register anywhere in the `0x00823800`-`0x0082382C` feature-override block, so
-the mechanism that unlocked compute does not apply. No branch contains NVLink code. Nobody in the
-record has ever had a 170HX and an A100 NVLink bridge at the same time, so it is not even
-established that the connectors align.
+`0x00823800`-`0x0082382C` 特性覆盖块里任何地方都没有 NVLink 寄存器、所以解锁算力的那个机制不适用。任何分支都不含 NVLink 代码。记录里从没有人同时持有一张 170HX 和一块 A100 NVLink 桥、所以连接器是否对齐甚至都没被确立过。
 
 ### ECC
 
-Fused off with no telemetry. `OPT_ECC_EN 0x00820228` reads `0x00000000` on both 170HX units and
-`0x00000001` on A100 SXM4 40G, A100 PCIe 40G, A100 PCIe 80G, A10, A5000, A6000 and the Drive A100.
-`FBPA_ECC_CTRL 0x009a0470` reads `0x00000000` with `MASTER_EN` (bit 0) read-only, against
-`0x00000041` on A100. The feature-override shadows exist and are populated
-(`FEAT_OVR_ECC 0x0082380c = 0x00888888`, `_1 0x00823810 = 0x002aaaaa`, `_2 0x0082382c = 0x0000000a`)
-but nothing has ever been written to them. `nvidia-smi -q` reports every ECC field as `N/A`.
+熔断关闭、无遥测。`OPT_ECC_EN 0x00820228` 在两张 170HX 单元上读 `0x00000000`、在 A100 SXM4 40G、A100 PCIe 40G、A100 PCIe 80G、A10、A5000、A6000 和 Drive A100 上读 `0x00000001`。`FBPA_ECC_CTRL 0x009a0470` 读 `0x00000000` 配 `MASTER_EN`（位 0）只读、对比 A100 上的 `0x00000041`。特性覆盖影子存在且被填充（`FEAT_OVR_ECC 0x0082380c = 0x00888888`、`_1 0x00823810 = 0x002aaaaa`、`_2 0x0082382c = 0x0000000a`）但从来没被写过。`nvidia-smi -q` 把每个 ECC 字段报告为 `N/A`。
 
-The branch literally named `ecc` contains **no ECC code**: one commit, "Fixed dual geometry
-support", and a standard 64/40 GB `constants.yaml`.
+字面上名为 `ecc` 的分支含**无 ECC 代码**：一个提交、"Fixed dual geometry support"、和一个标准的 64/40 GB `constants.yaml`。
 
-**Practical consequence:** an unlocked 170HX has no ECC counter, so silent corruption above the
-real capacity ceiling never surfaces as an error statistic.
+**实际后果：** 一张解锁的 170HX 没有 ECC 计数器，所以真实容量上限之上的静默损坏从不作为一个错误统计浮出水面。
 
 ### P2P
 
-`torch.cuda.can_device_access_peer` returns `False` for all 56 pairs on an 8-card host, ggml logs
-show zero P2P activity, and a `MIG 1g.64gb` instance reports `P2P: No`. An out-of-tree P2P patch
-was successfully built into a cmpunlocker tree, after which one tester reported it "doesn't seem
-to take effect on the 170HX" and only helps when other GPU models share the machine. A second
-report of "p2p + cmpunlock working" on the same day came from a rig that also contained two
-RTX 3090s, which is exactly the mixed-model case, so the two reports may not conflict.
-No `p2pBandwidthLatencyTest` matrix from a 170HX-only host exists.
+`torch.cuda.can_device_access_peer` 对一个 8 卡主机的全部 56 个对返回 `False`、ggml 日志显示零 P2P 活动、一个 `MIG 1g.64gb` 实例报告 `P2P: No`。一个树外 P2P 补丁成功构建进一个 cmpunlocker 树、之后一位测试者报告它 "doesn't seem to take effect on the 170HX"（在 170HX 上似乎没生效）、只在机器上有其它型号 GPU 时帮忙。同一天第二份 "p2p + cmpunlock working"（p2p + cmpunlock 工作）报告来自一台也含两张 RTX 3090 的机架、那恰好是混合型号情况，所以两份报告可能不冲突。纯-170HX 主机上不存在 `p2pBandwidthLatencyTest` 矩阵。
 
-### Multi-card
+### 多卡
 
-The in-driver patch reads `pGpu->idInfo.PCIDeviceID` on every GSP boot, so **a multi-card host is
-unlocked correctly even by shipping master**, including a mixed 8 GB / 10 GB host. What master
-lacks is installer support: its `install.sh` inspects only the first matching GPU
-(`lspci ... | head -1`) and builds with a single profile.
+驱动内补丁在每次 GSP 引导读 `pGpu->idInfo.PCIDeviceID`，所以**一个多卡主机即使被出货 master 也正确解锁**、包括一个混合 8 GB / 10 GB 主机。master 缺的是安装器支持：它的 `install.sh` 只检查第一张匹配的 GPU（`lspci ... | head -1`）并以单一档位构建。
 
-The `multiple-cards` branch (tip `b1cb6d8`, committed 2026-07-19T05:41Z, which is 2026-07-18
-local time in the author's `-07:00` zone) enumerates every
-`10de:20b0|10de:20c2|10de:2082` device, builds per-BDF profile arrays, adds a third `mixed`
-profile that sets `SKIP_GEOMETRY_REWRITE=1`, persists an inventory to
-`/lib/modules/$(uname -r)/updates/cmpunlocker/gpu_inventory`, and adds a `verify.sh` that checks
-each card by PCI bus ID. The same installer is folded into the `Gen2` branch. Neither has merged.
+`multiple-cards` 分支（tip `b1cb6d8`、提交于 2026-07-19T05:41Z、在作者的 `-07:00` 时区是 2026-07-18 当地时间）枚举每个 `10de:20b0|10de:20c2|10de:2082` 设备、构建按-BDF 档位数组、加一个设 `SKIP_GEOMETRY_REWRITE=1` 的第三个 `mixed` 档位、把一份清单持久化到 `/lib/modules/$(uname -r)/updates/cmpunlocker/gpu_inventory`、并加一个按 PCI 总线 ID 检查每张卡的 `verify.sh`。同一个安装器被折进 `Gen2` 分支。两者都没有合并。
 
-### Driver backports
+### 驱动回移植
 
-| Tree | Versions | Boot-tested |
+| 树 | 版本 | 启动测试过 |
 |---|---|---|
-| Shipping `master` | `610.43.03` (default), `610.43.02` | Yes, both |
-| `clanker/driver-port` | 12 in `driver/VERSION`, 5 in `constants.yaml` (`610.43.03`, `610.43.02`, `595.71.05`, `590.48.01`, `580.105.08`) | **No** |
+| 出货 `master` | `610.43.03`（默认）、`610.43.02` | 是、两者 |
+| `clanker/driver-port` | `driver/VERSION` 里 12 个、`constants.yaml` 里 5 个（`610.43.03`、`610.43.02`、`595.71.05`、`590.48.01`、`580.105.08`） | **否** |
 
-Master hard-fails the build on any version outside its two-entry whitelist. The port branch adds
-per-major-version patch directories: `580` (37,034 B), `590` (37,118 B), `595` (36,993 B) and
-`610` (37,415 B, **byte-identical to master**). The branch's own `VERSION` and `constants.yaml`
-disagree about which versions are even claimed, which is an acknowledged internal inconsistency.
+Master 对白名单两个条目之外的任何版本硬失败构建。移植分支加按主版本的补丁目录：`580`（37,034 B）、`590`（37,118 B）、`595`（36,993 B）和 `610`（37,415 B、**与 master 逐字节相同**）。分支自己的 `VERSION` 和 `constants.yaml` 在甚至声称哪些版本上都意见不合、那是一个被承认的内部不一致。
 
 > [!WARNING]
-> **Experimental**
+> **实验性**
 >
-> No boot has been reported on any 595, 590 or 580 build. The patches apply cleanly and the
-> sizes are plausible; that is the entire basis. One tester per branch reporting
-> `dmesg | grep SEC2_DEBUG` and the `POST-BooterLoad verify` line would settle it.
+> 任何 595、590 或 580 构建上都没有报告过启动。补丁干净应用、大小看似合理；那就是全部依据。每个分支一个测试者报告 `dmesg | grep SEC2_DEBUG` 和 `POST-BooterLoad verify` 行能定论它。
 
-## Secondary capabilities
+## 次要能力
 
-| Capability | Status | Notes |
+| 能力 | 状态 | 备注 |
 |---|---|---|
-| MIG | **Experimental** | Enable via bit 0 of `0x820840` demonstrated and reported persistent; only the `1g.64gb` profile exists, `-cgi 9,3g.20gb -C` returns `Invalid Argument`. Not upstreamed. |
-| Resizable BAR | **Not attempted** | The card advertises a Physical Resizable BAR capability, reportedly limited to 64 MiB. Master deliberately clamps the BAR0/PRAMIN window to the 8 GiB stock offset for both device IDs. |
-| SR-IOV | **Not attempted** | No SR-IOV extended capability appears in the archived `lspci -vvv` capture, which is suggestive but was captured for other purposes. |
-| NVENC | **No known lever** | Probably a silicon absence: GA100 generally lacks NVENC hardware. NVDEC is present. |
-| Windows | **Not attempted** | The unlock is a patch to the Linux open kernel modules and has no Windows analogue. A driverless Python compute-only attempt is the only credible cheap experiment. |
-| VM passthrough | **Working (with caveats)** | Compute and memory unlock work under Proxmox, but the guest must use **SeaBIOS, not UEFI/OVMF**; UEFI produces `RmInitAdapter` failures that look like the exploit simply not working. Gen2 does not train in a guest. |
-| Thunderbolt 3 eGPU | **Attempted and failed** | Booter Load fails outright. Use bare metal or Oculink. |
+| MIG | **Experimental** | 经 `0x820840` 位 0 的使能被演示并报告持久；只存在 `1g.64gb` 档位、`-cgi 9,3g.20gb -C` 返回 `Invalid Argument`。未上游化。 |
+| Resizable BAR | **Not attempted** | 卡宣告一个 Physical Resizable BAR 能力、据报告限制到 64 MiB。Master 刻意把两个设备 ID 的 BAR0/PRAMIN 窗口钳到 8 GiB 出厂偏移量。 |
+| SR-IOV | **Not attempted** | 归档的 `lspci -vvv` 捕获里没有出现 SR-IOV 扩展能力、那有提示性却为其它目的捕获。 |
+| NVENC | **No known lever** | 很可能是硅片缺失：GA100 普遍缺 NVENC 硬件。NVDEC 存在。 |
+| Windows | **Not attempted** | 解锁是对 Linux 开源内核模块的补丁、没有 Windows 对应物。一个免驱动 Python 仅算力尝试是唯一可信的便宜实验。 |
+| VM 直通 | **Working (with caveats)** | 算力和显存解锁在 Proxmox 下工作、但客户机必须用 **SeaBIOS、不要 UEFI/OVMF**；UEFI 产生看起来像利用干脆不工作的 `RmInitAdapter` 失败。Gen2 不在客户机里训练。 |
+| Thunderbolt 3 eGPU | **Attempted and failed** | Booter Load 彻底失败。用裸金属或 Oculink。 |
 
-## Where the frontier actually is
+## 前沿实际在哪
 
-Ranked by how close each is to falling, the live problems are: **Gen2 merged to master**
-(blocked on cleanup, not on knowledge), **the coherent 80 GB set carried by a driver build rather
-than a fire script**, and with it the Xid 154 one-context-per-fire limit that is now the real
-80 GB blocker rather than the fold,
-**Gen3 via `0x00820580 = 0`** (never attempted, but the prior is low: the neighbouring
-`0x0082057c` write through the same `xp3g` table is observed to fail on silicon),
-**P2P measured on a 170HX-only pair**, and **ECC** (blocking mechanism identified, no lever found).
-NVLink is the highest-value unknown with nothing tractable on the table.
+按每项离倒下的距离排序、活问题是：**Gen2 合并进 master**（被清理、不被知识阻塞）、**由一个驱动构建而非发射脚本携带的连贯 80 GB 集**、以及随之而来的 Xid 154 每次发射一个上下文限制、它现在是真正的 80 GB 阻塞者而非折叠、**经 `0x00820580 = 0` 的 Gen3**（从未尝试、但先验低：经同一个 `xp3g` 表对相邻 `0x0082057c` 的写被观察到在硅片上失败）、**在纯-170HX 对上测量的 P2P**、和 **ECC**（阻塞机制已识别、未找到杠杆）。NVLink 是最高价值的未知、桌上没有任何可处理的。
 
-Every one of these, with what has been tried and what evidence would settle it, is in the
-[open-problem register](open-questions.md).
+这些每一个、带试过什么和什么证据能定论它、都在[未解问题登记](open-questions.md) 里。

@@ -1,204 +1,150 @@
-# Power and PSU
+# 供电与 PSU
 
-## What this page covers
+## 本页覆盖内容
 
-Getting power into a CMP 170HX in practice: the connector and the adapter it needs, how big
-a PSU to buy, what the card actually draws at idle and under load, how to power-limit it
-with `nvidia-smi`, and what a power limit does and does not do for stability. The on-board
-rails, VRM topology and phase-depopulation story are on
-[Power delivery](../hardware/power-delivery.md).
+实际把电送进一张 CMP 170HX：它需要的连接器和转接座、PSU 该买多大、卡在空转和负载下实际抽多少、如何用 `nvidia-smi` 给它做功耗限制、以及功耗限制对稳定性做什么、不做什么。板载电压轨、VRM 拓扑和相位缺件故事在[板载供电](../hardware/power-delivery.md)。
 
-Four things to know before you wire anything:
+接线前要知道的四件事：
 
-- The card has **one 8-pin EPS (CPU-style) socket**, not a PCIe 8-pin. It ships with a
-  dual-8-pin-PCIe-to-EPS Y adapter. **Forcing a PCIe cable into it will damage the card.**
-- `lspci` reports `SlotPowerLimit 75 W` in DevCap, so everything above 75 W arrives on that
-  one connector.
-- Stock firmware gives **250 W default = 250 W maximum, 100 W minimum**. There is no
-  headroom above stock. Only the NVIDIA-issued 300 W "OC mining" VBIOS raises the ceiling.
-- `nvidia-smi -pl` **works fine** on this card. The recurring claim that "there is no way to
-  power limit these cards" is wrong.
+- 卡有**一个 8-pin EPS（CPU 式）插座**、不是 PCIe 8-pin。它发货带一条双 8-pin-PCIe-to-EPS Y 转接线。**强塞一根 PCIe 线进它会损坏卡。**
+- `lspci` 在 DevCap 里报告 `SlotPowerLimit 75 W`，所以 75 W 之上的一切都通过那一个连接器到达。
+- 出厂固件给出 **250 W 默认 = 250 W 最大、100 W 最小**。出厂之上没有余量。只有 NVIDIA 签发的 300 W "OC mining" VBIOS 提高上限。
+- `nvidia-smi -pl` **在这张卡上工作正常**。"there is no way to power limit these cards"（没有办法给这些卡做功耗限制）这个反复出现的声称是错的。
 
 ---
 
-## The connector
+## 连接器
 
-| Property | Value |
+| 属性 | 值 |
 |---|---|
-| Physical connector | 1 x 8-pin EPS (CPU-style) |
-| Logical rails behind it | **two** separate 12 V inputs, `12V_EXT1` and `12V_EXT2`, combined into one socket |
-| EPS 8-pin rating | 300 W |
-| PCIe 8-pin rating | 150 W |
-| Supplied adapter | dual 8-pin PCIe to 8-pin EPS Y adapter, in the box |
-| Per-pin capability | roughly 70-80 W per good-quality pin |
-| PCIe slot contribution | `SlotPowerLimit 75 W` (DevCap) |
+| 物理连接器 | 1 x 8-pin EPS（CPU 式） |
+| 它后面的逻辑轨 | **两条**独立的 12 V 输入、`12V_EXT1` 和 `12V_EXT2`、合并进一个插座 |
+| EPS 8-pin 额定 | 300 W |
+| PCIe 8-pin 额定 | 150 W |
+| 随附转接座 | 双 8-pin PCIe 到 8-pin EPS Y 转接座、在盒子里 |
+| 每引脚能力 | 优质引脚约 70-80 W |
+| PCIe 插槽贡献 | `SlotPowerLimit 75 W`（DevCap） |
 
 > [!CAUTION]
-> **Never plug a PCIe 8-pin cable into the card's EPS socket**
+> **绝不要把 PCIe 8-pin 线缆插进卡的 EPS 插座**
 >
-> The two connectors are keyed differently and can only be forced together. **If forced, the
-> 12 V and ground lines are swapped on some pins between the two connector types and the card
-> will be damaged.** Use the supplied 2 x PCIe-to-EPS adapter, or a proper EPS cable for your
-> PSU. Practical guidance from
-> builders: at 150 W use one leg of the supplied adapter, at 300 W use both legs or source
-> proper cables.
+> 两个连接器键位不同、只能硬塞在一起。**如果硬塞、两种连接器类型在部分引脚上的 12 V 和地线是调换的、卡会被损坏。** 用随附的 2 x PCIe-to-EPS 转接座、或为你的 PSU 找一条合适的 EPS 线缆。构建者的实用指导：150 W 时用随附转接座的一条腿、300 W 时用两条腿或买合适的线缆。
 
 > [!CAUTION]
-> **Do not reuse a modular PSU cable across PSU brands**
+> **不要跨 PSU 品牌复用模组线**
 >
-> Modular cables are vendor-specific with no standard modular-side pinout. Reusing one
-> across brands can destroy hardware. A modular EPS12V cable must carry 4 x 12 V and
-> 4 x GND on **both** ends.
+> 模组线是厂商专用的、没有标准的模组侧引脚定义。跨品牌复用会毁硬件。一条模组 EPS12V 线缆必须在**两端**都带 4 x 12 V 和 4 x GND。
 
-Two mechanical gotchas reported first-hand:
+两个一手报告的机械坑：
 
-- Most PSU-integrated EPS cables have **oversized retention clips that physically will not
-  fit** the card's socket. This is the usual reason people fall back to the PCIe-to-EPS
-  adapter even when their PSU has a spare EPS output.
-- The supplied adapter expects **two** PCIe 8-pin (6+2) feeds. At least one build failed
-  because the PSU provided 1 x PCIe 6+2 and 1 x 6-pin instead of two 6+2 connectors. Count
-  your PSU's actual PCIe connectors before ordering cards.
+- 大多数 PSU 集成的 EPS 线缆有**物理上塞不进**卡插座的过大保持夹。这是即使 PSU 有备用 EPS 输出、人们仍回退到 PCIe-to-EPS 转接座的通常原因。
+- 随附转接座预期**两条** PCIe 8-pin（6+2）供电。至少一次构建失败、因为 PSU 提供 1 x PCIe 6+2 和 1 x 6-pin 而非两个 6+2 连接器。订卡前数一下你 PSU 实际的 PCIe 连接器。
 
-Note also that several 3D-printed shrouds **block access to the EPS plug**. Test-fit with the
-cable installed. See [Cooling](cooling.md).
+还要注意几个 3D 打印导流罩**挡住 EPS 插头**。带已装线缆试装。见[散热](cooling.md)。
 
 ---
 
-## PSU sizing
+## PSU 尺寸
 
-| Build | Guidance | Basis |
+| 构建 | 指导 | 依据 |
 |---|---|---|
-| Two cards at 150 W each plus a mid-range desktop CPU | **~600 W on the 12 V rail** minimum (two cards plus a Ryzen 5 3600 estimated at about 400 W total) | connector ratings plus builder consensus |
-| Five cards at 250 W each (~1250 W of GPU load) | **1600-2000 W** | builder consensus |
-| Any build | budget **75 W of the card's draw to the slot** and the rest to the EPS connector | `lspci` DevCap |
+| 两张卡各 150 W 加一个中端桌面 CPU | **12 V 轨约 600 W** 最小（两张卡加一个 Ryzen 5 3600 估计总共约 400 W） | 连接器额定加构建者共识 |
+| 五张卡各 250 W（约 1250 W GPU 负载） | **1600-2000 W** | 构建者共识 |
+| 任何构建 | 把卡的功耗中**75 W 预算给插槽**、其余给 EPS 连接器 | `lspci` DevCap |
 
-Size against your intended power limit, not against 250 W, if you are going to run
-`-pl 160` or `-pl 200`: the throughput cost is small (see below) and it changes the PSU
-class you need for a dense rig.
+如果你要跑 `-pl 160` 或 `-pl 200`、按你打算的功耗上限而非 250 W 定尺寸：吞吐代价很小（见下）、而它改变密集机架需要的 PSU 等级。
 
-For multi-card rigs, budget idle as well as load. Twenty cards sitting at about 30 W each is
-roughly **600-700 W just to exist**, on the order of $1000/yr at average US electricity
-prices. A six-card llama.cpp layer-split system drew about **600 W total**, far under
-6 x 250 W, because a pipeline split does not saturate every GPU simultaneously.
+对多卡机架、把空转也预算进去。二十张卡各坐约 30 W 是**只是放着就约 600-700 W**、按美国平均电价每年约 $1000 量级。一个六卡 llama.cpp 层拆分系统抽约 **600 W 总计**、远低于 6 x 250 W、因为流水线拆分不会同时饱和每张 GPU。
 
-Host platform choice can dominate the whole rig's idle figure. Measured contrast points:
+主机平台选择可以主导整个机架的空转数字。实测对比点：
 
-| Host | Idle |
+| 主机 | 空转 |
 |---|---|
-| Dual Intel Xeon 6200 + Optane PMem 200, 1.2 TB | **400-600 W**, even with low P-states |
-| Dual EPYC 7713 + 1 TB DDR4 | ~200-250 W |
-| Single EPYC 7D12, whole system | 80 W |
-| EPYC 7261 with one 8 GB stick | 30 W |
+| 双 Intel Xeon 6200 + Optane PMem 200、1.2 TB | **400-600 W**、即使在低 P 状态 |
+| 双 EPYC 7713 + 1 TB DDR4 | 约 200-250 W |
+| 单 EPYC 7D12、整个系统 | 80 W |
+| 带一根 8 GB 内存条的 EPYC 7261 | 30 W |
 
 ---
 
-## Measured idle draw
+## 实测空转功耗
 
-Idle sits at **27-46 W** and is strongly temperature- and residency-dependent.
+空转坐在 **27-46 W**、强烈依赖温度和驻留。
 
-| Card / condition | Idle draw |
+| 卡 / 条件 | 空转功耗 |
 |---|---|
-| 10 GB card | **27 W** (attributed to the lower memory clock) |
-| Stock card, 2023 review | ~30 W |
-| 8 GB card, second owner | 30-35 W |
-| 8 GB card, measured beside the 10 GB card | **33 W** |
-| Three unlocked 40 GB cards, `nvtop` | 34 / 33 / 36 W |
-| Locked 8 GB card in a cold room, 29 C | 37 W |
-| Unlocked 10 GB card, `nvidia-smi -q` instantaneous | **37.51 W** |
-| 8 GB card, one owner | 44 W |
-| Unlocked card in P0 at 61-62 C | 44 W |
-| Any card with an LLM held resident in VRAM | **~33 W rises to ~45 W** |
+| 10 GB 卡 | **27 W**（归因于更低的显存时钟） |
+| 出厂卡、2023 回顾 | 约 30 W |
+| 8 GB 卡、第二位拥有者 | 30-35 W |
+| 8 GB 卡、在 10 GB 卡旁测量 | **33 W** |
+| 三张解锁 40 GB 卡、`nvtop` | 34 / 33 / 36 W |
+| 冷室里的锁定 8 GB 卡、29 C | 37 W |
+| 解锁 10 GB 卡、`nvidia-smi -q` 瞬时 | **37.51 W** |
+| 8 GB 卡、一位拥有者 | 44 W |
+| 61-62 C 下 P0 里的解锁卡 | 44 W |
+| 任何在 VRAM 里驻留一个 LLM 的卡 | **约 33 W 升到约 45 W** |
 
-Three confounders explain the spread, and they have never been varied one at a time:
+三个混淆因素解释这种分布、它们从没被一次一个地变化过：
 
-1. **Variant.** The 8 GB card reads higher than the 10 GB card, attributed to memory clock.
-2. **Die temperature.** Leakage rises with temperature, so a cooler card genuinely idles
-   lower. See [Thermals](../hardware/thermals.md).
-3. **Resident CUDA context.** Holding a model in VRAM raises core clocks and costs roughly
-   +12 W, enough to spin system fans up.
+1. **变体。** 8 GB 卡读得比 10 GB 卡高、归因于显存时钟。
+2. **晶片温度。** 泄漏随温度上升，所以更冷的卡真实空转更低。见[热设计](../hardware/thermals.md)。
+3. **驻留的 CUDA 上下文。** 在 VRAM 里持有模型提高核心时钟、花费约 +12 W、足以把系统风扇转起来。
 
 > [!NOTE]
-> **Open problem: nobody has isolated the idle-power variables**
+> **未解问题：没人隔离过空转功耗变量**
 >
-> What would settle it: one card, one host, `nvidia-smi` idle draw logged at three
-> controlled die temperatures, with and without a resident CUDA context.
+> 什么能解决它：一张卡、一台主机、在三个受控晶片温度下、带和不带驻留 CUDA 上下文、记录 `nvidia-smi` 空转功耗。
 
-### There is no idle P-state, and no tool fixes that
+### 没有空转 P 状态、也没有工具能修复
 
-- The card exposes only **P0** in every capture, and `NvAPI_GPU_SetForcePstate` returns
-  `NVAPI_ERROR` on single-P0 cards.
-- `nvidia-pstated` **does not help the 170HX**. The community fork that works on 2-P-state
-  cards (P100, V100) was tried and produced no change. The same daemon takes a CMP 90HX from
-  **75 W to 5 W**, which is why expectations were high.
-- The application-clock fallback (`nvidia-smi -i N -ac <mem,gpu>`, restored with `-rac`,
-  implemented via `nvmlDeviceSetApplicationsClocks` rather than NvAPI) saves 13 W on a
-  V100S and 16-18 W per GPU on V100 SXM2, but **has never been demonstrated on the 170HX**.
-  Its single memory-clock domain is the obvious obstacle: on the 170HX there is exactly one
-  supported memory clock to select.
-- The core clock floor is 210 MHz and the memory clock is effectively fixed, which is the stated
-  reason idle power stays high. The 10 GB figure is 1215 MHz; the 8 GB figure is unresolved (see
-  below).
+- 卡在每一次捕获里只暴露 **P0**、`NvAPI_GPU_SetForcePstate` 在单-P0 卡上返回 `NVAPI_ERROR`。
+- `nvidia-pstated` **对 170HX 没有帮助**。在 2-P 状态卡（P100、V100）上工作的社区 fork 被试过、没产生任何变化。同一个守护进程把一张 CMP 90HX 从 **75 W 带到 5 W**、这正是期望高的原因。
+- 应用时钟回退（`nvidia-smi -i N -ac <mem,gpu>`、用 `-rac` 恢复、经 `nvmlDeviceSetApplicationsClocks` 而非 NvAPI 实现）在 V100S 上省 13 W、在 V100 SXM2 上每 GPU 省 16-18 W、但**从没在 170HX 上被演示过**。它的单一显存时钟域是明显的障碍：在 170HX 上恰好有一个受支持的显存时钟可选。
+- 核心时钟下限是 210 MHz、显存时钟实际上固定、这是空转功耗居高不下的陈述原因。10 GB 数字是 1215 MHz；8 GB 数字未解决（见下）。
 
 > [!NOTE]
-> **Open problem: the stock 8 GB memory clock is unresolved**
+> **未解问题：出厂 8 GB 显存时钟未解决**
 >
-> The stock 8 GB memory clock is unresolved: 1458 MHz (one sweep and TechPowerUp), 1728 MHz
-> (`nvidia-smi -q` Supported Clocks, noted as "432 MHz x 4"), 1890 MHz (`nvtop` during an
-> unlocked 64 GB `gpu_burn` at 300 W). 1215 MHz is the 10 GB card and is solid. The plausible
-> reconciliation (1458 stock, 1728 OC VBIOS, 1890 overclocked OC VBIOS) is unproven; a raw
-> FBPA PLL read would settle it.
+> 出厂 8 GB 显存时钟未解决：1458 MHz（一次扫描和 TechPowerUp）、1728 MHz（`nvidia-smi -q` Supported Clocks、标注 "432 MHz x 4"）、1890 MHz（300 W 下解锁 64 GB `gpu_burn` 期间 `nvtop`）。1215 MHz 是 10 GB 卡、很可靠。貌似合理的调和（1458 出厂、1728 OC VBIOS、1890 超频 OC VBIOS）未证实；一次原始 FBPA PLL 读就能解决它。
 
 > [!CAUTION]
-> **Do not install `nvidia-pstated` as a systemd service on an unlocked 170HX host**
+> **不要把 `nvidia-pstated` 作为 systemd 服务安装在一台解锁的 170HX 主机上**
 >
-> The unlock scripts require all NVIDIA services to be killed, and the interaction with a
-> resident pstate daemon is untested. Run it from a launcher instead, if you run it at
-> all.
+> 解锁脚本要求所有 NVIDIA 服务被杀掉、与一个驻留 pstate 守护进程的交互未测试。如果你运行它、用一个启动器、不要用服务。
 
 > [!NOTE]
-> **Open problem: would an A100 PCIe VBIOS expose more P-states?**
+> **未解问题：一个 A100 PCIe VBIOS 会暴露更多 P 状态吗？**
 >
-> This is the one untried lead after `nvidia-pstated` and the clock-fallback fork both
-> failed: "the pci-e a100 bios has several p-states so I'm fairly certain p-stated would
-> work on that". The PCIe A100 is documented with several performance states and a claimed
-> 5 W idle. Nobody has attempted the flash. It should only be tried on a spare card with a
-> hardware programmer available for recovery (GPU EEPROMs are 1.8 V, so a CH341A needs a
-> 1.8 V adapter).
+> 这是 `nvidia-pstated` 和时钟回退 fork 都失败后唯一未尝试的线索："the pci-e a100 bios has several p-states so I'm fairly certain p-stated would work on that"（pci-e a100 bios 有几个 p 状态、所以我相当肯定 p-stated 会在上面工作）。PCIe A100 被记录为带几个性能状态和一个声称的 5 W 空转。没人尝试刷写。它只应在一张备用卡上试、带一个可用的硬件编程器用于恢复（GPU EEPROM 是 1.8 V，所以 CH341A 需要一个 1.8 V 转接器）。
 
 ---
 
-## Measured load draw
+## 实测负载功耗
 
-**The card is hard to load.** Draw by workload, on stock firmware unless noted:
+**这张卡很难加负载。** 按工作负载的功耗、除非注明否则出厂固件：
 
-| Workload | Draw |
+| 工作负载 | 功耗 |
 |---|---|
-| `gpu_burn`, FP32 and FP64 | **~60 W** |
-| `gpu_burn` with Tensor Cores | ~75 W, spikes to 100+ W |
-| The failing 80 GB LLM workload | never above ~80 W |
-| `mmapeak` at 1470 MHz, power limit set to 300 W | ~150 W, `PerfCap: None` |
-| Hashcat (pure integer) | 160+ W |
-| Self-written STREAM-like memory benchmark | 160+ W |
-| FluidX3D with FMA disabled, FP32/FP16S | 180 W |
-| CUTLASS BF16, shape-optimised, locked 8 GB card | 186 W peak |
-| Sustained 100% load at the stock cap | **208 W at 61 C** |
-| llama.cpp inference | **230-240 W** steady (29 tok/s reported by that tester) |
-| Diffusion workloads | 250-260+ W |
-| Peak field draw on stock air | 254 W at 60 C (8-card rental) |
-| 30-minute `gpu_burn` at a 300 W limit, unlocked 64 GB | **278 / 300 W** |
+| `gpu_burn`、FP32 和 FP64 | **约 60 W** |
+| 带张量核的 `gpu_burn` | 约 75 W、尖峰到 100+ W |
+| 失败的 80 GB LLM 工作负载 | 从不超过约 80 W |
+| 1470 MHz 的 `mmapeak`、功耗上限设 300 W | 约 150 W、`PerfCap: None` |
+| Hashcat（纯整数） | 160+ W |
+| 自写 STREAM 式显存基准测试 | 160+ W |
+| 禁用 FMA 的 FluidX3D、FP32/FP16S | 180 W |
+| CUTLASS BF16、形状优化、锁定 8 GB 卡 | 186 W 峰值 |
+| 出厂上限下持续 100% 负载 | **61 C 下 208 W** |
+| llama.cpp 推理 | **230-240 W** 稳定（那位测试者报告 29 tok/s） |
+| 扩散工作负载 | 250-260+ W |
+| 出厂风冷上峰值场功耗 | 60 C 下 254 W（8 卡租用） |
+| 解锁 64 GB、300 W 上限下 30 分钟 `gpu_burn` | **278 / 300 W** |
 
 > [!WARNING]
-> **Never validate stability or cooling with a conventional FP32 burn-in**
+> **绝不要用常规 FP32 老化测试验证稳定性或散热**
 >
-> A healthy 170HX legitimately reports **under 75 W** in an FP32 stress test, because so
-> much of the die is fused off and FP32 throughput is what the CMP lockdown targeted. Use
-> an **integer or memory** benchmark, or a real inference workload, to load the card. In
-> 2023 this exact behaviour was misread as a hardware fault before an independent AIDA64
-> run on a separate card on Windows showed the same low draw: the FP32 lockdown is the
-> cause and the low power is the effect.
+> 一张健康的 170HX 在 FP32 压力测试里正当报告 **低于 75 W**，因为晶片有这么多被熔断关闭、而 FP32 吞吐正是 CMP 锁定针对的东西。用一个**整型或显存**基准测试、或一个真实推理工作负载来给卡加负载。2023 年这种精确行为在 Windows 上一张独立卡的一次独立 AIDA64 运行显示同样的低功耗之前、被误读成一个硬件故障：FP32 锁定是原因、低功耗是效果。
 
-The cleanest full-envelope evidence is a 30-minute `gpu_burn` on an unlocked 8 GB card at a
-300 W limit:
+最干净的完整包络证据是一张解锁 8 GB 卡、300 W 上限下一次 30 分钟 `gpu_burn`：
 
 ```text
 Initialized device 0 with 65052 MB of memory (64733 MB available, using 58259 MB of it), using FLOATS
@@ -208,31 +154,30 @@ Tested 1 GPUs:
         GPU 0: OK
 ```
 
-with live telemetry `GPU 1440MHz MEM 1890MHz TEMP 76C FAN N/A POW 278 / 300 W`, temperatures
-rising only from 75 C to 77 C over the half hour.
+带实时遥测 `GPU 1440MHz MEM 1890MHz TEMP 76C FAN N/A POW 278 / 300 W`、温度在那半小时里只从 75 C 升到 77 C。
 
 ---
 
-## Power limiting with `nvidia-smi`
+## 用 `nvidia-smi` 做功耗限制
 
 ```bash
-# Read the whole power block
+# 读整个功耗块
 nvidia-smi -q -d POWER
 
-# Set a limit (watts). Requires root. Applies to the running driver, not persistently.
+# 设一个上限（瓦）。需要 root。应用于运行中的驱动、不持久。
 sudo nvidia-smi -pl 200
 
-# Multi-card: target one device
+# 多卡：瞄准一个设备
 sudo nvidia-smi -i 0 -pl 160
 
-# Log draw and clocks while you validate
+# 验证时记录功耗和时钟
 nvidia-smi --query-gpu=power.draw,power.limit,clocks.sm,temperature.gpu \
   --format=csv -l 1
 ```
 
-Verbatim from `nvidia-smi -q` on an unlocked 10 GB card, driver `610.43.02`:
+逐字来自一张解锁 10 GB 卡、驱动 `610.43.02` 上的 `nvidia-smi -q`：
 
-| Field | Value |
+| 字段 | 值 |
 |---|---|
 | Instantaneous Power Draw | 37.51 W |
 | Current Power Limit | 250.00 W |
@@ -242,134 +187,99 @@ Verbatim from `nvidia-smi -q` on an unlocked 10 GB card, driver `610.43.02`:
 | **Max Power Limit** | **250.00 W** |
 | Average Power Draw | N/A |
 
-So on stock firmware `-pl` can only **lower** the card, between 100 W and 250 W. Values
-confirmed working across many testers: `-pl 100`, `-pl 150`, `-pl 160`, `-pl 175`,
-`-pl 200`, `-pl 250`, and `-pl 300` on cards carrying the OC VBIOS.
+所以在出厂固件上 `-pl` 只能**降低**卡、在 100 W 和 250 W 之间。跨许多测试者确认有效的值：`-pl 100`、`-pl 150`、`-pl 160`、`-pl 175`、`-pl 200`、`-pl 250`、以及带 OC VBIOS 的卡上 `-pl 300`。
 
-### Two ceilings, depending on VBIOS
+### 两个上限，取决于 VBIOS
 
-| VBIOS | Max power limit | Extras |
+| VBIOS | 最大功耗上限 | 额外 |
 |---|---|---|
-| Stock CMP | **250 W** | none |
-| NVIDIA 300 W "OC mining" | **300 W** | also raises the memory clock and permits a core-clock offset |
+| 出厂 CMP | **250 W** | 无 |
+| NVIDIA 300 W "OC mining" | **300 W** | 也提高显存时钟、允许一个核心时钟偏移 |
 
-The 300 W ceiling is real on cards that carry that VBIOS: a 30-minute `gpu_burn` logged
-`POW 278 / 300 W`. This resolves the apparent contradiction between the driver reporting a
-250 W maximum and the many `-pl 300` reports in circulation.
+300 W 上限在带那个 VBIOS 的卡上是真实的：一次 30 分钟 `gpu_burn` 记录了 `POW 278 / 300 W`。这解决了驱动报告 250 W 最大、与流传的许多 `-pl 300` 报告之间的表面矛盾。
 
 > [!WARNING]
-> **Experimental: the 300 W VBIOS on a 10 GB card**
+> **实验性：10 GB 卡上的 300 W VBIOS**
 >
-> The 300 W OC VBIOS applies to the **8 GB** card. After the memory unlock, 10 GB cards
-> were confirmed to still have both the core-clock-offset lock and the memory-clock lock
-> in place, pinned at 1215 MHz. A separate 300 W VBIOS recommendation for 10 GB cards
-> circulates, and one owner acquired cards on an unverified compatibility claim, but
-> **nobody in this corpus has verified a 300 W VBIOS combined with the
-> unlock on a 10 GB card.** Note that the unlocker itself contains no power-management
-> code at all, so the only risk surface is the flash. See [VBIOS](../hardware/vbios.md).
+> 300 W OC VBIOS 适用于**8 GB** 卡。显存解锁后、10 GB 卡被确认仍带核心时钟偏移锁和显存时钟锁、钉在 1215 MHz。一条独立的、给 10 GB 卡的 300 W VBIOS 推荐在流传、一位拥有者基于一个未经验证的兼容性声称购卡，但**本语料库中没人验证过 300 W VBIOS 与 10 GB 卡上解锁的组合。** 注意解锁器本身完全不含电源管理代码，所以唯一的风险面是刷写。见[VBIOS](../hardware/vbios.md)。
 
 ---
 
-## Power limit and stability
+## 功耗限制和稳定性
 
-This is the section people come for, and the answer is counter-intuitive: **on this card
-the power limit is almost never the binding constraint, and lowering it almost never fixes
-anything.**
+这是人们奔着来的那节、答案反直觉：**在这张卡上功耗限制几乎从不是约束、降低它几乎从不修复任何东西。**
 
-### Raising the limit buys almost nothing
+### 提高上限几乎买不到什么
 
-Measured against the same tester's own 250 W baseline, on a card with the faster-memory
-VBIOS and a large blower:
+对照同一个测试者自己的 250 W 基线、在一张带更快显存 VBIOS 和大鼓风机的卡上测量：
 
-| Power limit | BF16 throughput | Temperature |
+| 功耗上限 | BF16 吞吐 | 温度 |
 |---|---|---|
-| 250 W | ~180 TFLOPS | core and memory below 65 C |
-| 300 W | **185 TFLOPS (+2.8%)** | core and memory below 65 C |
+| 250 W | 约 180 TFLOPS | 核心和显存低于 65 C |
+| 300 W | **185 TFLOPS（+2.8%）** | 核心和显存低于 65 C |
 
-Thermals were not the limiter in either case. The conclusion drawn was that the core simply
-does not want to clock higher.
+两种情况热都不是限制。得出的结论是核心就是不想跑更高。
 
-The power/performance curve is steeply diminishing at the other end too. In Hashcat DES
-cracking, an OC-VBIOS card gave 1800 MHash at 190 W while a stock card gave 1700 MHash at
-150 W: **+26.7% power for +5.9% performance**, i.e. power grows roughly 4.5 times faster
-than performance. The tester disclosed the confound openly (two physically different cards,
-so silicon variance is uncontrolled, and the workload is mostly compute-bound).
+功耗/性能曲线在另一端也急剧递减。在 Hashcat DES 破解里、一张 OC-VBIOS 卡在 190 W 下给出 1800 MHash、而一张出厂卡在 150 W 下给出 1700 MHash：**+26.7% 功耗换 +5.9% 性能**、即功耗约比性能快 4.5 倍增长。测试者公开披露了混淆（两张物理不同的卡、所以硅片方差不受控、工作负载大部分是算力密集）。
 
-### Lowering the limit costs surprisingly little
+### 降低上限的代价惊人地小
 
-One tester found **no measured throughput loss at `-pl 150`** in raw throughput stress
-tests, with the hypothesis that so much of the die is disabled that the stock limit never
-binds. Single source, and specific to throughput stress tests, so treat it as indicative.
+一位测试者在原始吞吐压力测试里发现 **`-pl 150` 下没有实测吞吐损失**、假设是晶片有这么多被禁用、出厂上限从不束缚。单一来源、且特定于吞吐压力测试，把它当指示性。
 
-The systematic clock-ceiling by clock-offset sweep is the better guide. Its efficiency peak
-is far below the stock envelope:
+系统的按时钟偏移扫描才是更好的指导。它的效率峰值远低于出厂包络：
 
-| Configuration | BF16 | Power | Efficiency |
+| 配置 | BF16 | 功耗 | 效率 |
 |---|---|---|---|
-| ceiling 1650, offset +350 | 214.7 TFLOPS | 187 W | about 1149 GFLOP/W (1067 at +250) |
-| ceiling 1740, offset +350 | 213.8 TFLOPS | 188 W | not reported separately |
-| ceiling 1470, offset +350 | 196.1 TFLOPS | 149 W | not reported separately |
-| **ceiling 1400, offset +350** | 186.7 TFLOPS | **134 W** | **1390 GFLOP/W (peak)** |
-| ceiling 1400, offset +0 | 186.7 TFLOPS | 198 W | not reported separately |
-| ceiling 1350, offset +300 | 180.7 TFLOPS | 131.3 W | 1376 GFLOP/W |
+| 上限 1650、偏移 +350 | 214.7 TFLOPS | 187 W | 约 1149 GFLOP/W（+250 处 1067） |
+| 上限 1740、偏移 +350 | 213.8 TFLOPS | 188 W | 未单独报告 |
+| 上限 1470、偏移 +350 | 196.1 TFLOPS | 149 W | 未单独报告 |
+| **上限 1400、偏移 +350** | 186.7 TFLOPS | **134 W** | **1390 GFLOP/W（峰值）** |
+| 上限 1400、偏移 +0 | 186.7 TFLOPS | 198 W | 未单独报告 |
+| 上限 1350、偏移 +300 | 180.7 TFLOPS | 131.3 W | 1376 GFLOP/W |
 
-Note the two 1400-ceiling rows: **identical throughput, 64 W apart.** The offset, not the
-power limit, is where the efficiency lives. Efficiency at a 1650 ceiling runs 1067 GFLOP/W at
-+250 to about 1149 GFLOP/W at +350; higher figures at that ceiling come only from offsets that
-faulted (1650/+375 reads 1205 GFLOP/W but took a device fault). See [Tuning](tuning.md) for the
-full sweep.
+注意两个 1400 上限行：**相同的吞吐、相隔 64 W。** 效率住在偏移里、不在功耗上限里。1650 上限下效率从 +250 的 1067 GFLOP/W 到 +350 的约 1149 GFLOP/W；那个上限下更高的数字只来自故障的偏移（1650/+375 读 1205 GFLOP/W、却取了一次设备故障）。完整扫描见[调优](tuning.md)。
 
 > [!CAUTION]
-> **The 1390 GFLOP/W peak is not an operating point**
+> **1390 GFLOP/W 峰值不是一个工作点**
 >
-> The 1400/+350 row above is a single efficiency reading that was never gated on a full-VRAM
-> pattern sweep, and it sits between two recorded failures at the same ceiling: **1400/+325
-> silently corrupted memory** (6 errors, then 3, then 0 across three sweeps) and **1400/+375
-> took a CUDA device fault**. This card has no ECC and no error telemetry, so a run that
-> completes is not evidence the setting was safe. The highest validated offset at a 1400 MHz
-> ceiling is **+300** (138.5 W, 4 sweeps, 0 errors).
+> 上面的 1400/+350 行是一个从没被全-VRAM 模式扫描把关的单一效率读数、坐在同一上限的两个记录失败之间：**1400/+325 静默损坏了显存**（三次扫描 6 个、然后 3 个、然后 0 个错误）和 **1400/+375 取了一次 CUDA 设备故障**。这张卡没有 ECC 也没有错误遥测，所以一次完成的运行不是设置安全的证据。1400 MHz 上限下最高验证的偏移是 **+300**（138.5 W、4 次扫描、0 错误）。
 
-### What actually breaks: clock offset, not power
+### 真正破坏的是：时钟偏移、不是功耗
 
-Faults and data corruption begin above the highest validated offset **for the ceiling in use**:
-above +300 at a 1400 MHz ceiling, above +350 at a 1650 MHz ceiling, independently of the power
-limit:
+故障和数据损坏从最高验证偏移**对在使用中的上限**之上开始：1400 MHz 上限下 +300 之上、1650 MHz 上限下 +350 之上、与功耗上限无关：
 
-| Configuration | Failure |
+| 配置 | 失败 |
 |---|---|
 | 1350 / +400 | corrupt |
 | 1400 / +325 | CORRUPT |
 | 1400 / +375 | fault |
 | 1590 / +400 | HANG |
-| 1650 / +355, +360, +375 | fault |
+| 1650 / +355、+360、+375 | fault |
 | 1700 / +375 | HANG |
 
-### Power limiting does not fix the 80 GB configuration
+### 功耗限制不修复 80 GB 配置
 
-The same evidence retired the theory that the depopulated VRM causes 80 GB instability: the
-8 GB card has identical power delivery and is entirely stable at 64 GB. See
-[Power delivery](../hardware/power-delivery.md).
+同一个证据退役了缺件 VRM 引起 80 GB 不稳定的理论：8 GB 卡有相同的供电、在 64 GB 下完全稳定。见[板载供电](../hardware/power-delivery.md)。
 
 ---
 
-## Recommended operating points
+## 推荐工作点
 
-| Goal | Setting | Why |
+| 目标 | 设置 | 为什么 |
 |---|---|---|
-| Best efficiency | 1400 MHz ceiling, +250 to +300 MHz offset (138.5 W at +300) | sweep-clean at 3-4 sweeps, 0 errors. The 1390 GFLOP/W peak sits at +350, an untested cell bracketed by 1400/+325 CORRUPT and 1400/+375 fault. Do not run it. |
-| Safe default for a mixed rig | `-pl 200` | comfortably cooled by an 80 mm server fan at 3500 RPM. Note that one tester measured llama.cpp at 230-240 W steady while another saw only 206-225 W peaks, so this limit will bind on dense inference on some cards |
-| Dense multi-card | `-pl 160` | 4 cards held under 65 C on two 120 mm fans |
-| Maximum throughput | stock 250 W, or 300 W on the OC VBIOS | +2.8% for +20% power; rarely worth it |
-| Never | offsets above the validated maximum **for your ceiling**: +300 at a 1400 MHz ceiling, +350 at a 1650 MHz ceiling | corruption and hangs, documented per cell above. There is no ECC and no error telemetry, so a completed run is not evidence of safety |
+| 最佳效率 | 1400 MHz 上限、+250 到 +300 MHz 偏移（+300 处 138.5 W） | 3-4 次扫描、0 错误下扫描干净。1390 GFLOP/W 峰值坐在 +350、一个被 1400/+325 CORRUPT 和 1400/+375 fault 夹住的未测试格。不要跑它。 |
+| 混合机架的保守默认 | `-pl 200` | 3500 RPM 的 80 mm 服务器风扇舒适冷却。注意一位测试者测量 llama.cpp 230-240 W 稳定、另一位只看到 206-225 W 峰值，所以这个上限会在某些卡上束缚密集推理 |
+| 密集多卡 | `-pl 160` | 两张 120 mm 风扇上 4 卡保持低于 65 C |
+| 最大吞吐 | 出厂 250 W、或 OC VBIOS 上 300 W | +20% 功耗换 +2.8%；很少值得 |
+| 绝不 | **对你的上限**高于验证最大值的偏移：1400 MHz 上限下 +300、1650 MHz 上限下 +350 | 损坏和挂起、逐格文档化如上。没有 ECC 也没有错误遥测，所以一次完成的运行不是安全的证据 |
 
 ---
 
-## See also
+## 参见
 
-- [Power delivery](../hardware/power-delivery.md): the rails, the VRM, and why repopulating
-  phases does not raise the ceiling.
-- [Thermals](../hardware/thermals.md): limits, sensors, leakage runaway.
-- [Cooling](cooling.md): what removes how many watts, measured.
-- [Tuning](tuning.md): the clock ceiling and offset sweep in full.
-- [Performance](performance.md): throughput figures in context.
-- [VBIOS](../hardware/vbios.md): the stock and 300 W OC firmware images.
+- [板载供电](../hardware/power-delivery.md)：电压轨、VRM、以及为什么重新贴装相位不提高上限。
+- [热设计](../hardware/thermals.md)：限制、传感器、泄漏失控。
+- [散热](cooling.md)：什么移除多少瓦、实测。
+- [调优](tuning.md)：完整的时钟上限和偏移扫描。
+- [性能](performance.md)：上下文里的吞吐数字。
+- [VBIOS](../hardware/vbios.md)：出厂和 300 W OC 固件映像。

@@ -1,52 +1,31 @@
-# Physical modifications
+# 物理改装
 
-**What this page covers.** Every documented hardware modification to the CMP 170HX: the PCIe
-AC-coupling capacitor mod that restores x16 link width, the soldering technique and tooling that
-make it succeed, how to verify the result, the teardown sequence, cooling and waterblock
-retrofits, the power connector situation, the strap resistors, and the things that a soldering
-iron categorically cannot fix on this card.
+**本页覆盖内容。** 每一个有记录的 CMP 170HX 硬件改装：恢复 x16 链路位宽的 PCIe 交流耦合电容改装、让它成功所需的焊接技术和工具、如何验证结果、拆解顺序、散热和水冷头改装、电源连接器情况、跳线电阻、以及在这张卡上一把烙铁分类上无法修复的东西。
 
-The headline result: **the CMP 170HX trains at PCIe x4 because 12 of its 16 lanes ship with their
-AC-coupling capacitors depopulated from the factory. Hand-soldering 24 missing 0402 220 nF X7R
-capacitors restores a full x16 link, with no software patch of any kind.** It is a
-beginner-to-hobbyist rework, reported at about 20 minutes per card by hand.
+头条结果：**CMP 170HX 以 PCIe x4 训练，因为它的 16 条通道中 12 条出厂时交流耦合电容被缺件。手工焊接 24 颗缺失的 0402 220 nF X7R 电容恢复完整 x16 链路、完全不需要任何软件补丁。** 它是一个新手到爱好者级返工、报告手工每卡约 20 分钟。
 
 > [!WARNING]
-> **Width is not speed**
+> **位宽不是速度**
 >
-> The capacitor mod changes **link width only**. It never changes PCIe generation. A
-> cap-modded card with no unlocker installed reports **x16 at PCIe 1.0**. Conversely, the
-> unlocker gives Gen2 (5 GT/s) on any card, soldered or not: only a card with no unlock
-> installed reports Gen1. The two axes are independent and must never be conflated. For the
-> speed half, see [PCIe Gen2](../unlock/pcie-gen2.md).
+> 电容改装改变**链路位宽**。它从不改变 PCIe 代数。一张做了电容改装、没装解锁器的卡报告 **PCIe 1.0 下的 x16**。反过来说、解锁器在任何卡上给出 Gen2（5 GT/s）、无论焊没焊：只有没装解锁器的卡报告 Gen1。两个轴独立、绝不可混为一谈。速度那一半见[PCIe Gen2](../unlock/pcie-gen2.md)。
 
 ---
 
-## Why 12 of 16 lanes are dead
+## 为什么 16 条通道中 12 条是死的
 
-The CMP 170HX PCB is the NVIDIA A100 40 GB PCIe reference design with components deliberately
-deleted. Every reference designator on the board matches the leaked NVIDIA Tesla A100 electrical
-schematic `NVIDIA-A100-GA100-883-P1001-B02-Rev-A.pdf` (PG100/PG101 family). The board silkscreen
-above the gold fingers reads `180-11001-DAAA-B15`, `180-11001-DAAA-B35` and
-`180-11001-DAAA-045` across cards, the same family with a differing revision field. See
-[Board and variants](../hardware/board-and-variants.md).
+CMP 170HX PCB 是 NVIDIA A100 40 GB PCIe 参考设计、元件被故意删除。板上每一个元件参考编号都与泄露的 NVIDIA Tesla A100 电气原理图 `NVIDIA-A100-GA100-883-P1001-B02-Rev-A.pdf`（PG100/PG101 家族）匹配。板上金手指上方的丝印跨卡读 `180-11001-DAAA-B15`、`180-11001-DAAA-B35` 和 `180-11001-DAAA-045`、同一家族带不同修订字段。见[板卡与变体](../hardware/board-and-variants.md)。
 
-The deletions are unpopulated VRM phases, missing NVLink interface ICs, a missing security-module
-region, and, critically, the missing **PCIe AC-coupling capacitors on lanes 4 through 15**. The
-traces are routed on the PCB. Only the parts are absent. NVIDIA populated exactly the 4 lanes the
-card was intended to use.
+删除包括未贴装的 VRM 相位、缺失的 NVLink 接口 IC、一个缺失的安全模块区域、以及关键的、**通道 4 到 15 上缺失的 PCIe 交流耦合电容**。走线在 PCB 上布线了。只有元件缺席。NVIDIA 恰好贴装了卡打算用的 4 条通道。
 
-This is a board-level omission, not a fuse and not a firmware setting. The PCIe lane fuses are
-all clear on every 170HX probed:
+这是一个板级省略、不是熔丝、也不是固件设置。每个被探测的 170HX 上 PCIe 通道熔丝全净：
 
-| Fuse | Address | 170HX value | Meaning |
+| 熔丝 | 地址 | 170HX 值 | 含义 |
 |---|---|---|---|
-| `OPT_PCIE_LANE_DISABLE` | `0x00820394` | `0x00000000` | No lanes fused off |
-| `CTRL_OPT_PCIE_LANE` | `0x0082082c` | `0x00000000` | No lane override active |
-| `STATUS_OPT_PCIE_LANE` | `0x00820c2c` | `0x00000000` | Silicon reports full width available |
+| `OPT_PCIE_LANE_DISABLE` | `0x00820394` | `0x00000000` | 没有通道被熔断关闭 |
+| `CTRL_OPT_PCIE_LANE` | `0x0082082c` | `0x00000000` | 没有通道覆盖生效 |
+| `STATUS_OPT_PCIE_LANE` | `0x00820c2c` | `0x00000000` | 硅片报告完整位宽可用 |
 
-The link-status registers say the same thing. Stock `lspci` advertises x16 in capability and
-negotiates down to x4 in status:
+链路状态寄存器说同样的事。出厂 `lspci` 在能力里宣告 x16、在状态里协商降到 x4：
 
 ```text
 LnkCap:  Port #0, Speed 2.5GT/s, Width x16, ASPM not supported
@@ -54,291 +33,203 @@ LnkSta:  Speed 2.5GT/s, Width x4 (downgraded)
 LnkCap2: Supported Link Speeds: 2.5GT/s
 ```
 
-The `(downgraded)` marker on width is the tell: the endpoint is capability-x16 and trains x4,
-which is exactly what a physical-layer discontinuity on 12 lanes produces. Independent
-confirmation comes from a stock unmodified 8 GB card running the Gen2 code, which reports
-`LnkCap: Speed 5GT/s, Width x16` while still showing `LnkSta: Speed 5GT/s, Width x4 (downgraded)`:
-software moved the speed and could not move the width. One host port that was itself x16-capable
-still trained the card at x4.
+位宽上的 `(downgraded)` 标记是破绽：端点是能力-x16、训练 x4、那恰好是 12 条通道上一个物理层不连续产生的东西。独立确认来自一张运行 Gen2 代码的出厂未改装 8 GB 卡、它报告 `LnkCap: Speed 5GT/s, Width x16` 却仍显示 `LnkSta: Speed 5GT/s, Width x4 (downgraded)`：软件移动了速度、无法移动位宽。一个本身 x16 能力的主机端口仍以 x4 训练这张卡。
 
 ---
 
-## Bill of materials
+## 物料清单
 
-| Attribute | Value | Notes |
+| 属性 | 值 | 备注 |
 |---|---|---|
-| Quantity | **24** | 2 per differential pair × 12 depopulated lanes (lanes 4 to 15) |
-| Package | **0402** | Metric 1005 |
-| Capacitance | **220 nF (0.22 µF)** | Design value from the A100 reference schematic |
-| Dielectric | **X7R** | Frequently miswritten as "XR7"; the correct designation is X7R |
-| Voltage rating | **6.3 V or higher** | The x16 mod that is known to have worked used 6.3 V parts. These sit in series with a differential pair, and PCIe bounds transmitter DC common mode to 3.6 V, so 6.3 V carries ample margin |
-| Confirmed part | **Taiyo Yuden `MAASJ105SB7224KFCA01`** | 220 nF, 6.3 V, X7R, 0402, AEC-Q200. Twenty-four of these are what the first documented x16 mod used, and what a later four-card build used to reach Gen2 x16 on two board revisions (see [Field report](#field-report-four-cards-at-gen2-x16)) |
-| Confirmed substitute | Samsung Electro-Mechanics `CL05B224KO5NNNC` | 220 nF, 16 V, X7R, 0402. Also reported working; its 16 V rating is incidental, not a requirement |
-| Distributor number | DigiKey **`1276-1176-1-ND`**; DigiKey **`3886834`** also cited | Both plausibly map to the same manufacturer part in different packaging (cut-tape versus reel); neither is verified against the other |
-| Reference designators | **C1100 to C1350** range | Example grouping per differential pair: C1120, C1125, C1130, C1135 |
-| Schematic source | NVIDIA A100 **GA100-883** reference schematic **P1001-B02, page 3, "IO: PCIe CONNECTOR"** | The value is read off the A100 design, not measured on a 170HX |
+| 数量 | **24** | 每差分对 2 颗 × 12 条缺件通道（通道 4 到 15） |
+| 封装 | **0402** | 公制 1005 |
+| 电容 | **220 nF（0.22 µF）** | 来自 A100 参考原理图的设计值 |
+| 介质 | **X7R** | 常被误写 "XR7"；正确标识是 X7R |
+| 额定电压 | **6.3 V 或更高** | 已知能工作的 x16 改装用了 6.3 V 部件。它们串联在一个差分对上，而 PCIe 把发射机 DC 共模限制到 3.6 V，所以 6.3 V 带充足余量 |
+| 已确认部件 | **Taiyo Yuden `MAASJ105SB7224KFCA01`** | 220 nF、6.3 V、X7R、0402、AEC-Q200。24 颗这些就是第一个有记录的 x16 改装用的、也是后来一个四卡构建在两个板修订上到达 Gen2 x16 用的（见[现场报告](#field-report-four-cards-at-gen2-x16)） |
+| 已确认替代 | Samsung Electro-Mechanics `CL05B224KO5NNNC` | 220 nF、16 V、X7R、0402。也被报告有效；它的 16 V 额定是附带的、不是要求 |
+| 分销商编号 | DigiKey **`1276-1176-1-ND`**；DigiKey **`3886834`** 也被引用 | 两者都看似映射到不同包装（切带对比卷带）里的同一颗厂商部件；都没有互相对照验证 |
+| 参考设计编号 | **C1100 到 C1350** 范围 | 示例按差分对分组：C1120、C1125、C1130、C1135 |
+| 原理图来源 | NVIDIA A100 **GA100-883** 参考原理图 **P1001-B02、第 3 页、"IO: PCIe CONNECTOR"** | 值从 A100 设计读出、不在 170HX 上测量 |
 
-Order spares. 0402 parts are trivially lost to tweezer flick and to solder-wick suction.
+订备用件。0402 部件极易被镊子一弹和吸锡带吸走而丢失。
 
 > [!NOTE]
-> **Quote the manufacturer part, not the distributor number**
+> **引厂商部件、不要引分销商编号**
 >
-> Two different DigiKey numbers circulate for the Samsung substitute, and no source settles
-> which is correct; both may be valid for different packaging of the same part. Buy against a
-> manufacturer part, either `MAASJ105SB7224KFCA01` (6.3 V) or `CL05B224KO5NNNC` (16 V), or
-> against the four-parameter specification (0402 / 220 nF / X7R / ≥6.3 V), and ignore the
-> distributor SKU.
+> Samsung 替代品流传着两个不同的 DigiKey 编号、没有来源解决哪个正确；两者对同一部件的不同包装都可能有效。按一个厂商部件买、要么 `MAASJ105SB7224KFCA01`（6.3 V）要么 `CL05B224KO5NNNC`（16 V）、或按四参数规格（0402 / 220 nF / X7R / ≥6.3 V）、忽略分销商 SKU。
 
-### Substitutions
+### 替代品
 
-The mod tolerates the general 100 nF to 220 nF decoupling class. One tester reported `100 nF 16 V
-X7R` parts working. Another simply desoldered equivalent 0402 parts off a dead motherboard and
-used those. Both are single first-hand reports. If you have the correct 220 nF part, use it: the
-substitution evidence is thin, and a marginal AC-coupling network shows up as a training failure
-that is indistinguishable from bad solder.
+改装容忍一般的 100 nF 到 220 nF 去耦类。一位测试者报告 `100 nF 16 V X7R` 部件有效。另一位直接从一块死主板上焊下等效 0402 部件来用。两者都是单一一手报告。如果你有正确的 220 nF 部件、用它：替代证据单薄、而一个边缘的交流耦合网络表现为一个与坏焊锡无法区分的训练失败。
 
 ---
 
-## Soldering technique
+## 焊接技术
 
-Adjudicated consensus from several people who solder professionally, including one explicit
-retraction of the opposite position.
+几位专业焊接者的裁决共识、包括一个对反方立场的明确撤回。
 
-| Parameter | Recommendation | Confidence |
+| 参数 | 推荐 | 置信度 |
 |---|---|---|
-| Solder alloy | **60/40 leaded** | high |
-| Flux | Gel flux | high |
-| Prep | **Wick away all factory lead-free solder first** | high |
-| Iron temperature | **~380 °C**, fine point | high |
-| Preheat | **Not required** | high |
-| Hot air | Optional, faster for batches, correctly sized nozzle | high |
-| Tweezers | Ceramic reverse tweezers, "tweezerable" but can flick 0.5 mm parts away | high |
-| Masking | Kapton-tape the surrounding area | high |
-| Low-melt alloy | Acceptable | medium |
-| Practice | Do a scrap board first | high |
-| Time per card | **~20 minutes** by hand, experienced modder, imperfect result | medium |
+| 焊锡合金 | **60/40 含铅** | 高 |
+| 助焊剂 | 凝胶助焊剂 | 高 |
+| 准备 | **先吸掉所有出厂无铅焊锡** | 高 |
+| 烙铁温度 | **约 380 °C**、细尖 | 高 |
+| 预热 | **不需要** | 高 |
+| 热风 | 可选、批量更快、尺寸正确的喷嘴 | 高 |
+| 镊子 | 陶瓷反镊、可夹但能弹走 0.5 mm 部件 | 高 |
+| 遮蔽 | 周围区域贴 Kapton 胶带 | 高 |
+| 低熔点合金 | 可接受 | 中等 |
+| 练习 | 先在报废板上做 | 高 |
+| 每卡时间 | 手工**约 20 分钟**、有经验的改装者、不完美结果 | 中等 |
 
-The workflow that several people converged on: wick the pad pair clean of the factory lead-free
-solder, apply gel flux, tin one pad, place the part with tweezers and tack that side, then flow
-the other side. Solder paste applied with a needle plus a heat gun lets the parts self-align,
-which is the faster route for someone comfortable with hot air.
+几个人收敛到的工作流：把焊盘对吸干净出厂无铅焊锡、上凝胶助焊剂、给一个焊盘上锡、用镊子放部件并固定那一边、然后熔另一边。用针头加风枪涂锡膏让部件自对准、这是对熟悉热风的人更快的路线。
 
 > [!CAUTION]
-> **Do not preheat the whole board**
+> **不要预热整块板**
 >
-> Preheating the board in an oven was proposed in-channel and immediately rejected as a
-> beginner trap. The documented real-world consequence of over-preheating (an IR stove plus hot
-> air) is a **bent PCB, broken internal traces and cooked ICs**, producing subtle defects that
-> are extremely hard to diagnose afterwards. This is the dominant beginner failure mode on this
-> rework. A fine-point iron at 380 °C with no preheating is sufficient.
+> 把板放进烤箱预热被频道内提出、并被立即否决为一个新手陷阱。过度预热（一个 IR 炉加风枪）的有记录现实后果是**弯 PCB、断内部走线和烤熟 IC**、产生事后极难诊断的细微缺陷。这是这个返工的主导新手失败模式。一把 380 °C 细尖烙铁、不预热就足够。
 
-### Difficulty
+### 难度
 
-This is routine 0402 rework. Twenty-four capacitors go onto labelled, uncramped pads on the
-back of the board beside the gold fingers. There is no BGA, no reball, no stencil, no firmware
-step and nothing to program. Experienced modders call it "probably the easiest card to do PCIE
-mod" and "way easier" than the CMP 100HX to V100 conversion, which does need full BGA
-equipment. About 20 minutes per card by hand.
+这是常规 0402 返工。24 颗电容上到金手指旁板背有标签、不拥挤的焊盘上。没有 BGA、没有植球、没有钢网、没有固件步骤、也没有要编程的东西。有经验的改装者叫它 "probably the easiest card to do PCIE mod"（大概是做 PCIe 改装最容易的卡）、比需要完整 BGA 设备的 CMP 100HX 到 V100 转换 "way easier"（容易得多）。手工每卡约 20 分钟。
+
 > [!NOTE]
-> **If you are the repair shop being asked to quote this**
+> **如果你是那个被请来报此活的维修店**
 >
-> The entire job is: fit 24 × 0402 capacitors (220 nF, X7R, 6.3 V or higher) to the empty pads
-> in the `C1100`-`C1350` group beside the PCIe edge connector, on a card the customer hands you
-> with the parts. Wick the factory lead-free solder off the pads first and use leaded solder.
+> 整个工作就是：在客户递给你、带元件的卡上、PCIe 边缘连接器旁的 `C1100`-`C1350` 组里空焊盘上装 24 × 0402 电容（220 nF、X7R、6.3 V 或更高）。先吸掉焊盘上的出厂无铅焊锡、用含铅焊锡。
 >
-> There is no diagnosis, nothing is broken, and there is no firmware or software step at your
-> end. The pads are labelled, uncramped and on the outer surface. It is a strictly smaller job
-> than the CMP 100-210 conversion shops have been doing for years, which needs strap resistors
-> relocated *and* a force-flash; this one is capacitors and nothing else.
+> 没有诊断、没有东西坏、你这边也没有固件或软件步骤。焊盘有标签、不拥挤、在外表面。它是一个严格小于维修店做了多年的 CMP 100-210 转换的工作、后者需要跳线电阻移位*加*一次强制刷写；这个是电容、没别的。
 >
-> Customers report being turned away by ten or more shops before finding one that would simply
-> do the work. That is the main obstacle to this procedure, not the rework itself.
+> 客户报告被十多家店拒绝、才找到一家肯直接做这活的。那是这个流程的主要障碍、不是返工本身。
 
-
-A separate caution recorded in-channel: the circulating `a100-unlock.pdf` /
-`cmp-170hx_a100_hardware-restore.pdf` bill of materials includes a **Winbond backup VBIOS chip**
-and other parts that have nothing to do with the lane mod. An experienced modder reading that
-guide reasonably concluded it implied a full BGA job requiring a stencil. It does not. The PDF's
-author stated that only the small components on the PCIe lanes are needed for x16; everything
-else in that build was an attempt to replicate an A100 under the hood.
+另有一条在频道内记录的警告：流传的 `a100-unlock.pdf` / `cmp-170hx_a100_hardware-restore.pdf` 物料清单包含一颗 **Winbond 备份 VBIOS 芯片** 和与通道改装无关的其它部件。一位读那份指南的有经验改装者合理地得出结论它暗示一个需要钢网的完整 BGA 活。它不是。PDF 作者陈述只有 PCIe 通道上的小元件是 x16 所需的；那份构建里其它一切都是在引擎盖下复刻一台 A100 的尝试。
 
 ---
 
-## Partial population and negotiated width
+## 部分贴装和协商位宽
 
-PCIe width negotiation falls back to the next legal width (16, then 8, then 4, then 1) rather
-than failing outright. That makes the reported lane count a direct diagnostic of solder quality.
+PCIe 位宽协商回退到下一个合法位宽（16、然后 8、然后 4、然后 1）、而非彻底失败。那让报告的通道数成为焊锡质量的直接诊断。
 
-| Capacitors correctly populated | Trained width |
+| 正确贴装的电容 | 训练位宽 |
 |---|---|
-| 0 of 24 (factory) | **x4** |
-| 12 of 24 | **x8** |
-| 12 to 23 of 24, or any bridged/cold joints | **x8** |
-| 24 of 24 | **x16** |
+| 24 中 0（出厂） | **x4** |
+| 24 中 12 | **x8** |
+| 24 中 12 到 23、或任何桥接/冷焊点 | **x8** |
+| 24 中 24 | **x16** |
 
-An x8 result after a cap mod means **incomplete or bridged solder work, not a distinct hardware
-limit**. One modder's progression across three cards was x4, then x8, then x16 as technique
-improved. Another card came up x4, then x8, then x16 "after smaller readjustments". A third
-tester plateaued at x8 and speculated the link needed active load to widen; the better-supported
-explanation is cold or marginal joints.
+电容改装后的 x8 结果意味着**不完整或桥接的焊锡工作、不是一个不同的硬件限制**。一位改装者跨三张卡的进展是 x4、然后 x8、然后 x16、随技术提高。另一张卡 "after smaller readjustments"（经过小调整后）以 x4、然后 x8、然后 x16 起来。第三位测试者停在 x8、推测链路需要活动负载才能加宽；证据更好的解释是冷或边缘焊点。
 
-The remedy is mechanical, not electrical: reflow and inspect all 24 joints under magnification,
-looking for tombstoned parts, solder bridges between the two pads of a pair, and joints that
-merely rest on the pad without wetting it.
+补救是机械的、不是电气的：在放大下回流并检查全部 24 个焊点、找竖起的部件、一对两个焊盘之间的焊锡桥、以及只是搁在焊盘上却没润湿的焊点。
 
-None of this is destructive. An imperfect result under-trains the link, it does not damage the
-card, and the card keeps working at whatever width it negotiated while you fix the joints. There
-is no attempt limit and no state to reset.
+这一切都不是破坏性的。一个不完美结果欠训练链路、不损坏卡、卡在你修焊点时继续以它协商的任何位宽工作。没有尝试上限、也没有要复位的状态。
 
 ---
 
-## Verification
+## 验证
 
-Verify with **`LnkSta`**, never `LnkCap`. `LnkCap` is the advertised capability and can read
-x16 (or Gen2) while the link is trained lower. That trap is the stated source of most "it works"
-claims that do not hold up.
+用 **`LnkSta`** 验证、绝不用 `LnkCap`。`LnkCap` 是宣告的能力、在链路训练得更低时可能读 x16（或 Gen2）。那个陷阱是大多数站不住脚的 "it works"（能工作）声称的既定来源。
 
 ```bash
-# 1. Find the card. Both SKUs enumerate as GA100 [CMP 170HX] (rev a1).
+# 1. 找到卡。两个 SKU 都枚举为 GA100 [CMP 170HX] (rev a1)。
 lspci -nn | grep -i nvidia
-#   e.g. 0a:00.0 3D controller [0302]: NVIDIA Corporation GA100 [CMP 170HX] [10de:20c2] (rev a1)
+#   例如 0a:00.0 3D controller [0302]: NVIDIA Corporation GA100 [CMP 170HX] [10de:20c2] (rev a1)
 
-# 2. The authoritative read: link status on the endpoint.
+# 2. 权威读取：端点上的链路状态。
 sudo lspci -s 0a:00.0 -vvv | grep -E 'LnkCap:|LnkSta:'
 
-# 3. Kernel's own view, no root required.
-cat /sys/bus/pci/devices/0000:0a:00.0/current_link_width   # want 16
+# 3. 内核自己的视角、无需 root。
+cat /sys/bus/pci/devices/0000:0a:00.0/current_link_width   # 想要 16
 cat /sys/bus/pci/devices/0000:0a:00.0/max_link_width       # 16
-cat /sys/bus/pci/devices/0000:0a:00.0/current_link_speed   # 2.5 GT/s unless Gen2 is also applied
+cat /sys/bus/pci/devices/0000:0a:00.0/current_link_speed   # 2.5 GT/s 除非也应用了 Gen2
 
-# 4. Driver's view.
+# 4. 驱动的视角。
 nvidia-smi --query-gpu=pcie.link.gen.current,pcie.link.gen.max,pcie.link.width.current --format=csv
 ```
 
-Expected transitions:
+预期转变：
 
-| State | `LnkSta` | `nvidia-smi` gen.cur, gen.max, width |
+| 状态 | `LnkSta` | `nvidia-smi` gen.cur, gen.max, width |
 |---|---|---|
-| Stock: no mod, no unlocker | `Speed 2.5GT/s, Width x4 (downgraded)` | `1, 1, 4` |
-| Capacitor mod, unlocker not installed | `Speed 2.5GT/s, Width x16` | `1, 1, 16` |
-| Unlocker installed, no capacitor mod | `Speed 5GT/s, Width x4 (downgraded)` | `2, 2, 4` |
-| Capacitor mod + unlocker | `Speed 5GT/s, Width x16` | `2, 2, 16` |
+| 出厂：无改装、无解锁器 | `Speed 2.5GT/s, Width x4 (downgraded)` | `1, 1, 4` |
+| 电容改装、未装解锁器 | `Speed 2.5GT/s, Width x16` | `1, 1, 16` |
+| 装了解锁器、无电容改装 | `Speed 5GT/s, Width x4 (downgraded)` | `2, 2, 4` |
+| 电容改装 + 解锁器 | `Speed 5GT/s, Width x16` | `2, 2, 16` |
 
-Note that the `(downgraded)` suffix disappears from the width field once all 24 parts are in
-place, which is the single clearest before/after signal.
-
-> [!TIP]
-> **`(overdriven)` on the speed field is normal**
->
-> Depending on how Gen2 was applied, `lspci` may print
-> `LnkSta: Speed 5GT/s (overdriven), Width x16`. That suffix only means `LnkSta` reports a
-> higher speed than `LnkCap` advertises, which is exactly what happens when the link speed is
-> forced without rewriting the advertised capability. It is not an error and not instability.
-
-See [Verify](../procedures/verify.md) for the full verification procedure and
-[Troubleshooting](../procedures/troubleshooting.md) for failure triage.
+注意 24 颗部件全部就位后 `(downgraded)` 后缀从位宽字段消失、那是唯一最清晰的前后信号。
 
 > [!TIP]
-> **Test under load**
+> **速度字段上的 `(overdriven)` 是正常的**
 >
-> Many platforms idle a link down when there is no traffic. If a width or speed reading looks
-> wrong, re-read it during a bandwidth test rather than at idle.
+> 取决于 Gen2 如何应用、`lspci` 可能打印 `LnkSta: Speed 5GT/s (overdriven), Width x16`。那个后缀只意味着 `LnkSta` 报告一个比 `LnkCap` 宣告的更高的速度、那正是链路速度被强制、却不重写宣告能力时发生的事。它不是错误、也不是不稳定。
+
+完整验证流程见[验证](../procedures/verify.md)、失败分诊见[排障](../procedures/troubleshooting.md)。
+
+> [!TIP]
+> **在负载下测试**
+>
+> 许多平台在无流量时把链路空降到低。如果一个位宽或速度读数看起来不对、在一次带宽测试期间重读它、而非在空转时。
 
 ---
 
-## What the mod buys you
+## 改装买来什么
 
-| Configuration | Measured host bandwidth | Notes |
+| 配置 | 实测主机带宽 | 备注 |
 |---|---|---|
-| Gen1 x4 (stock) | **~0.85 GB/s** (send 0.80, receive 0.84) | OpenCL-Benchmark / clpeak |
-| Gen1 x16 (cap mod only) | **2.88 GB/s** flat, error-free | Nominal would be ~4 GB/s; the gap is attributed to PCIe 1.1 signalling overhead |
-| Gen2 x4 (software only) | **1.68 GB/s send / 1.71 GB/s receive** | OpenCL-Benchmark, one archived screenshot, unmodded card; the setup script independently predicts "~0.85 to ~1.7 GB/s, exactly 2x". Confidence medium |
-| Gen1 → Gen2 on a cap-modded card that negotiated x8 | **1.67 → 3.24 GB/s** | One A/B, single card, Asus Prime Z370 / i3-8100 / 8 GB RAM. Confidence medium. This is **not** a Gen2 x4 result: 3.24 GB/s exceeds the ~2.0 GB/s ceiling of Gen2 x4, because the card was running at x8 |
-| Gen2 x16 (both) | **6.63 to 6.67 GB/s** | `ocl_pcie_bw`; nvtop showed TX 7.061 GiB/s at `PCIe GEN 2@16x` |
-| Gen2 x16 (both), second rig | **5.97 GB/s** host-to-device, identical on all 4 cards | Four-card build on `MAASJ105SB7224KFCA01`, CUDA H2D, `MaxPayload` 256 bytes. Host-side difference from the 6.63 GB/s rig; both sit in the normal band for PCIe 2.0 x16 against an 8 GB/s ceiling. See [Field report](#field-report-four-cards-at-gen2-x16) |
+| Gen1 x4（出厂） | **约 0.85 GB/s**（发送 0.80、接收 0.84） | OpenCL-Benchmark / clpeak |
+| Gen1 x16（仅电容改装） | **2.88 GB/s** 平坦、无错误 | 标称约 4 GB/s；缺口归因于 PCIe 1.1 信令开销 |
+| Gen2 x4（仅软件） | **1.68 GB/s 发送 / 1.71 GB/s 接收** | OpenCL-Benchmark、一张归档截图、未改装卡；设置脚本独立预测 "约 0.85 到约 1.7 GB/s、恰好 2x"。置信度中等 |
+| 协商到 x8 的电容改装卡上 Gen1 → Gen2 | **1.67 → 3.24 GB/s** | 一次 A/B、单卡、Asus Prime Z370 / i3-8100 / 8 GB RAM。置信度中等。这**不是** Gen2 x4 结果：3.24 GB/s 超过 Gen2 x4 约 2.0 GB/s 的上限、因为卡跑在 x8 |
+| Gen2 x16（两者） | **6.63 到 6.67 GB/s** | `ocl_pcie_bw`；nvtop 在 `PCIe GEN 2@16x` 显示 TX 7.061 GiB/s |
+| Gen2 x16（两者）、第二机架 | **5.97 GB/s** 主机到设备、全部 4 张卡相同 | `MAASJ105SB7224KFCA01` 上的四卡构建、CUDA H2D、`MaxPayload` 256 字节。主机侧差于 6.63 GB/s 机架；两者都坐在 8 GB/s 上限下 PCIe 2.0 x16 的正常波段。见[现场报告](#field-report-four-cards-at-gen2-x16) |
 
-A note on why lane count still matters even though speed is cheaper to obtain: platform lane
-budgets cap card count independently of bandwidth. A purely software Gen3 x4 unlock would need no
-soldering at all, which is why Gen3 x4 is the community's next target. It was described
-in-channel as speed-equivalent to Gen2 x16, but the arithmetic does not support that: Gen3 x4 is
-about 3.9 GB/s (8 GT/s, 128b/130b, four lanes) against Gen2 x16's 8 GB/s, so it lands nearer
-Gen1 x16. Either way, "lanes are lanes" for anyone packing many cards into one host. See
-[PCIe Gen3 and Gen4](../frontier/pcie-gen3-gen4.md).
+一个为什么通道数仍要紧、即使速度更便宜可得的注记：平台通道预算独立于带宽封顶卡数量。一个纯软件的 Gen3 x4 解锁完全不需要焊接，这正是 Gen3 x4 是社区的下一目标的原因。它被频道内描述为速度上等同于 Gen2 x16，但算术不支持：Gen3 x4 约 3.9 GB/s（8 GT/s、128b/130b、四条通道）对 Gen2 x16 的 8 GB/s、所以它落在更近 Gen1 x16 处。无论哪种方式、对任何往一台主机塞许多卡的人来说 "lanes are lanes"（通道就是通道）。见[PCIe Gen3 和 Gen4](../frontier/pcie-gen3-gen4.md)。
 
-For what link width does and does not do to inference throughput, see
-[LLM inference](llm-inference.md) and [Performance](performance.md). Pipeline-parallel
-inter-card traffic is negligible (a 5120-hidden-dimension model moves 10,240 bytes per token per
-hop, so roughly 25,000 tokens/s would be needed to saturate a single PCIe 1.0 lane), while tensor
-and expert parallelism were judged unworkable even at PCIe 2.0 x16.
+链路位宽对推理吞吐做什么、不做什么、见[LLM 推理](llm-inference.md) 和[性能](performance.md)。流水线并行卡间流量可忽略（一个 5120 隐藏维模型每 token 每跳移动 10,240 字节、所以约 25,000 tokens/s 才能饱和一条 PCIe 1.0 通道），而张量和专家并行即使在 PCIe 2.0 x16 下也被判定为不可行。
 
-### The software tree contains nothing about this
+### 软件树里关于这个没有任何东西
 
-The capacitor mod is invisible to the unlocker, and that is a verified negative rather than an
-assumption. No file in shipping `master` or in any of the 12 unreleased branches contains the
-strings "capacitor", "AC coupling" or "solder", nor any lane-width register. A grep over the full
-git history returns nothing. The shipping `0007-pcie-gen2.patch` manipulates
-link **speed** registers only.
+电容改装对解锁器不可见、那是一个验证过的否定而非假设。出货 `master` 或 12 个未发布分支的任何文件里都不含字符串 "capacitor"、"AC coupling" 或 "solder"、也没有任何位宽寄存器。对完整 git 历史的一次 grep 一无所获。出货 `0007-pcie-gen2.patch` 只操纵链路**速度**寄存器。
 
 > [!NOTE]
-> **Sourcing correction**
+> **来源更正**
 >
-> A widely repeated claim states that the distributed unlock README documents the limitation as
-> "PCIe width is x4 (not x16): This is a hardware limitation of the CMP 170HX -- missing AC
-> coupling capacitors on lanes 4-15." **The shipping `README.md` contains no such text**, and
-> neither does any branch or any point in the git history. The technical claim is true and well
-> evidenced; only the attribution to the shipped README is wrong. It most likely originates in a
-> third-party guide.
+> 一个广泛重复的声称说、分发解锁 README 把限制记录为 "PCIe width is x4 (not x16): This is a hardware limitation of the CMP 170HX -- missing AC coupling capacitors on lanes 4-15."（PCIe 位宽是 x4（不是 x16）：这是 CMP 170HX 的一个硬件限制——通道 4-15 缺失交流耦合电容。）**出货 `README.md` 不含这样的文本**、任何分支或 git 历史任何点也都不含。技术声称是真的、证据充分；只有归因于出货 README 是错的。它最可能源自一份第三方指南。
 
 ---
 
-## Field report: four cards at Gen2 x16
+## 现场报告：四卡 Gen2 x16
 
-A community member modified four CMP 170HX cards with twenty-four Taiyo Yuden
-`MAASJ105SB7224KFCA01` each (220 nF, 6.3 V, X7R, 0402) and supplied photographs and logs. All
-four train **PCIe 2.0 x16** and have run continuous four-card LLM inference with **zero PCIe
-errors**. This is the second independent rig to reach Gen2 x16, after the single
-2026-07-26 observation, and the first with more than one card, more than one board revision, or
-any error telemetry at all.
+一位社区成员用 24 颗 Taiyo Yuden `MAASJ105SB7224KFCA01`（220 nF、6.3 V、X7R、0402）各改装了四张 CMP 170HX 卡并提供照片和日志。全部四张训练 **PCIe 2.0 x16**、并已连续运行四卡 LLM 推理、**零 PCIe 错误**。这是在单次 2026-07-26 观察之后第二个到达 Gen2 x16 的独立机架、也是第一个带多于一张卡、多于一个板修订、或任何错误遥测的。
 
 > [!TIP]
-> **Only the capacitors were fitted**
+> **只装了电容**
 >
-> No VBIOS was flashed: all four cards still report the stock `92.00.6D.00.0A`. No VRM phases
-> were populated, no strap resistors were moved, no backup flash chip was added, and no other
-> footprint on the board was touched. The circulating `a100-unlock.pdf` bill of materials lists
-> a Winbond flash chip and a number of other parts; **none of them were needed for x16**. This
-> is direct confirmation of the PDF author's own later statement that only the components on
-> the PCIe lanes matter for lane width.
+> 没有刷 VBIOS：全部四张卡仍报告出厂 `92.00.6D.00.0A`。没有贴装 VRM 相位、没有移动跳线电阻、没有加备份闪存芯片、板上没有其它焊盘被碰。流传的 `a100-unlock.pdf` 物料清单列了 Winbond 闪存芯片和一些其它部件；**没有一个为 x16 所需**。这是对 PDF 作者自己后来陈述、只有 PCIe 通道上的元件对位宽要紧的直接确认。
 
-### Photographs
+### 照片
 
-The populated AC-coupling rows on lanes 4 to 15, on board revision `180-11001-DAAA-B35`. The
-parts sit between the fan-out traces and the gold fingers, two per differential pair:
+通道 4 到 15 上贴装的交流耦合排、在板修订 `180-11001-DAAA-B35` 上。部件坐在扇出走线和金手指之间、每差分对两颗：
 
 ![Populated AC-coupling capacitors on a 180-11001-DAAA-B35 board](https://raw.githubusercontent.com/wiki/Consensus-Protocol/cmp170hx/images/x16-cap-mod-b35-lanes.jpg)
 
-The same area on a `180-11001-DAAA-B15` board:
+同一块板修订 `180-11001-DAAA-B15` 上的同一区域：
 
 ![Populated AC-coupling capacitors on a 180-11001-DAAA-B15 board](https://raw.githubusercontent.com/wiki/Consensus-Protocol/cmp170hx/images/x16-cap-mod-b15-lanes.jpg)
 
-Wider views of both cards. The large arrays of unpopulated footprints across the middle of the
-board remain empty; only the capacitor rows beside the edge connector were populated.
+两张卡的更宽视图。板中央横跨的大片未贴装焊盘阵列保持为空；只贴装了边缘连接器旁的电容排。
 
 ![Wider view of the B35 card showing untouched unpopulated footprints](https://raw.githubusercontent.com/wiki/Consensus-Protocol/cmp170hx/images/x16-cap-mod-b35-overview.jpg)
 
 ![Wider view of the B15 card showing untouched unpopulated footprints](https://raw.githubusercontent.com/wiki/Consensus-Protocol/cmp170hx/images/x16-cap-mod-b15-overview.jpg)
 
-### Boards
+### 板
 
-Two different silkscreen revisions were modified with identical results, `180-11001-DAAA-B15` and
-`180-11001-DAAA-B35`, both carrying board part number `699-11001-0108-600 G`. **Revision B35 was
-not previously recorded.** All four cards are the 8 GB SKU running the 64 GB memory unlock, so
-they report 65536 MiB.
+两个不同的丝印修订被改装、结果相同、`180-11001-DAAA-B15` 和 `180-11001-DAAA-B35`、都带板卡料号 `699-11001-0108-600 G`。**修订 B35 之前从未被记录。** 全部四张卡都是 8 GB SKU、跑 64 GB 显存解锁、所以它们报告 65536 MiB。
 
-### Link status
+### 链路状态
 
-All four cards, same host, capacitor mod plus the patched driver loaded with
-`NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x2"`:
+全部四张卡、同一主机、电容改装加打过补丁的驱动带 `NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x2"` 加载：
 
 ```text
 LnkCap:  Port #0, Speed 2.5GT/s, Width x16, ASPM not supported
@@ -354,15 +245,11 @@ LnkCap2: Supported Link Speeds: 2.5GT/s, Crosslink- Retimer- 2Retimers- DRS-
 0000:89:00.0: width=16 speed=5.0 GT/s PCIe maxwidth=16
 ```
 
-Note that on this rig the registry-dword route moves **`LnkSta` only**; `LnkCap` still advertises
-2.5 GT/s, which is why `lspci` prints `(overdriven)` rather than a plain `5GT/s`. An earlier
-report from the branch-era Gen2 code showed `LnkCap: Speed 5GT/s` instead. Either presentation is a
-working Gen2 link. What matters is `LnkSta`, and specifically that `Width x16` carries no
-`(downgraded)` suffix.
+注意在这个机架上、注册表 dword 路线只移动 **`LnkSta`**；`LnkCap` 仍宣告 2.5 GT/s、这正是 `lspci` 打印 `(overdriven)` 而非一个普通 `5GT/s` 的原因。分支时代 Gen2 代码的一条更早报告显示 `LnkCap: Speed 5GT/s` 反之。任一呈现都是一个工作的 Gen2 链路。要紧的是 `LnkSta`、尤其 `Width x16` 不带任何 `(downgraded)` 后缀。
 
-### Error telemetry
+### 错误遥测
 
-Kernel AER counters after 90 minutes of continuous four-card inference:
+90 分钟连续四卡推理后的内核 AER 计数器：
 
 ```text
 0000:03:00.0: RxErr 0 BadTLP 0 BadDLLP 0 Rollover 0 Timeout 0 NonFatalErr 0 CorrIntErr 0 HeaderOF 0 TOTAL_ERR_COR 0
@@ -371,181 +258,110 @@ Kernel AER counters after 90 minutes of continuous four-card inference:
 0000:89:00.0: RxErr 0 BadTLP 0 BadDLLP 0 Rollover 0 Timeout 0 NonFatalErr 0 CorrIntErr 0 HeaderOF 0 TOTAL_ERR_COR 0
 ```
 
-Zero correctable errors and no fatal errors on any card. A marginal AC-coupling network or a cold
-joint that still trains x16 would be expected to accumulate `BadTLP` or `RxErr` under sustained
-traffic. Burn-in beyond 90 minutes has not been measured.
+任何卡上零可纠正错误、无致命错误。一个仍在 x16 训练的边缘交流耦合网络或冷焊点、预期会在持续流量下积累 `BadTLP` 或 `RxErr`。超过 90 分钟的老化测试没测过。
 
-### Bandwidth
+### 带宽
 
-| Measurement | Result |
+| 测量 | 结果 |
 |---|---|
-| Host-to-device, CUDA, per card | **5.97 GB/s**, uniform across all four |
-| `MaxPayload` | 256 bytes (measured optimal on this host; 128 bytes cost throughput) |
-| `MaxReadReq` | 512 bytes |
+| 主机到设备、CUDA、每卡 | **5.97 GB/s**、全部四张统一 |
+| `MaxPayload` | 256 字节（这台主机实测最优；128 字节损失吞吐） |
+| `MaxReadReq` | 512 字节 |
 
-Against a PCIe 2.0 x16 ceiling of 8 GB/s after 8b/10b encoding, 5.97 GB/s is about 75 percent,
-which is the normal range once TLP and DLLP overhead is accounted for. It is below the 6.63 to
-6.67 GB/s recorded on the first Gen2 x16 rig; the difference is host-side (different root complex
-and chipset), not a property of the mod. The same 75 percent ratio appears in the Gen1 x16
-figure of 2.88 GB/s against a 4 GB/s ceiling.
+对照 8b/10b 编码后 PCIe 2.0 x16 的 8 GB/s 上限、5.97 GB/s 约 75 个百分点、那是算上 TLP 和 DLLP 开销后的正常范围。它低于第一台 Gen2 x16 机架记录的 6.63 到 6.67 GB/s；差异是主机侧的（不同的根复合体和芯片组）、不是改装的一个属性。同样的 75 个百分点比值出现在对照 4 GB/s 上限的 2.88 GB/s Gen1 x16 数字里。
 
 ---
 
-## Teardown
+## 拆解
 
-Required before waterblock installation, before reaching the SPI flash chip, and (on an assembled
-card) before any board-level rework. Fasteners are **Torx T10 and T15**.
+在水冷头安装前、在够到 SPI 闪存芯片前、（在一张组装好的卡上）任何板级返工前需要。紧固件是 **Torx T10 和 T15**。
 
-1. Remove the 4 PCIe mounting-bracket screws and **save the bracket**: it is reused as a spacer in
-   the waterblock install. The bracket on the opposite side need not be removed.
-2. Flip the card and remove the 10 screws on the back.
-3. Flip again, open the front cover; the PCIe bracket comes off, revealing the heatsink.
-4. Unscrew the bracket holding the power cable and connector at the top right.
-5. Pry the stiff power cable free of the backplane with a plastic spudger. The board cannot move
-   until the cable is freed.
-6. **The hardest step.** The PCB cannot be lifted vertically, because the PCIe connector slides
-   into a slot in the backplane. Slide the board horizontally away from the connector until it
-   clears by a few millimetres, then lift while continuing to move it horizontally. This step is
-   documented as having defeated a well-known hardware channel on its first attempt.
-7. Remove the 4 spring-loaded screws on the back of the PCB and **keep the 4 washers**. They are
-   not interchangeable with the plastic washers supplied with aftermarket waterblocks.
-8. Pry the heatsink off with a plastic spudger from a component-free edge, supporting it so it
-   cannot fall onto the PCB.
+1. 移除 4 颗 PCIe 安装支架螺丝、**保留支架**：它在水冷头安装里被重用为垫片。对面一侧的支架不必移除。
+2. 翻卡、移除背面 10 颗螺丝。
+3. 再翻、打开前盖；PCIe 支架脱落、露出散热器。
+4. 拧下固定右上角电源线缆和连接器的支架。
+5. 用塑料撬棒把硬电源线缆从背板上撬开。线缆未松前板子动不了。
+6. **最难的一步。** PCB 无法垂直抬起、因为 PCIe 连接器滑进背板的一个槽里。把板水平滑离连接器、直到让开几毫米、然后继续水平移动的同时抬起。这一步有记录地让一个知名硬件频道第一次尝试就败下阵来。
+7. 移除 PCB 背面 4 颗弹簧螺丝、**保留 4 个垫圈**。它们与售后水冷头附带的塑料垫圈不可互换。
+8. 用塑料撬棒从一个无元件边撬下散热器、托住它、让它不能掉到 PCB 上。
 
-Physical dimensions useful for planning: PCB 27 cm long, 29 cm all-in including the I/O shield and
-a plugged-in EPS connector; heatsink bolt pattern 57 × 68 mm centre to centre (68 mm vertical,
-57 mm horizontal); die package about 55 × 55 mm.
+规划有用的物理尺寸：PCB 27 cm 长、含 I/O 挡板和插上的 EPS 连接器 29 cm 全包；散热器螺栓孔型 57 × 68 mm 中心到中心（68 mm 垂直、57 mm 水平）；晶片封装约 55 × 55 mm。
 
 ---
 
-## Cooling retrofits
+## 散热改装
 
-Covered in operational depth on [Cooling](cooling.md); this section covers the physical work only.
+操作深度见[散热](cooling.md)；本节只覆盖物理工作。
 
-### Waterblocks
+### 水冷头
 
-The **Bykski `N-TESLA-A100-X-V2`** fits the A100 40 GB, CMP 170HX and A30 24 GB boards and uses
-standard G1/4 fittings. It **must** be the V2 (all-metal) revision; the earlier non-V2 uses
-transparent acrylic. Do not confuse it with the A100 **80 GB** block, which is incompatible.
-Practical warnings from the one documented installation: the block ships with no user manual, only
-a two-sentence online quick-start, and the included hex wrench is the wrong size, so bring a
-metric hex set. A100-PCB waterblocks fit and expose the NVLink fingers.
+**Bykski `N-TESLA-A100-X-V2`** 适用于 A100 40 GB、CMP 170HX 和 A30 24 GB 板、用标准 G1/4 接头。它**必须**是 V2（全金属）修订；更早的非-V2 用透明亚克力。不要把它和**不兼容**的 A100 **80 GB** 冷头混淆。来自唯一有记录的安装的实用警告：冷头发货没有用户手册、只有一份两句话的在线快速入门、附带的内六角扳手尺寸不对、所以带一套公制内六角。A100-PCB 水冷头能装上并暴露 NVLink 金手指。
 
 > [!CAUTION]
-> **Cover every unpopulated IC footprint before lowering the block**
+> **放下冷头前盖住每一个未贴装 IC 焊盘**
 >
-> The single most damaging waterblock-installation mistake is leaving unpopulated IC footprints
-> uncovered. The block's metal contact pillars can short across the exposed copper pads and
-> **permanently kill the card**. Because the 170HX is a depopulated A100 board it has far more
-> bare footprints than a real A100 and is correspondingly more dangerous to waterblock.
+> 最具破坏性的水冷头安装错误是让未贴装 IC 焊盘裸露。冷头的金属接触柱可以短路横跨裸露铜焊盘、**永久杀死卡**。因为 170HX 是一块缺件的 A100 板、它比真 A100 有远多裸露焊盘、相应地水冷更危险。
 >
-> Pad every footprint within reach of a pillar: the DrMOS MOSFETs left and right of the ASIC;
-> bottom-left and bottom-right of the ASIC; the PMIC to the right of the die between an inductor
-> and a capacitor; and the two PMICs to the left of the die below the 3.3 µH inductor. Thermal
-> paste (pea-sized) goes only on the GPU/HBM copper spreader.
+> 给柱够得着范围内的每个焊盘垫垫：ASIC 左右两侧的 DrMOS MOSFET；ASIC 的左下和右下；晶片右侧一颗电感和一颗电容之间的 PMIC；以及晶片左侧 3.3 µH 电感下方的两颗 PMIC。导热膏（豌豆大小）只放 GPU/HBM 铜均热板上。
 >
-> Confidence note: the instruction is documented procedure and the mechanism is sound, but the
-> causal attribution rests on one card that died about an hour after installation. The author's
-> leading suspicion competes with a pre-existing mining-wear fault and with an omitted-bracket
-> theory. It was never definitively isolated. Pad anyway.
+> 置信度注记：指令是有记录的流程、机制是健全的，但因果归因建立在一张安装约一小时后死掉的卡上。作者的头号怀疑与一个既有的挖矿磨损故障和一个漏装支架理论竞争。它从未被决定性地隔离。无论如何垫垫。
 
-Assembly specifics:
+装配细节：
 
-- Reuse the **4 original washers** saved in teardown step 7, not the plastic washers supplied with
-  the block, but use the **waterblock's spring-loaded screws** rather than the original screws.
-- Install one spring screw first, then insert the power connector into the waterblock slot. The
-  connector holder cover (item 4) must first be removed by unscrewing two hex nuts (item 5). Then
-  fit the remaining 3 washers and screws.
-- **Reinstall the original PCIe slot bracket between the PCB and the backplane on the left** as a
-  spacer. Its additional height sets the spacing between backplane and board.
-- The backplane is secured with four **9.5 mm M2** screws, two first, then two more.
-- Finish with a **15-minute pressurised leak test** before adding coolant.
+- 重用拆解第 7 步保存的 **4 颗原装垫圈**、不用冷头附带的塑料垫圈、但用**水冷头的弹簧螺丝**而非原装螺丝。
+- 先装一颗弹簧螺丝、然后把电源连接器插进水冷头槽。连接器支架盖（件 4）必须先拧下两颗六角螺母（件 5）来移除。然后装其余 3 颗垫圈和螺丝。
+- **在 PCB 和背板之间、左侧、重装原装 PCIe 插槽支架**作为垫片。它的额外高度设置背板和板之间的间距。
+- 背板用四颗 **9.5 mm M2** 螺丝固定、先两颗、再两颗。
+- 加冷却液前以一次 **15 分钟加压泄漏测试** 收尾。
 
-Thermal interface on the stock cooler: 1.5 mm soft pads on the main areas and 3 mm soft on the
-inductors, plus a liquid thermal compound or liquid thermal pad on the die. A competing "2 mm"
-figure for the main pads was offered but prefaced with "I think" and is lower confidence; the
-T10/T15 bits are corroborated by both reports.
+出厂散热器上的热界面：主区域 1.5 mm 软垫、电感上 3 mm 软垫、晶片上还有液态导热膏或液态导热垫。主垫的一个竞争 "2 mm" 数字被提出、却带 "I think" 前缀、置信度更低；T10/T15 批头被两份报告佐证。
 
-### Air cooling
+### 风冷
 
-The 57 × 68 mm bolt pattern is close enough to an RTX 4080 heatsink or a socket-478/370 mount to
-allow retrofits; a 4080 heatsink was reported to fit "kinda". Two printed options circulate:
+57 × 68 mm 螺栓孔型与 RTX 4080 散热器或一个 socket-478/370 安装足够近、允许改装；一个 4080 散热器被报告 "kinda" 能装上。两个打印选项流传：
 
-- The common 3D-printed shroud (`CMP_170HX_Fan_Shroud_Fixed.stl`,
-  `CMP_170HX_Dual_Shroud_Fixed.stl`) is friction-fit, falls off over time, and has walls thin
-  enough to be weak even in PETG. Only STLs exist, so modifying it easily would need a STEP file.
-- The Level1Techs A-series blower adapter (`l1 a100 blower.stl`, 52.3 KB, posted 2023-07-05) is a
-  support-free print that bolts to the existing screw holes at the far end of the card, with an
-  angled low section beside the power connector for finger access. Filament material, print
-  settings, airflow direction and durability follow-up were asked in-thread and never answered.
+- 常见的 3D 打印导流罩（`CMP_170HX_Fan_Shroud_Fixed.stl`、`CMP_170HX_Dual_Shroud_Fixed.stl`）是摩擦配合、随时间掉落、墙薄到即使在 PETG 里也弱。只有 STL 存在、所以容易修改它需要一个 STEP 文件。
+- Level1Techs A 系列鼓风机转接座（`l1 a100 blower.stl`、52.3 KB、发布 2023-07-05）是一个免支撑打印、用螺丝固定在卡远端现有的螺丝孔上、电源连接器旁带一个斜的低段便于手指伸入。耗材材料、打印设置、气流方向和耐用性在线程里被问过、从未回答。
 
 > [!WARNING]
-> **Whatever cooler you fit must also cool the VRM**
+> **无论装什么散热器、也必须给 VRM 散热**
 >
-> Die-only coolers leave the power stages unserved. One disputed field report describes cards
-> that repeatedly blew a rear-board component after prolonged mining, with the suspicion that
-> the operator was monitoring the core sensor (~56 °C) while overheating the VRM on a
-> bandwidth-bound workload. An experienced long-time owner disputes that failure mode entirely.
-> Unsettled, but the design rule stands regardless.
+> 只覆盖晶片的散热器让功率级得不到服务。一份有争议的现场报告描述卡在长期挖矿后反复烧掉一个板背元件、怀疑操作者在监控核心传感器（约 56 °C）却在带宽受限工作负载上让 VRM 过热。一位有经验的老拥有者完全反驳那个失败模式。未解决，但设计规则无论如何成立。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Do V100 vapour-chamber waterblocks fit the 170HX? Asked, never measured. Publish the
-> 57 × 68 mm bolt pattern and 55 × 55 mm die dimensions against the block's spec sheet before
-> buying. Related known-good data: SXM3 radiators are interchangeable with SXM2 with minor
-> modifications. Caution: the 170HX card body is thick, so generic NVIDIA blower ducts may not
-> fit.
+> V100 均热板水冷头适用于 170HX 吗？被问、从未测量。买之前把 57 × 68 mm 螺栓孔型和 55 × 55 mm 晶片尺寸对冷头的规格书发布。相关已知良好数据：SXM3 散热器经轻微修改可与 SXM2 互换。注意：170HX 卡体很厚，所以通用的 NVIDIA 鼓风机风道可能装不上。
 
 ---
 
-## Power connector and power mods
+## 电源连接器和电源改装
 
-The card takes a single **EPS 8-pin**, not a PCIe 8-pin. Most PSU-integrated EPS cables have
-oversized retention clips that physically will not fit, so a **2× PCIe-8-pin-to-EPS adapter** is
-the usual solution. A modular EPS12V cable must carry 4× 12 V and 4× GND on **both** ends, and one
-good-quality pin carries only about 70 to 80 W. Slot power limit from DevCap is 75 W; TDP is
-250 W, and 300 W is not a software ceiling: on stock firmware the maximum equals the default, so
-`nvidia-smi -pl` can only lower the card between 100 W and 250 W. Only the NVIDIA-issued 300 W
-"OC mining" VBIOS raises the ceiling, and only on cards that carry it. See
-[Power and PSU](power-and-psu.md).
+卡带一个**EPS 8-pin**、不是 PCIe 8-pin。大多数 PSU 集成的 EPS 线缆有物理上塞不进去的过大保持夹，所以 **2× PCIe-8-pin-to-EPS 转接座** 是通常的解决方案。一条模组 EPS12V 线缆必须在**两端**都带 4× 12 V 和 4× GND，而一颗优质引脚只承载约 70 到 80 W。DevCap 的插槽功耗上限是 75 W；TDP 是 250 W，而 300 W 不是软件上限：出厂固件上最大值等于默认值，所以 `nvidia-smi -pl` 只能在 100 W 和 250 W 之间降低卡。只有 NVIDIA 签发的 300 W "OC mining" VBIOS 提高上限、而且只在带它的卡上。见[供电与 PSU](power-and-psu.md)。
 
-### Shunt mod
+### 分流电阻改装
 
 > [!CAUTION]
-> **Never performed, never measured**
+> **从未执行、从未测量**
 >
-> Restoring full A100 TDP is *expected* to be a simple shunt mod rather than a firmware change.
-> **Nobody in the corpus performed or measured one.** The assessment is expert judgement from an
-> experienced hardware modder and is plausible for this class of card, but the shunt locations,
-> the resistor values, the resulting power figure and the thermal consequences are all unknown.
-> A software or VBIOS route to a 400 to 500 W limit was proposed as the alternative for people
-> uncomfortable with shunt modding, and was also never achieved. Attempting a shunt mod on this
-> card is unmapped territory with an obvious path to destroying it.
+> 恢复完整 A100 TDP *预期*是一个简单的分流电阻改装、而非固件改动。**语料库中没人执行或测量过一个。** 评估是一位有经验硬件改装者的专家判断、对这个等级的卡貌似合理，但分流位置、电阻值、所得功耗数字和热后果全都未知。一个到 400 到 500 W 上限的软件或 VBIOS 路线被作为对不适于做分流改装的人的替代提出、也从未达成。在这张卡上尝试分流改装是一个有明确毁卡路径的未映射领域。
 
-### The unpopulated 4-pin pad
+### 未贴装的 4-pin 焊盘
 
-An unpopulated 4-pin pad on the PCB was measured carrying 12 V and is suspected to be a fan
-header.
+PCB 上一个未贴装的 4-pin 焊盘被测得携带 12 V、被怀疑是一个风扇接口。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Nobody established the mating receptacle part, whether a tachometer line is present, or
-> whether it is PWM-controllable. Wanted because it would enable standalone per-card fan control
-> with no external controller. Next step: scope the remaining two pins at idle and under load,
-> and trace them on the leaked schematic.
+> 没人确立过配对插座料号、是否存在转速计线、或它是否 PWM 可控。想要它、因为它能实现无需外部控制器的独立每卡风扇控制。下一步：在空转和负载下示波剩余两个引脚、并在泄露的原理图上追踪它们。
 
 ---
 
-## Strap resistors
+## 跳线电阻
 
-The board carries five strap resistor pairs in the top-left area near the decoupling capacitors:
-ten pads for five straps, unmarked parts, typically 100 kΩ 0402, pulled to 0 V or 1.8 V. Each
-strap is one resistor plus one empty pad, so moving the part between positions flips that strap
-bit. Reading left to right on the PCB:
+板卡在去耦电容附近的左上区域携带五对跳线电阻：五个跳线的十个焊盘、未标记部件、通常 100 kΩ 0402、上拉到 0 V 或 1.8 V。每个跳线是一颗电阻加一个空焊盘，所以把部件在两个位置之间移动就翻转那个跳线位。在 PCB 上从左到右读：
 
-| Strap | Designators | Function |
+| 跳线 | 设计编号 | 功能 |
 |---|---|---|
 | Strap1 | R986, R987 | RAMCFG[1] |
 | Strap0 | R989, R990 | RAMCFG[0] |
@@ -553,157 +369,102 @@ bit. Reading left to right on the PCB:
 | Strap4 | R999, R1000 | PCIE_CFG |
 | Strap2 | R1004, R1005 | RAMCFG[2] |
 
-R1004 and R1005 are the two alternative footprints of the *same* strap position, not two separate
-resistors. A sixth strap, **DEVID_SEL at R240/R241**, is named in the same source but has never
-been physically located.
+R1004 和 R1005 是*同一个*跳线位置的两个替代焊盘、不是两颗独立电阻。一个第六跳线、**R240/R241 处的 DEVID_SEL**、在同一个来源里被点名、却从未被物理定位。
 
-Stock patterns: the A100 40 GB and the 170HX 10 GB share `LLLLH`; the 170HX 8 GB is `HHLLH`.
+出厂模式：A100 40 GB 和 170HX 10 GB 共享 `LLLLH`；170HX 8 GB 是 `HHLLH`。
 
 > [!CAUTION]
-> **One strap pattern bricks the host**
+> **一个跳线模式变砖主机**
 >
-> `LLHHH` on a 10 GB card produced **no POST at all**. Copying the A100's full strap
-> configuration onto a 170HX resulted in **card not detected at boot**. Strap experiments are
-> reversible in principle, but you can lose a working system to one until you move the part
-> back.
+> 10 GB 卡上的 `LLHHH` 产生**完全没有 POST**。把 A100 的完整跳线配置复制到 170HX 上导致**引导时卡不被检测到**。跳线实验原则上可逆、但你可以为一个失去一个工作的系统、直到你把部件移回去。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> What do Strap3 (VGA_DEVICE, R993/R994) and Strap4 (PCIE_CFG, R999/R1000) actually do? Asked
-> 2026-07-26, never answered. One accidental data point exists: a tester who intended to move
-> R1004 in fact moved Strap4, taking `LLLLH` to `LLLHH`, and reported no memory effect. Whether
-> PCIe capability negotiation changed was never measured. Next step: repeat that experiment
-> deliberately and capture `lspci -vv` LnkCap/LnkSta before and after.
+> Strap3（VGA_DEVICE、R993/R994）和 Strap4（PCIE_CFG、R999/R1000）到底做什么？2026-07-26 被问、从未回答。存在一个意外的数据点：一位本想移动 R1004 的测试者实际移动了 Strap4、把 `LLLLH` 带到 `LLLHH`、并报告没有显存影响。PCIe 能力协商是否改变从未被测量。下一步：故意重复那个实验、并在前后捕获 `lspci -vv` LnkCap/LnkSta。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Locate R240/R241 (DEVID_SEL) on the physical board. The device ID is what the shipping driver
-> keys geometry off, and `OPT_DEVID_SW_OVERRIDE_DIS @ 0x00820584 = 0x00000001` closes every
-> software route to changing it. Search heuristic, sound and untried at scale: find a resistor
-> with an empty pad directly next to it, in the 200-series designator region, on the PCB side
-> that carries sub-500 designators. Asking a commercial AI assistant produced a confident,
-> entirely fabricated board topology and is recorded as a cautionary data point.
+> 在物理板上定位 R240/R241（DEVID_SEL）。设备 ID 是出货驱动据以选择几何布局的键、而 `OPT_DEVID_SW_OVERRIDE_DIS @ 0x00820584 = 0x00000001` 关闭了改变它的每一条软件路线。搜索启发式、合理却未在规模上尝试：在携带 sub-500 设计编号的 PCB 侧、200 系列设计编号区域里、找一颗空焊盘紧挨着的电阻。问一个商业 AI 助手产生了一个自信、完全编造的板拓扑、并被记录为一个警示数据点。
 
 ---
 
-## VBIOS flash hardware
+## VBIOS 刷写硬件
 
-There is **no OS-level flash path for this board**. Writing the VBIOS means putting a chip clip
-on the SOIC part directly, which requires removing the heatsink, but no board passives need
-modifying to write with a clip.
+**这块板没有 OS 级闪存路径。** 写 VBIOS 意味着把芯片夹直接夹在 SOIC 部件上、那需要移除散热器、但用夹子写不需要修改板上无源器件。
 
 > [!CAUTION]
-> **Write-protect before power-on**
+> **上电前写保护**
 >
-> Flashing failure `0xBADF3000`, with the board unable to read flash, is caused by **not
-> write-protecting the SPI chip before powering back on**. Recovery is to reflash the SOIC
-> directly with a chip clip and then set write protection. The related symptom is an RM init
-> adapter failure. Confidence: medium (advice from someone who had done SOIC and VRM work on
-> these boards; the reporting user recovered the card shortly afterwards). See
-> [Recovery](../procedures/recovery.md) and [VBIOS](../hardware/vbios.md).
+> 刷写失败 `0xBADF3000`、板无法读闪存，是**上电前没有对 SPI 芯片写保护**造成的。恢复是用芯片夹直接重刷 SOIC、然后设写保护。相关症状是一次 RM init 适配器失败。置信度：中等（来自在这些板上做过 SOIC 和 VRM 工作的人的建议；报告的用户在不久后恢复了卡）。见[恢复](../procedures/recovery.md) 和 [VBIOS](../hardware/vbios.md)。
 
-The Winbond BIOS chip in the circulating hardware-restore bill of materials is a **backup VBIOS
-chip** for recovering from a bad flash. It is not part of the PCIe or memory unlock.
+流传的硬件恢复物料清单里的 Winbond BIOS 芯片是一颗**备份 VBIOS 芯片**、用于从一次坏刷中恢复。它不是 PCIe 或显存解锁的一部分。
 
 ---
 
-## What no amount of soldering can fix
+## 无论多少焊接都修不了的东西
 
-These boundaries are burned into fuses or into the package, and they bound every hardware idea on
-this page. Details in [Fuses and OTP](../hardware/fuses-and-otp.md).
+这些边界烧在熔丝里或封装里、它们束缚本页每一个硬件想法。细节见[熔丝与 OTP](../hardware/fuses-and-otp.md)。
 
-| Limit | Mechanism | Why solder does not help |
+| 限制 | 机制 | 为什么焊接没帮助 |
 |---|---|---|
-| SM count 70 (5 GPCs, 35 TPCs, CC 8.0) | `OPT_GPC_DISABLE 0x00820350` OTP | Every per-GPC `CTRL_OPT` (`0x00820838 + i*4`) and `RECONF_OVR` (`0x00820a40 + i*4`) already reads `0x00000000`; the enumerated count equals the fuse floor exactly. Nothing is being held back |
-| Memory capacity ceiling | `FUSE_FBP_DISABLE 0x00820364`, `FUSE_FBPA_DISABLE 0x00820368`, `FUSE_FBIO_DISABLE 0x0082036c`, `ROP_L2_DISABLE 0x008202c4` | The corresponding DEFECTIVE registers all read `0x0`, so there are no real silicon defects, only an active disable mask; writing 0 to the DISABLE registers does not move them |
-| Dead HBM stacks | Bonded to the **silicon interposer**, not the PCB | Reflow cannot work. One member spent several hours at a range of temperatures with a heat gun on several HBM2 GPUs, with no success. HBM stacks also contain internal fuses, so faulty dies can be permanently fused out inside the stack |
-| NVLink | `FUSE_NVLINK_DIS` plus unpopulated interface ICs | The edge fingers are physically present and A100 waterblocks expose them, but bringing NVLink up would need the missing ICs *and* a fuse that is set. Plausibly the interposer itself carries eFuses. See [NVLink](../frontier/nvlink.md) |
-| ECC | Fused off, no lever, no telemetry | See [ECC](../frontier/ecc.md) |
-| Display output | No display hardware on the board | Display pads exist on some CMP boards but would need "a ton of missing SMD components"; on the 170HX it is recorded as permanently absent |
-| Device ID | `OPT_DEVID_SW_OVERRIDE_DIS 0x00820584 = 0x00000001`; DEVIDA/DEVIDB fused on-die, selection strap-latched | Software cannot override it and the selecting strap has never been located |
+| SM 数 70（5 GPC、35 TPC、CC 8.0） | `OPT_GPC_DISABLE 0x00820350` OTP | 每个每-GPC `CTRL_OPT`（`0x00820838 + i*4`）和 `RECONF_OVR`（`0x00820a40 + i*4`）都已读 `0x00000000`；枚举数恰好等于熔丝下限。没有东西被压着 |
+| 显存容量上限 | `FUSE_FBP_DISABLE 0x00820364`、`FUSE_FBPA_DISABLE 0x00820368`、`FUSE_FBIO_DISABLE 0x0082036c`、`ROP_L2_DISABLE 0x008202c4` | 相应的 DEFECTIVE 寄存器全读 `0x0`，所以没有真实硅片缺陷、只有一个活动禁用掩码；对 DISABLE 寄存器写 0 不会移动它们 |
+| 死 HBM 堆叠 | 邦定在**硅中介层**上、不在 PCB 上 | 回流无法工作。一位成员用热风枪在几个 HBM2 GPU 上、各种温度下花了几小时、毫无成功。HBM 堆叠也含内部熔丝，所以堆叠内有缺陷的晶片可以被永久熔出 |
+| NVLink | `FUSE_NVLINK_DIS` 加未贴装的接口 IC | 边缘金手指物理存在、A100 水冷头暴露它们，但带起 NVLink 需要缺失的 IC *和*一颗已烧断的熔丝。中介层本身貌似携带 eFuse。见[NVLink](../frontier/nvlink.md) |
+| ECC | 熔断关闭、无杠杆、无遥测 | 见[ECC](../frontier/ecc.md) |
+| 显示输出 | 板上没有显示硬件 | 一些 CMP 板上存在显示焊盘、但需要 "a ton of missing SMD components"（一大堆缺失 SMD 元件）；在 170HX 上它被记录为永久缺失 |
+| 设备 ID | `OPT_DEVID_SW_OVERRIDE_DIS 0x00820584 = 0x00000001`；DEVIDA/DEVIDB 熔在晶片上、选择跳线锁存 | 软件无法覆盖它、选择跳线从未被定位 |
 
-The accurate general statement, correcting an early flat "hardware unlock is impossible" verdict:
-**hardware modification cannot move fused boundaries, but it can restore depopulated PCB
-features.** The capacitor mod is the one place where that distinction pays.
+准确的总体陈述、更正一个早期平板 "hardware unlock is impossible"（硬件解锁不可能）的判决：**硬件修改无法移动熔断的边界，但它可以恢复缺件的 PCB 特性。** 电容改装是这个区分会回报的唯一地方。
 
 ---
 
-## Related cards
+## 相关卡
 
-The **CMP 100-210** (a V100-class part) conversion to V100 or Titan V requires **both** a
-strap-resistor move and a force-flash, in that order: on the strap array, move the existing
-resistors from the bottom pads to the top pads to obtain `HHLLHH` (stock reported as `HLLLHH` or
-`HLLHHH`), then force-flash the official Tesla V100 16 GB VBIOS with `omgvflash`. No different
-resistor values are needed, only relocation. Flashing alone was tested and **fails**: the card
-enumerates but the device ID is unchanged, so the Linux driver binds it as a CMP 100 and loads
-incorrect binary blobs. Confidence: medium for the full procedure (one person with photos and
-multiple successful units, no second party completed it in-log); high for the
-"flashing alone is insufficient" half, which was directly tested.
+**CMP 100-210**（一个 V100 级部件）到 V100 或 Titan V 的转换需要**两者**、按此顺序：跳线电阻移位和一次强制刷写。在跳线阵列上、把现有电阻从底部焊盘移到顶部焊盘得到 `HHLLHH`（出厂报告为 `HLLLHH` 或 `HLLHHH`），然后用 `omgvflash` 强制刷写官方 Tesla V100 16 GB VBIOS。不需要不同的电阻值、只需要移位。只刷写被测试并**失败**：卡枚举、设备 ID 却不改变，所以 Linux 驱动把它当 CMP 100 绑定、加载不正确的二进制 blob。完整流程置信度中等（一个人带照片和多个成功单元、没有第二方在日志里完成它）；"只刷写不足够" 那一半置信度高、它被直接测试。
 
 > [!WARNING]
-> **The capacitor result does not transfer to the CMP 100-210**
+> **电容结果不迁移到 CMP 100-210**
 >
-> Lane count on the 170HX is purely a capacitor question (soldering alone gives x16 with no
-> software at all, confirmed by several parties). A competing report on the CMP 100-210 says
-> adding capacitors near the PCIe slot did **not** unlock x16 there, and that lane count is also
-> software-gated on that card. Different silicon; there is no reason the answers must match, but
-> the 170HX claim circulates without that qualifier.
+> 170HX 上的通道数纯粹是一个电容问题（只焊接、完全无软件就给出 x16、被多方确认）。CMP 100-210 上的一份竞争报告说、在 PCIe 插槽附近加电容在那里**不**解锁 x16、通道数在那张卡上也是软件门控的。不同的硅片；没有理由答案必须匹配，但 170HX 声称不带那个限定地流传。
 
 ---
 
-## You can buy this instead of doing it
+## 你可以买这个、而不是自己做
 
-By late July 2026 a large Shenzhen supplier offered the capacitor mod as a service for
-**1000 RMB (about $140)** on Xianyu. Cap-modded cards listed at 8800-9800 RMB against
-7000-7500 RMB unmodded; on Alibaba, about $1500 against roughly $1150-1300, so about a $300
-premium, and one seller confirmed x16 as the reason.
+到 2026 年 7 月下旬、一家大型深圳供应商在闲鱼上把电容改装作为一个服务以 **1000 元（约 $140）** 提供。改装过的卡挂牌 8800-9800 元对未改装的 7000-7500 元；在阿里巴巴上、约 $1500 对大约 $1150-1300、所以约 $300 溢价、一位卖家确认 x16 是原因。
 
 > [!WARNING]
-> **Buyer warning: two different things cost about $1500**
+> **买家警告：两个不同的东西约 $1500**
 >
-> A separate ~$1500 tier from a *different* supplier is **refurbishment, not the cap mod**. Ask
-> which tier you are being sold. Some Xianyu listings also charge extra for a bundled "cracked
-> system disk", which is a pre-built unlock boot image.
+> 来自一家*不同*供应商的、一个独立的约 $1500 档是**翻新、不是电容改装**。问清楚你被卖的是哪个档。一些闲鱼挂牌还给一个捆绑的 "cracked system disk"（破解系统盘）加钱、那是一个预建的解锁引导映像。
 
-### A local shop is cheaper, if you can find one that will take the job
+### 本地店更便宜、如果你能找到一家肯接这活的
 
-The Shenzhen service price is not the floor. One builder had their cards done at a local
-electronics repair shop for **about $50 per card**, roughly a third of the 1000 RMB service
-charge, with no shipping and no card leaving the country.
+深圳服务价不是底。一位构建者把他们的卡拿到一家本地电子维修店做、**每卡约 $50**、大约是 1000 元服务费的三分之一、没有运费、卡也不出镜。
 
-The hard part is not the soldering, it is finding someone willing to do it. That builder was
-turned away by **more than ten shops** before one agreed to simply fit the parts without
-arguing about it. Expect refusals: shops commonly want to diagnose the card first, dispute that
-missing capacitors are the real fault, or decline to work on hardware they did not sell. The job
-itself is unremarkable by board-repair standards, which is what makes the refusal rate
-surprising.
+难点不是焊接、是找到一个愿意做的人。那位构建者被**十多家店**拒绝、才有一家同意只是装部件而不争论。预期被拒：店家常想先诊断卡、争辩缺失电容不是真正故障、或拒绝做不是他们卖的硬件。工作本身按板卡维修标准平平无奇、这正是拒单率令人惊讶的原因。
 
-Guidance that follows from that, rather than from any measurement:
+从那个、而非从任何测量得出的指导：
 
-- Ask for the work by description, not by explanation. "Populate 24 0402 capacitors on these
-  marked pads, parts supplied" is a quotable job. Explaining that it unlocks PCIe lanes on a
-  mining card invites a debate about whether it will work, which is how the refusals start.
-- Supply the capacitors yourself. The full set costs a few dollars and it removes any sourcing
-  objection. See the [bill of materials](#bill-of-materials).
-- Board-level micro-soldering and phone-repair shops are a better target than general PC repair.
-  They already own the hot air, the microscope and the flux, and 0402 work is routine for them.
-- Accept that the shop will not warranty the outcome. It cannot: whether the link trains x16
-  depends on the card, not on the solder joints alone.
+- 用描述要求工作、不用解释。"Populate 24 0402 capacitors on these marked pads, parts supplied"（在这些标记焊盘上装 24 颗 0402 电容、元件自备）是一个可报价的工作。解释它在矿卡上解锁 PCIe 通道会招来一场关于它是否有效的辩论、那正是拒单开始的地方。
+- 你自己供元件。全套花几美元、还消除任何货源异议。见[物料清单](#bill-of-materials)。
+- 板级微焊接和手机维修店比普通 PC 维修更好的目标。他们已经拥有热风、显微镜和助焊剂、而 0402 工作对他们很常规。
+- 接受店里不会给结果质保。它不能：链路是否训练 x16 取决于卡、不只取决于焊点。
 
-At $50 per card this undercuts both the 1000 RMB service and the roughly $300 premium charged
-for a pre-modded card.
+在 $50 每卡下、它低于 1000 元服务和预改装卡收取的约 $300 溢价两者。
 
 ---
 
-## Related pages
+## 相关页面
 
-- [PCIe subsystem](../hardware/pcie-subsystem.md): the link, its registers, and the fuse evidence
-- [PCIe Gen2](../unlock/pcie-gen2.md): the software half, patches `0007` and `0008`
-- [PCIe Gen3 and Gen4](../frontier/pcie-gen3-gen4.md): why the next step up is categorically harder
-- [Board and variants](../hardware/board-and-variants.md): silkscreen, SKU identification, depopulation inventory
-- [Cooling](cooling.md) and [Power and PSU](power-and-psu.md): operating the modified card
-- [Fuses and OTP](../hardware/fuses-and-otp.md): the hard physical boundary
-- [Dead ends](../history/dead-ends.md): every hardware idea that was tried and failed
-- [Risks](../start/risks.md): read before touching the board
+- [PCIe 子系统](../hardware/pcie-subsystem.md)：链路、它的寄存器、熔丝证据
+- [PCIe Gen2](../unlock/pcie-gen2.md)：软件那一半、补丁 `0007` 和 `0008`
+- [PCIe Gen3 和 Gen4](../frontier/pcie-gen3-gen4.md)：为什么再往上一级分类上更难
+- [板卡与变体](../hardware/board-and-variants.md)：丝印、SKU 识别、缺件清单
+- [散热](cooling.md) 和[供电与 PSU](power-and-psu.md)：运行改装过的卡
+- [熔丝与 OTP](../hardware/fuses-and-otp.md)：硬物理边界
+- [死路](../history/dead-ends.md)：每一个试过并失败的硬件想法
+- [Risks](../start/risks.md)：碰板前阅读

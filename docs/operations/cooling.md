@@ -1,272 +1,197 @@
-# Cooling the card
+# 给卡散热
 
-## What this page covers
+## 本页覆盖内容
 
-Every cooling solution that has been measured on a CMP 170HX (or on an A100, which shares
-the PCB and the heatsink), what wattage each one actually removes, which marketed claims are
-false, and a recommendation table by target power limit. The thermal limits, sensor list and
-temperature reference tables live on [Thermals](../hardware/thermals.md).
+每一个在 CMP 170HX（或在一张共享 PCB 和散热器的 A100）上测量过的散热方案、每个实际移除多少瓦、哪些营销声称是假的、以及一张按目标功耗上限的推荐表。热限制、传感器清单和温度参考表在[热设计](../hardware/thermals.md)。
 
-The headline, because it is the most expensive mistake people make:
+头条、因为它是人们做的最贵的错误：
 
 > [!CAUTION]
-> **The 3.24 W snail fan sold as an \"A100 cooler\" does not do 300 W**
+> **作为 "A100 cooler" 出售的 3.24 W 蜗牛风扇不做 300 W**
 >
-> The widely sold 3D-printed "A100 cooling" adapter bundled with a **3.24 W, 12 V snail
-> fan** is advertised as blowing off 300 W. First-hand measurement by a purchaser puts it
-> at **150-180 W maximum**, at maximum duty cycle, powered directly from the PSU rather
-> than throttled by a header. That is well short of the card's 250 W nominal envelope and
-> nowhere near the 300 W OC-VBIOS envelope. Nobody contradicted the measurement. A second
-> participant separately queried whether a radial fan can do this job at 3 W at all,
-> noting that most radial fans of the required class draw at least 3 A (about 30 W).
+> 广泛销售的、捆绑一个 **3.24 W、12 V 蜗牛风扇** 的 3D 打印 "A100 cooling" 转接座被宣传为能吹掉 300 W。购买者的一手测量把它放在**最大 150-180 W**、在最大占空比下、直接从 PSU 供电而非被一个接口节流。那远低于卡的 250 W 标称包络、离 300 W OC-VBIOS 包络更远。没人反驳测量。第二位参与者还单独质疑一颗径流风扇能否在 3 W 下胜任这个工作、指出所需类别的大多数径流风扇至少耗 3 A（约 30 W）。
 
-The card is **fully passive**, reports `Fan Speed : N/A`, and will not protect itself with a
-fan it does not have. Sizing rule: pick your cooler for the power limit you intend to run,
-using the measured column below and not the marketing column.
+卡**完全被动**、报告 `Fan Speed : N/A`、不会用一个它没有的风扇保护自己。尺寸规则：为你打算运行的功耗上限选散热器、用下面的实测列而非营销列。
 
 ---
 
-## Five rules that fall out of the measurements
+## 从测量中得出的五条规则
 
-1. **Pull, do not push.** Sleeve-style shrouds that push air through the card produce
-   "considerable blow back". Pulling air through the fin stack works much better in every
-   first-hand account.
-2. **Screw the duct on.** Friction-fit printed ducts "simply fall off" in use, in both
-   single- and dual-GPU versions. The card has screw holes; use them.
-3. **Wattage is the proxy, not RPM.** The useful spec is how many watts a solution has been
-   shown to remove while holding 70 C core / 75 C memory, not the fan's rated speed.
-4. **A single 40 mm fan fails, whatever its RPM.** One Arctic S4028-15K gives a 90 C
-   hotspot; two give 70 C GPU / 76 C hotspot. An 8000 RPM 40 mm fan was abandoned by its own
-   prospective buyer once the 80 C throttle onset was discovered ("guess 8k rpm won't do").
-5. **Cool the VRM too.** Any solution that only covers the die, including a deshroud plus a
-   pressure-mounted tower cooler, still needs a separate 80-120 mm fan over the power stages.
+1. **拉、不要推。** 把空气推过卡的套筒式导流罩产生 "considerable blow back"（相当大的回风）。每一个一手叙述里、把空气拉过鳍片堆都工作得好得多。
+2. **把风道拧上。** 摩擦配合的打印风道在使用中 "simply fall off"（干脆掉下来）、单卡和双卡版本都如此。卡有螺丝孔；用它们。
+3. **瓦数是代理、不是 RPM。** 有用的规格是一个方案被证明在保持 70 C 核心 / 75 C 显存的同时移除多少瓦、而不是风扇的额定速度。
+4. **单颗 40 mm 风扇失败、无论多少 RPM。** 一颗 Arctic S4028-15K 给出 90 C 热点；两颗给出 70 C GPU / 76 C 热点。一颗 8000 RPM 40 mm 风扇在发现 80 C 节流起始后、被它自己的潜在买家放弃（"guess 8k rpm won't do"）。
+5. **也要给 VRM 散热。** 任何只覆盖晶片的方案、包括去导流罩加一颗压力安装的塔式散热器、仍需要一颗独立的 80-120 mm 风扇对着功率级。
 
 ---
 
-## Blowers, measured
+## 涡轮鼓风机，实测
 
-| Solution | Measured result | Conditions | Confidence |
+| 方案 | 实测结果 | 条件 | 置信度 |
 |---|---|---|---|
-| Printed "A100 cooling" adapter + **3.24 W 12 V snail fan** | **150-180 W maximum** (advertised 300 W) | max duty, direct PSU feed | high |
-| **EFB0251S3** blower, also rated **3.24 W** | **saturates at 73 C** at 200 W | `-pl 200`, sustained 100% load | medium |
-| **San Ace B97, 1.85 A** (BFB1012VH) + USB fan controller, curve capped at 66% | **below 65 C at 250 W sustained** | curve driven from hotspot; it hunts, die temp is the better input | medium |
-| **San Ace B97, 1.5 A** + pot-driven PWM controller (PCIe or SATA powered) | **claimed 350 W, unmeasured on a 170HX** | unusable at full blast without a controller | low |
-| **9733S 12 V 2-wire blower** (97 x 97 x 33 mm) + Level1Techs printed shroud | idle **64 C to 36 C**; load **80+ C to 40-50 C** | **on an A100**, same PCB and cooler, LLM workloads | medium |
-| **AC Infinity S2-class blower, no shroud** | **150 W OK, throttles at ~180 W** | **on an A100** (85 C limit), large air-leak paths | medium |
-| **AC Infinity S2-class blower, no shroud** | **200 W** stress test passed | **on an MI100** | medium |
-| Cheap 40/60 mm blower taped on with **aluminium tape** | no temperature posted | reported surprisingly sturdy, and loud | low |
+| 打印 "A100 cooling" 转接座 + **3.24 W 12 V 蜗牛风扇** | **最大 150-180 W**（宣传 300 W） | 最大占空比、直接 PSU 供电 | 高 |
+| **EFB0251S3** 鼓风机、同样额定 **3.24 W** | 200 W 下**饱和在 73 C** | `-pl 200`、持续 100% 负载 | 中等 |
+| **San Ace B97、1.85 A**（BFB1012VH）+ USB 风扇控制器、曲线封顶 66% | **250 W 持续下低于 65 C** | 曲线从热点驱动；它会振荡、晶片温度是更好的输入 | 中等 |
+| **San Ace B97、1.5 A** + 电位器驱动的 PWM 控制器（PCIe 或 SATA 供电） | **声称 350 W、在 170HX 上未测量** | 没有控制器时满速不可用 | 低 |
+| **9733S 12 V 2 线鼓风机**（97 x 97 x 33 mm）+ Level1Techs 打印导流罩 | 空转 **64 C 到 36 C**；负载 **80+ C 到 40-50 C** | **在一张 A100 上**、同一 PCB 和散热器、LLM 工作负载 | 中等 |
+| **AC Infinity S2 类鼓风机、无导流罩** | **150 W 没问题、约 180 W 节流** | **在一张 A100 上**（85 C 限制）、大的空气泄漏路径 | 中等 |
+| **AC Infinity S2 类鼓风机、无导流罩** | **200 W** 压力测试通过 | **在一张 MI100 上** | 中等 |
+| 便宜 40/60 mm 鼓风机用 **铝箔胶带** 贴上 | 没贴温度 | 报告出奇地结实、也吵 | 低 |
 
 > [!NOTE]
-> **Open problem: two nominally identical 3.24 W blowers, two different outcomes**
+> **未解问题：两颗标称相同的 3.24 W 鼓风机、两种不同的结果**
 >
-> The printed adapter with a 3.24 W snail fan tops out at 150-180 W. An EFB0251S3, also
-> stated at 3.24 W, holds a card at 73 C at a 200 W limit under sustained full load. Same
-> nominal fan power, materially different result. Duct sealing and the static-pressure
-> path are the obvious explanation, and the tester who measured the unshrouded case
-> reported "There are huge spots for leaks", but **nobody has run the two side by side on
-> the same card at the same power limit**. Until someone does, treat the 3.24 W class as
-> a 150-200 W class and assume duct quality is doing most of the work.
+> 带 3.24 W 蜗牛风扇的打印转接座封顶在 150-180 W。一个 EFB0251S3、也标 3.24 W、在 200 W 上限、持续满载下把一张卡保持 73 C。同样的标称风扇功率、实质不同的结果。风道密封和静压路径是显而易见的解释、测量无导流罩案例的测试者报告 "There are huge spots for leaks"（有巨大的泄漏点），但 **没人把两者在同一张卡、同一功耗上限下并排跑过**。在那之前、把 3.24 W 类当一个 150-200 W 类、并假设风道质量做了大部分工作。
 
-Treat **250 W as the proven figure for the B97 and 350 W as an unverified claim.** The 350 W
-number is confidently asserted and supported by the same blower cooling a 350 W FPGA for a
-year, but no measured 350 W log on a 170HX exists.
+把 **250 W 当 B97 已证实数字、350 W 当一个未经验证声称。** 350 W 数字被自信断言、并由同一颗鼓风机冷却一个 350 W FPGA 一年支持，但不存在一张 170HX 上实测 350 W 的日志。
 
 ---
 
-## Axial fans and shrouds, measured
+## 轴流风扇和导流罩，实测
 
-| Solution | Measured result | Conditions | Confidence |
+| 方案 | 实测结果 | 条件 | 置信度 |
 |---|---|---|---|
-| **1 x Arctic P12 Pro PST 120 mm** through a printed shroud, feeding **2 cards** | **32 C idle** at ~34 W each | 1000 RPM (fan capable of 3000), electrical tape added around the shroud to raise static pressure | high |
-| **2 x Arctic P12 Pro PST CO 120 mm** in printed ducts with internal splitter vanes, feeding **4 cards** | **under 65 C** | `-pl 160` per card, "not much noise" | medium |
-| **1 x 120 mm @ 3000 RPM**, ducted | **73 C** peak | stock clocks, "a bit too loud" | high |
-| **Cooling unstated** (one owner, one setup) | **~70 C ±2** default clocks; **75-77 C** overclocked | up to 300 W. The fan was never named in the source thread | high |
-| **Arctic 12038-4K 120 mm** | **~85 C**, "cannot cool it any better without water" | memory-overclock `gpu_burn`; HBM errors appeared within the first couple of minutes, cause unresolved | medium |
-| **1 x 140 mm Noctua NF-A14 industrialPPC** + repurposed P100 shroud, 3 cards | **~38 C idle, under 80 C** loaded | wattage-driven custom fan curve, quiet at idle | high |
-| **2 x stacked Noctua 140 mm** | **~80 C down to ~70 C** | adding the second fan | high |
-| **80 mm 10k-RPM server fan @ 3500 RPM** | **under 70 C core / 75 C memory** at 200 W | same setup handles 300 W without difficulty | medium |
-| **80 mm server fan @ 7500 RPM** | **70 C core / 75 C memory** at full 300 W | with an overclock | high |
-| **80 mm server fan @ 35% speed** | within 70/75 C | `-pl 175` | high |
-| **2 x Arctic S4028-15K 40 mm** on a custom 2-slot bracket | **never above 70 C GPU / 76 C hotspot** | curve set to 100% at 70 C, fans hit 15000 RPM | high |
-| **1 x Arctic S4028-15K 40 mm** | **90 C hotspot, rejected** | same bracket | high |
-| **Two-fan printed shroud shipped with some cards** | never above 60 C | under half fan speed, card not yet unlocked, workload unspecified | medium |
-| **Stock passive heatsink in a datacenter chassis** (Gigabyte G292-Z20, 80 mm fans) | **peak 60 C at 254 W** | 8-card rental; "louder than a jet engine" | medium |
-| **Deshroud + 2-3 x 120 mm Noctua** directly onto the opened fin stacks | untested | proposed alternative to ducts | low |
-| **Deshroud + pressure-mounted tower cooler** | untested | "gravity or zip ties works", no clamping pressure needed; VRM still needs its own 80-120 mm fan | low |
+| **1 x Arctic P12 Pro PST 120 mm** 经一个打印导流罩、喂 **2 张卡** | **32 C 空转**、各约 34 W | 1000 RPM（风扇能干 3000）、导流罩周围加了电工胶带以提高静压 | 高 |
+| **2 x Arctic P12 Pro PST CO 120 mm** 在带内部分流叶片的打印风道里、喂 **4 张卡** | **低于 65 C** | 每卡 `-pl 160`、"not much noise" | 中等 |
+| **1 x 120 mm @ 3000 RPM**、带风道 | **73 C** 峰值 | 出厂时钟、"a bit too loud" | 高 |
+| **散热未说明**（一位拥有者、一套设置） | 出厂时钟约 **~70 C ±2**；超频 75-77 C | 最高 300 W。那颗风扇在源线程里从没被点名 | 高 |
+| **Arctic 12038-4K 120 mm** | **约 85 C**、"cannot cool it any better without water" | 显存超频 `gpu_burn`；前几分钟内出现 HBM 错误、原因未解决 | 中等 |
+| **1 x 140 mm Noctua NF-A14 industrialPPC** + 重用的 P100 导流罩、3 张卡 | **约 38 C 空转、负载低于 80 C** | 瓦数驱动的自定义风扇曲线、空转安静 | 高 |
+| **2 x 堆叠 Noctua 140 mm** | **约 80 C 降到约 70 C** | 加第二把 | 高 |
+| **80 mm 10k-RPM 服务器风扇 @ 3500 RPM** | 200 W 下**核心低于 70 C / 显存低于 75 C** | 同一套设置轻松处理 300 W | 中等 |
+| **80 mm 服务器风扇 @ 7500 RPM** | 完整 300 W 下**70 C 核心 / 75 C 显存** | 带一个超频 | 高 |
+| **80 mm 服务器风扇 @ 35% 速度** | 在 70/75 C 内 | `-pl 175` | 高 |
+| **2 x Arctic S4028-15K 40 mm** 在定制 2 槽支架上 | **从不高于 70 C GPU / 76 C 热点** | 曲线在 70 C 处 100%、风扇撞 15000 RPM | 高 |
+| **1 x Arctic S4028-15K 40 mm** | **90 C 热点、被拒绝** | 同一支架 | 高 |
+| 随一些卡发货的双风扇打印导流罩 | 从不高于 60 C | 半风扇速度下、卡尚未解锁、工作负载未说明 | 中等 |
+| 数据中心机箱里**出厂被动散热片**（Gigabyte G292-Z20、80 mm 风扇） | **254 W 下峰值 60 C** | 8 卡租用；"louder than a jet engine" | 中等 |
+| **去导流罩 + 2-3 x 120 mm Noctua** 直接对打开鳍片堆 | 未测试 | 作为风道替代被提出 | 低 |
+| **去导流罩 + 压力安装塔式散热器** | 未测试 | "gravity or zip ties works"、无需夹持压力；VRM 仍需要它自己的 80-120 mm 风扇 | 低 |
 
-The 80 mm high-RPM server-fan rows are the strongest air results in the corpus: they meet
-the 70 C / 75 C design target at the full 300 W envelope, and at 200 W they do it at only
-3500 RPM.
+80 mm 高-RPM 服务器风扇行是语料库里最强的风冷结果：它们在完整 300 W 包络下满足 70 C / 75 C 设计目标、200 W 下只用 3500 RPM 就做到。
 
 ---
 
-## Shrouds and ducts
+## 导流罩和风道
 
-| Design | Verdict |
+| 设计 | 判决 |
 |---|---|
-| **Level1Techs A-series blower adapter** (`l1 a100 blower.stl`, 52.3 KB) | Best-evidenced printed part. Support-free print that bolts to the existing screw holes at the far end of the card, with an angled low section beside the power connector for finger access. Produced the 64 C to 36 C idle result on an A100 with a 9733S blower. Caveat: the card becomes noticeably longer. Filament, print settings, airflow direction and durability were asked in-thread and never answered. |
-| **Thingiverse 5532715** (single and dual 120 mm) | Usable; **use the "fixed" variant**. The dual version is too long for some rigs. |
-| **`CMP_170HX_Fan_Shroud_Fixed.stl` / `CMP_170HX_Dual_Shroud_Fixed.stl`** | Friction-fit, falls off over time, walls thin enough to be weak even in PETG. Only STLs exist, so modification needs a re-model rather than a STEP edit. |
-| **Cults3D `cmp-170hx-fanduct`** (single and dual GPU) | **Mechanical failure.** Both versions "simply fall off". |
-| **LTT shroud** | **Rejected by users.** "The ltt shroud is awful", "Lots of back-pressure." |
-| **Sleeve-style shrouds / push-through airflow** | **Rejected.** Considerable blowback; will not work in 2-slot spacing. Flush bolt-on brackets will. |
-| **A5000/A6000 blower shrouds as a drop-in** | **Disputed, leaning against.** The proposal rested on shared Ampere workstation PCB dimensions; the rebuttal cited different screw holes and no fan connector. Neither side posted a photo of an attempted fit. |
-| **A100 shrouds** | **Unresolved.** Asserted to fit ("Only difference is the text right?"), never photographed or measured on a 170HX. Note that shared-PCB reasoning has already failed once here, with the A5000/A6000 claim. |
-| **Boring out the stock two-slot shroud for an integral fan** | Works for a single card or spaced-out cards; fails for adjacent installs because two-slot cards leave no intake gap. Never built. |
+| **Level1Techs A 系列鼓风机转接座**（`l1 a100 blower.stl`、52.3 KB） | 证据最充分的打印部件。免支撑打印、用螺丝固定在卡远端现有的螺丝孔上、电源连接器旁带一个斜的低段便于手指伸入。在一张 A100 上配 9733S 鼓风机产生 64 C 到 36 C 空转结果。注意事项：卡明显变长。耗材、打印设置、气流方向和耐用性在线程里被问过、从未回答。 |
+| **Thingiverse 5532715**（单和双 120 mm） | 可用；**用 "fixed" 变体**。双版本对某些机架太长。 |
+| **`CMP_170HX_Fan_Shroud_Fixed.stl` / `CMP_170HX_Dual_Shroud_Fixed.stl`** | 摩擦配合、随时间掉落、墙薄到即使在 PETG 里也弱。只有 STL 存在、所以修改需要重新建模而非 STEP 编辑。 |
+| **Cults3D `cmp-170hx-fanduct`**（单和双 GPU） | **机械失败。** 两个版本都 "simply fall off"。 |
+| **LTT 导流罩** | **被用户拒绝。** "The ltt shroud is awful"、"Lots of back-pressure." |
+| **套筒式导流罩 / 推式气流** | **被拒绝。** 相当大的回风；在 2 槽间距下不会工作。齐平螺栓固定支架会。 |
+| **A5000/A6000 鼓风机导流罩作为直接替换** | **有争议、倾向否定。** 提议基于共享的 Ampere 工作站 PCB 尺寸；反驳引用了不同的螺丝孔和没有风扇连接器。任何一方都没贴出尝试安装的照片。 |
+| **A100 导流罩** | **未解决。** 被断言能装上（"Only difference is the text right?"）、从没在 170HX 上拍过照或测量过。注意共享-PCB 推理在这里已经失败过一次、就在 A5000/A6000 声称上。 |
+| **把出厂双槽导流罩扩孔装一颗内嵌风扇** | 对单卡或间隔开的卡有效；对相邻安装失败、因为双槽卡不留下进风间隙。从未做过。 |
 
-Practical gotchas reported repeatedly: several shrouds **block access to the card's EPS power
-plug**, so test-fit with the cable in place; third-party print quality is unreliable (one
-part described as 120 mm arrived as 140 mm); and use **aluminium tape, not duct tape**, if
-you are taping a blower on.
+反复报告的实用坑：几个导流罩**挡住卡的 EPS 电源插头**、所以带线缆试装；第三方打印质量不可靠（一个被描述为 120 mm 的部件到货是 140 mm）；如果你在贴鼓风机用**铝箔胶带、不要用管道胶带**。
 
 > [!NOTE]
-> **Open problem: print material**
+> **未解问题：打印材料**
 >
-> PLA is reported as fine in practice by a multi-card user ("pla has been fine for all
-> mine"), on the argument that the duct sits in cool intake air away from the heat source.
-> Others recommend PETG or ASA as safer near GPU heat. Mildly disputed, no failure
-> reported on either side.
+> PLA 被一位多卡用户报告实际没问题（"pla has been fine for all mine"）、理由是风道坐在冷的进风里、远离热源。另一些人推荐 PETG 或 ASA 作为 GPU 热附近更安全。轻度争议、双方都没有失败报告。
 
 ---
 
-## Water cooling
+## 水冷
 
-Water is the only route that has produced sub-50 C load temperatures on this card.
+水冷是在这张卡上产生低于 50 C 负载温度的唯一路线。
 
-| Block | Measured result | Notes |
+| 冷头 | 实测结果 | 备注 |
 |---|---|---|
-| **Bykski N-TESLA-A100-X-V2** + 360 mm 3-fan radiator | **30 C idle at 30 W; 45 C after 30 min at 180 W** with fan and pump both at **minimum** speed | The only commercially available full-coverage block confirmed compatible. Also fits A100 40 GB PCIe, A30 24 GB and Tesla L40 (shared PCB). Uses standard G1/4 fittings. Lower temperatures are available at higher fan speed. |
-| **Budget generic full-cover block** | **48 C core / 58 C memory** after a 1-hour stress test | 8 GB card, in service about a year. |
-| **EK-PRO GPU WB RTX A100** | no temperatures posted | Fits. Out of production. |
-| **Chinese V100 SXM2 flat-plate block** | untested | Plain flat plate with no conforming surfaces; the MOSFET and inductor gaps would have to be filled by hand. |
-| **Arctic Liquid Freezer II 420 AIO + copper adapter plate** | **FAILED** before a game finished loading | Photographed **pump-out**: cracked paste with bare copper across much of the die contact area. Attributed to poor mounting pressure or an incompatible adapter. |
+| **Bykski N-TESLA-A100-X-V2** + 360 mm 3 风扇冷排 | **30 W 下 30 C 空转；180 W 下 30 分钟后 45 C**、风扇和泵都在**最小**速度 | 唯一确认兼容的商业全覆盖冷头。也适用于 A100 40 GB PCIe、A30 24 GB 和 Tesla L40（共享 PCB）。用标准 G1/4 接头。更高风扇速度下可得更低温度。 |
+| **便宜的通用全覆盖冷头** | 1 小时压力测试后**48 C 核心 / 58 C 显存** | 8 GB 卡、服役约一年。 |
+| **EK-PRO GPU WB RTX A100** | 没贴温度 | 能装上。停产。 |
+| **中国 V100 SXM2 平板冷头** | 未测试 | 一块没有随形面的普通平板；MOSFET 和电感间隙得手工填。 |
+| **Arctic Liquid Freezer II 420 AIO + 铜转接板** | 游戏加载完成前**失败** | 拍照看到 **pump-out**：晶片接触区大片裸铜上开裂的导热膏。归因于安装压力差或一个不兼容的转接板。 |
 
 > [!CAUTION]
-> **Fitment traps that destroy cards or waste money**
+> **毁卡或浪费钱的安装陷阱**
 >
-> - **`N-TESLA-A100-80G-X-V2` does not fit.** The A100 80 GB is a different, incompatible
->   PCB. Only the 40 GB-family block is correct.
-> - **The V2 (all-metal) revision is required.** The earlier non-V2 uses transparent
->   acrylic.
-> - **SXM waterblocks do not fit PCIe cards at all.** At least a third of A100s sold were
->   SXM. There are also two different PCIe A100 block designs, because the A100 80 GB has
->   no integrated heat spreader while other variants do: "if that waterblock is made for
->   the variant without IHS it wont work properly."
-> - The correct V2 block ships with **no manual and a hex wrench of the wrong size**. Have
->   a metric hex set ready.
+> - **`N-TESLA-A100-80G-X-V2` 装不上。** A100 80 GB 是一块不同的、不兼容的 PCB。只有 40 GB 家族冷头正确。
+> - **必须用 V2（全金属）修订。** 更早的非-V2 用透明亚克力。
+> - **SXM 水冷头根本不适用于 PCIe 卡。** 至少三分之一的已售 A100 是 SXM。还有两种不同的 PCIe A100 冷头设计、因为 A100 80 GB 没有集成散热器而其它变体有："if that waterblock is made for the variant without IHS it wont work properly."
+> - 正确的 V2 冷头发货时**没有说明书、还带一把尺寸不对的内六角扳手**。备好一套公制内六角。
 
 > [!CAUTION]
-> **The single most damaging waterblock installation mistake**
+> **最具破坏性的水冷头安装错误**
 >
-> **Cover every unpopulated IC footprint within reach of the block's contact pillars with
-> thermal pad before lowering the block.** Because the 170HX is a depopulated A100 board
-> it has far more bare footprints than a real A100, and the block's metal pillars can
-> short across exposed copper pads and permanently kill the card. Pad the DrMOS MOSFETs
-> left and right of the ASIC, the areas bottom-left and bottom-right of the ASIC, the PMIC
-> to the right of the die between an inductor and a capacitor, and the two PMICs to the
-> left of the die below the 3.3 µH inductor. Thermal paste (pea-sized) goes only on the
-> GPU/HBM copper spreader. The author of this procedure lost a card about an hour after
-> installation and this is their leading suspicion, competing with a pre-existing
-> mining-wear fault; it was never definitively isolated.
+> **放下冷头前、用导热垫盖住接触柱够得着范围内的每一个未贴装 IC 焊盘。** 因为 170HX 是一块缺件的 A100 板、它比真 A100 有远多裸露焊盘、而冷头的金属柱可以短路横跨裸露铜焊盘、永久杀死卡。给 ASIC 左右两侧的 DrMOS MOSFET、ASIC 的左下和右下区域、晶片右侧一颗电感和一颗电容之间的 PMIC、以及晶片左侧 3.3 µH 电感下方的两颗 PMIC 垫垫。导热膏（豌豆大小）只放 GPU/HBM 铜均热板上。这个流程的作者在安装约一小时后丢了一张卡、这是他们的头号怀疑、与一个既有的挖矿磨损故障竞争；它从未被决定性地隔离。
 
-Full teardown order, washer and bracket reuse, and the 15-minute pressurised leak test are
-on [Physical mods](physical-mods.md).
+完整拆解顺序、垫圈和支架重用、以及 15 分钟加压泄漏测试在[物理改装](physical-mods.md)。
 
 > [!NOTE]
-> **Open problem: HBM temperature on water**
+> **未解问题：水冷下的 HBM 温度**
 >
-> The one sweep that tried to lower HBM temperature on air concluded "getting lower hbm
-> temps on air seems impossible". A request for equivalent waterblock memory-temperature
-> data went unanswered, so nobody knows whether the HBM floor is a cooling limit or
-> intrinsic to the package. The budget-block owner who measured 58 C memory already has
-> the hardware to answer it.
+> 唯一一次试图在风冷下降低 HBM 温度的扫描得出结论 "getting lower hbm temps on air seems impossible"（在风冷下让 HBM 温度更低似乎不可能）。一次对等效水冷头显存温度数据的请求无人回应，所以没人知道 HBM 下限是散热限制还是封装固有的。那个测得 58 C 显存的便宜冷头拥有者已经拥有回答它的硬件。
 
 ---
 
-## Fan control and noise
+## 风扇控制和噪声
 
-There is no usable fan control on the card itself. Everything is external.
+卡上没有可用的风扇控制。一切都是外部的。
 
-- **No confirmed on-card fan header.** An unpopulated pad that looks like a fan location was
-  spotted on the card. Asked whether it is a 4-pin, one participant answered that it carries
-  12 V and ground only; a skeptic in the same thread said it "doesn't look like a fan con".
-  Nothing was ever probed, and no photo-confirmed pinout and no working fan install was ever
-  posted. Even if it is a header, the reported pins are power only, which would mean a fixed
-  full-speed fan with no tachometer.
-- **Control the fan from the host.** A USB or pot-driven PWM controller is what testers
-  actually used. Drive the curve from **die temperature**, not hotspot, because hotspot-driven
-  curves hunt.
-- **A wattage-driven curve** was reported as the quietest approach on a 3-card rig with
-  140 mm industrial fans.
+- **没有确认的板载风扇接口。** 卡上发现一个看起来像风扇位置的未贴装焊盘。被问它是否是 4-pin 时、一位参与者回答它只携带 12 V 和地；同一线程里一位怀疑者说它 "doesn't look like a fan con"。从没探测过、也没贴出过照片确认的引脚定义或一个工作的风扇安装。即使它是一个接口、报告的那些引脚也只有电源、那意味着一个没有转速计的固定全速风扇。
+- **从主机控制风扇。** USB 或电位器驱动的 PWM 控制器才是测试者实际用的。从**晶片温度**驱动曲线、不要从热点，因为热点驱动的曲线会振荡。
+- **瓦数驱动的曲线**在一个带 140 mm 工业风扇的 3 卡机架上被报告为最安静的方法。
 
-Noise, in the order testers described it:
+噪声、按测试者描述的顺序：
 
-| Setup | Noise |
+| 设置 | 噪声 |
 |---|---|
-| 1 x P12 Pro 120 mm at 1000 RPM feeding 2 cards | quiet |
-| 2 x 120 mm feeding 4 cards at `-pl 160` | "not much noise" |
-| 140 mm industrialPPC on a wattage-driven curve | quiet at idle |
-| 1 x 120 mm at 3000 RPM ducted | "a bit too loud" |
-| San Ace B97 at full blast without a controller | unusable |
-| 2 x S4028-15K 40 mm at 15000 RPM | loud by design |
-| Stock passive heatsink in a datacenter chassis | "louder than a jet engine" |
+| 1000 RPM 喂 2 卡的 1 x P12 Pro 120 mm | 安静 |
+| `-pl 160` 喂 4 卡的 2 x 120 mm | "not much noise" |
+| 瓦数驱动曲线上的 140 mm industrialPPC | 空转安静 |
+| 3000 RPM 带风道的 1 x 120 mm | "a bit too loud" |
+| 满速无控制器的 San Ace B97 | 不可用 |
+| 15000 RPM 的 2 x S4028-15K 40 mm | 设计上吵 |
+| 数据中心机箱里的出厂被动散热片 | "louder than a jet engine" |
 
-One more practical annoyance: a fixed-speed fan on a card with no fan control will "kick in
-at 100% speed during a system reboot", which is startling the first time.
+一个更实际的烦恼：一张没有风扇控制的卡上的定速风扇会在 "system reboot"（系统重启）期间 "kick in at 100% speed"（以 100% 速度启动）、第一次吓人一跳。
 
 ---
 
-## Recommendation by target wattage
+## 按目标瓦数的推荐
 
-Pick the row for the power limit you will actually run, then verify with an **integer or
-memory** benchmark, never a conventional FP32 burn-in (see
-[Power and PSU](power-and-psu.md) for why FP32 only draws ~60 W on this card).
+为你实际运行的功耗上限选那一行、然后用一个**整型或显存**基准测试验证、绝不用常规 FP32 老化测试（为什么 FP32 在这张卡上只抽约 60 W、见[供电与 PSU](power-and-psu.md)）。
 
-| Target | Recommended | Evidence | Avoid |
+| 目标 | 推荐 | 证据 | 避免 |
 |---|---|---|---|
-| **Idle / light** (~30-45 W) | Any 120 mm fan through a screw-on duct at low RPM | 1 x P12 Pro at 1000 RPM held **32 C** across 2 cards | Nothing at all: passive with no airflow leads to leakage runaway |
-| **150 W** (`-pl 150`) | 3.24 W-class blower with a well-sealed printed adapter, or a single ducted 120 mm | Snail-fan adapter proven to **150-180 W**; AC Infinity S2 class OK at 150 W on an A100 | Any unshrouded blower; leaks destroy the static-pressure path |
-| **160-200 W** (`-pl 160` to `-pl 200`) | 1 x 120 mm per 2 cards in a vaned duct, or an 80 mm 10k server fan at ~3500 RPM | 2 x 120 mm held **4 cards under 65 C** at `-pl 160`; 80 mm at 3500 RPM held **under 70/75 C** at `-pl 200`; EFB0251S3 saturated at **73 C** at 200 W | Single 40 mm fan (90 C hotspot) |
-| **250 W** (stock cap) | San Ace B97 1.85 A + PWM controller, **or** 2 x 40 mm S4028-15K on a 2-slot bracket | B97 held **below 65 C at 250 W sustained**; 2 x S4028-15K held **70 C / 76 C hotspot**; one owner sat at **~70 C ±2** at default clocks with the cooling never described | The 3.24 W snail-fan adapter (it tops out 70-100 W short) |
-| **300 W** (OC VBIOS only) | 80 mm server fan at 7500 RPM, or water | 80 mm at 7500 RPM met **70 C / 75 C** at full 300 W; one 30 min `gpu_burn` at a 300 W limit held **75-77 C** with the cooling unstated (a single report, not reproduced) | Thin 120 mm fans, doubted for 300 W and especially for two cards. One Arctic 12038-4K owner sat at ~85 C and could go no further on air |
-| **Quietest at any wattage** | 360 mm loop with a compatible full-cover block | **45 C at 180 W with fan and pump at minimum**; 48 C core / 58 C memory on a budget block at load | AIO plus adapter plate: the one documented attempt pumped out and failed |
-| **Multi-card, dense** | 80 mm high-RPM server fans per card, or ducted 120 mm with splitter vanes | 4 cards under 65 C on 2 x 120 mm at `-pl 160`; 8-card datacenter chassis peaked at 60 C at 254 W | Two single shrouds side by side: they will not fit two adjacent cards |
+| **空转 / 轻负载**（约 30-45 W） | 任何经拧紧风道、低 RPM 的 120 mm 风扇 | 1000 RPM 的 1 x P12 Pro 在 2 张卡上保持 **32 C** | 什么都不装：无气流的被动会通往泄漏失控 |
+| **150 W**（`-pl 150`） | 带良好密封打印转接座的 3.24 W 类鼓风机、或单颗带风道 120 mm | 蜗牛风扇转接座被证明 **150-180 W**；AC Infinity S2 类在 A100 上 150 W 没问题 | 任何无导流罩鼓风机；泄漏毁掉静压路径 |
+| **160-200 W**（`-pl 160` 到 `-pl 200`） | 每 2 卡一颗带分流叶风道的 120 mm、或约 3500 RPM 的 80 mm 10k 服务器风扇 | 2 x 120 mm 在 `-pl 160` 下把 **4 卡保持 65 C 以下**；3500 RPM 的 80 mm 在 `-pl 200` 下保持 **70/75 C 以下**；EFB0251S3 在 200 W 下饱和在 **73 C** | 单颗 40 mm 风扇（90 C 热点） |
+| **250 W**（出厂上限） | San Ace B97 1.85 A + PWM 控制器、**或** 2 槽支架上的 2 x 40 mm S4028-15K | B97 在 **250 W 持续下保持 65 C 以下**；2 x S4028-15K 保持 **70 C / 76 C 热点**；一位拥有者出厂时钟下坐在 **约 70 C ±2**、散热从未描述 | 3.24 W 蜗牛风扇转接座（它封顶在短 70-100 W 处） |
+| **300 W**（仅 OC VBIOS） | 7500 RPM 的 80 mm 服务器风扇、或水冷 | 7500 RPM 的 80 mm 在完整 300 W 下满足 **70 C / 75 C**；一次 300 W 上限的 30 分钟 `gpu_burn` 保持 **75-77 C**、散热未说明（单一报告、未复现） | 薄 120 mm 风扇、对 300 W 存疑、尤其两张卡。一位 Arctic 12038-4K 拥有者坐在约 85 C、风冷下无法更进一步 |
+| **任意瓦数下最安静** | 带兼容全覆盖冷头的 360 mm 循环 | 风扇和泵在**最小**时 **180 W 下 45 C**；便宜冷头负载下 48 C 核心 / 58 C 显存 | AIO 加转接板：唯一有记录的尝试 pump-out 并失败 |
+| **多卡、密集** | 每卡 80 mm 高-RPM 服务器风扇、或带分流叶片的带风道 120 mm | `-pl 160` 下 2 x 120 mm 上 4 卡低于 65 C；8 卡数据中心机箱 254 W 下峰值 60 C | 并排两个单导流罩：它们装不下两张相邻卡 |
 
-Before buying anything, note that raising the power limit buys very little on this card
-(+2.8% BF16 from 250 W to 300 W, with temperatures already below 65 C), so cooling for
-`-pl 160` to `-pl 200` is a defensible choice on efficiency grounds alone. The measured
-efficiency peak of 1390 GFLOP/W was recorded at a 1400 MHz ceiling with a +350 MHz offset drawing
-about 134 W, but that cell was never validated with a memory sweep and sits between 1400/+325
-(silent corruption) and 1400/+375 (fault), so it is not an operating point. Neither is the
-1376 GFLOP/W cell at 1350 MHz / +300, which is also a single completed run that no pattern sweep
-ever gated. The highest sweep-validated efficiency point is the shipped `eff` profile,
-1366 GFLOP/W at +250 / 1350 MHz. See [Tuning](tuning.md).
+买任何东西前、注意在这张卡上提高功耗上限几乎买不到什么（250 W 到 300 W 只换 +2.8% BF16、温度已经低于 65 C），所以只靠效率理由、为 `-pl 160` 到 `-pl 200` 散热是一个站得住脚的选择。实测的 1390 GFLOP/W 效率峰值在 1400 MHz 天花板上、+350 MHz 偏移、抽约 134 W 时记录，但那个格从没被显存扫描验证、坐在 1400/+325（静默损坏）和 1400/+375（故障）之间，所以它不是一个工作点。1350 MHz / +300 处的 1376 GFLOP/W 格也不是，那也是一个从没被模式扫描把关的单一完成运行。最高扫描验证的效率点是出货 `eff` 档位、+250 / 1350 MHz 处 1366 GFLOP/W。见[调优](tuning.md)。
 
 ---
 
-## Claims shown to be false
+## 被证明是假的声称
 
-| Claim | Status |
+| 声称 | 状态 |
 |---|---|
-| The 3.24 W snail-fan "A100 cooling" adapter handles 300 W | **False.** Measured 150-180 W maximum. |
-| Friction-fit printed ducts are adequate | **False.** Both single and dual versions fall off. |
-| A single 40 mm fan is enough at high RPM | **False.** 90 C hotspot on an S4028-15K; the 8000 RPM proposal was abandoned by its proposer. |
-| Sleeve shrouds pushing air through the card work | **False.** Considerable blowback; pulling works much better. |
-| A5000/A6000 blower shrouds drop in | **Contradicted** (different screw holes, no fan connector), though not photographed either way. |
-| The LTT shroud is a good option | **Rejected by users** for back-pressure. |
-| 90 C is a fine operating temperature | **False.** Throttle onset observed at 80 C; design target is 70 C core / 75-76 C memory. |
-| Better cooling plus 300 W unlocks significant performance | **False.** Measured +2.8% BF16, with core and memory both under 65 C. |
-| An AIO cold plate on the IHS via a copper adapter works | **Failed** in the one documented attempt: photographed pump-out. |
-| SXM waterblocks fit with straps and a thick pad | **False.** Physically incompatible with PCIe cards. |
+| 3.24 W 蜗牛风扇 "A100 cooling" 转接座处理 300 W | **假。** 实测最大 150-180 W。 |
+| 摩擦配合的打印风道足够 | **假。** 单和双版本都掉。 |
+| 单颗 40 mm 风扇在高 RPM 下足够 | **假。** S4028-15K 上 90 C 热点；8000 RPM 提案被提出者放弃。 |
+| 套筒导流罩把空气推过卡有效 | **假。** 相当大的回风；拉有效得多。 |
+| A5000/A6000 鼓风机导流罩直接替换 | **被反驳**（不同的螺丝孔、没有风扇连接器），尽管任何一方都没拍照。 |
+| LTT 导流罩是个好选项 | **被用户拒绝**、因为回压。 |
+| 90 C 是一个好的工作温度 | **假。** 观察到节流起始在 80 C；设计目标是 70 C 核心 / 75-76 C 显存。 |
+| 更好散热加 300 W 解锁显著性能 | **假。** 实测 +2.8% BF16、核心和显存都低于 65 C。 |
+| 经铜转接板放在 IHS 上的 AIO 冷板有效 | 在唯一有记录的尝试里**失败**：拍照看到 pump-out。 |
+| SXM 水冷头用绑带和厚垫能装上 | **假。** 与 PCIe 卡物理不兼容。 |
 
 ---
 
-## See also
+## 参见
 
-- [Thermals](../hardware/thermals.md): limits, sensors, and the full measured-temperature
-  reference.
-- [Power and PSU](power-and-psu.md): power limiting, and why FP32 burn-ins do not load this
-  card.
-- [Power delivery](../hardware/power-delivery.md): where the VRM sits and why it needs air.
-- [Physical mods](physical-mods.md): teardown sequence, waterblock install, capacitor mod.
-- [Tuning](tuning.md): the clock and power sweep that produced the efficiency numbers.
+- [热设计](../hardware/thermals.md)：限制、传感器和完整实测温度参考。
+- [供电与 PSU](power-and-psu.md)：功耗限制、以及为什么 FP32 老化测试不给这张卡加负载。
+- [板载供电](../hardware/power-delivery.md)：VRM 坐在哪、为什么需要空气。
+- [物理改装](physical-mods.md)：拆解顺序、水冷头安装、电容改装。
+- [调优](tuning.md)：产生效率数字的时钟和功耗扫描。

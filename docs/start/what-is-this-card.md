@@ -1,155 +1,66 @@
-# What is this card?
+# 这是什么卡？
 
-**What this page covers:** what a CMP card is, why NVIDIA built one out of A100 silicon, what
-was taken away and why, and what the community has put back. Written for someone meeting the
-CMP 170HX for the first time. Terms defined here are collected in the
-[glossary](glossary.md).
+**本页内容：** 什么是 CMP 卡，NVIDIA 为什么用 A100 的硅片造出这么一张卡，去掉了什么、为什么去掉，以及社区又补回了什么。本文为第一次接触 CMP 170HX 的人而写。本文定义的术语都收录在[术语表](glossary.md)中。
 
-The short version: the CMP 170HX is a datacenter-class GPU that NVIDIA deliberately broke
-before selling it, built on the same physical chip as the A100. In July 2026 a community
-effort restored the two most valuable pieces, full compute throughput and full memory
-capacity, entirely in software, on a stock unmodified card, with nothing written to the card's
-flash. An 8 GB card becomes a 64 GB card and its FP32 throughput rises by roughly 32 times.
+简单来说：CMP 170HX 是一块数据中心级 GPU，NVIDIA 在卖掉它之前故意把它削弱了，它和 A100 基于同一颗物理芯片。2026 年 7 月，社区的努力纯靠软件恢复了两项最有价值的能力——完整的算力吞吐和完整的显存容量，无需改装卡片、也不会向卡片的闪存写入任何内容。一张 8 GB 的卡变成 64 GB 的卡，其 FP32 吞吐提升约 32 倍。
 
-## What a CMP card is
+## 什么是 CMP 卡
 
-CMP stands for **Cryptocurrency Mining Processor**. Around 2021, NVIDIA created a product line
-aimed at industrial-scale Ethereum miners. The idea was straightforward: miners were buying
-gaming and datacenter GPUs in enormous volume and driving prices up for everyone else, so
-NVIDIA offered them purpose-built parts instead. A CMP card has no display outputs, is not
-supported for graphics or gaming, is sold without a consumer warranty, and, critically, has
-capabilities removed that mining does not need.
+CMP 是 **Cryptocurrency Mining Processor（加密货币矿卡处理器）** 的缩写。约 2021 年，NVIDIA 推出了一条面向工业级以太坊矿工的产线。思路很简单：矿工在大量购买游戏卡和数据中心 GPU，推高了所有人的价格，于是 NVIDIA 改卖专用卡。CMP 卡没有显示输出，不支持图形或游戏用途，没有消费级质保，关键是去掉了挖矿用不到的算力。
 
-Ethereum mining at the time was almost entirely a **memory bandwidth** problem. The Ethash
-algorithm walks a large dataset in a mostly random pattern, so what a miner needs is fast
-memory and enough integer throughput to run the hashing. Floating-point maths, tensor cores,
-fast interconnects and large VRAM capacity contribute nothing. So NVIDIA removed exactly
-those. The CMP 170HX was the top of that line.
+当时的以太坊挖矿几乎完全是个 **显存带宽** 问题。Ethash 算法以接近随机的模式遍历一个大数据集，所以矿工需要的是快速显存和足够的整型吞吐来跑哈希。浮点运算、张量核、高速互连和大容量显存都毫无用处。于是 NVIDIA 恰好去掉了这些。CMP 170HX 就是那条产线的旗舰。
 
-## Why the silicon is so interesting
+## 为什么这块硅片这么有意思
 
-Most CMP parts were built from consumer chips. The CMP 170HX was not. It uses **GA100**, the
-826 mm² 7 nm die that powers the A100, NVIDIA's flagship datacenter accelerator of the Ampere
-generation. It is the largest chip NVIDIA made on that node, sitting at the reticle limit,
-carrying HBM2e stacked memory bonded directly to the package.
+大多数 CMP 卡由消费级芯片造出。CMP 170HX 不是。它用的是 **GA100**，驱动 A100 的那颗 826 mm² 的 7 nm 晶片，是 Ampere 代 NVIDIA 旗舰数据中心加速器。这是 NVIDIA 在那代工艺上做出最大的芯片，贴着掩模版极限，承载着直接邦定到封装上的 HBM2e 堆叠显存。
 
-The CMP 170HX board is nearly identical to the A100 40 GiB PCIe board. A100 waterblocks fit.
-A100 shrouds fit. The ASIC is marked `GA100-105F-A1`, a harvested GA100 with 5 of 8 graphics
-processing clusters enabled, giving 70 streaming multiprocessors and 4480 CUDA cores against a
-full A100's 108 SMs and 6912 cores. That harvest is normal industry practice: chips this large
-always have some defective regions, and parts are binned accordingly. What is *not* normal is
-everything else that was done to it.
+CMP 170HX 的板卡几乎与 A100 40 GiB PCIe 板完全相同。A100 的水冷头能装上。A100 的导流罩能装上。其 ASIC 标记为 `GA100-105F-A1`，是一颗收获后的 GA100，启用了 8 个图形处理集群中的 5 个，得到 70 个流多处理器和 4480 个 CUDA 核心，而完整 A100 是 108 个 SM 和 6912 个核心。这种收获是行业惯例：这么大的芯片总会有某些区域有缺陷，产品据此分级。真正不寻常的，是除此之外对它做的其它一切。
 
-There is a detail here that matters a great deal later. On several examined cards, the
-disabled graphics clusters were marked **not defective**. The silicon is good; it was switched
-off to hit a product specification. The same is true of the memory: the HBM stacks physically
-hold far more than the card reports.
+这里有个日后非常重要的细节。在数张被检查的卡上，被禁用的图形集群标记为**并非有缺陷**。硅片是好的；它是被关掉以满足某个产品规格。显存同理：HBM 堆叠物理上容纳的容量远多于卡所报告的。
 
-## What was restricted, and why
+## 被限制了什么，以及为什么
 
-Four independent restrictions, four separate mechanisms.
+四项独立的限制，四种独立的机制。
 
-**1. The SM maths rate was throttled to roughly 1/32.** This is the big one. Inside each SM,
-NVIDIA burned one-time-programmable fuses that set the *issue rate* for specific arithmetic
-units. On a 170HX, the fuses for FFMA (fused multiply-add), FMLA16, FMLA32 and the integer
-multiply units IMLA0 through IMLA4 all read `0x5`, which means divide-by-32. On every A100,
-A10, A5000, A6000 and Drive A100 probed, those same fuses read `0`. The throttle is per
-instruction class rather than a blanket ban, which is why a locked card still does scalar FP16
-at 42-50 TFLOPS and INT32 at 12.5 TIOPS while FP32 fused multiply-add collapses to about
-0.39 TFLOPS. The purpose was to make the card useless for AI training and high-performance
-computing, both of which live on exactly the instructions that were cut.
+**1. SM 的数学吞吐被限制到约 1/32。** 这是最关键的一项。在每个 SM 内部，NVIDIA 烧录了一次性可编程熔丝，用来设置特定算术单元的 *发射速率*。在 170HX 上，FFMA（融合乘加）、FMLA16、FMLA32 以及整型乘法单元 IMLA0 到 IMLA4 的熔丝全都读回 `0x5`，也就是除以 32。而在所有被探测的 A100、A10、A5000、A6000 和 Drive A100 上，这些熔丝读回的都是 `0`。这个节流是按指令类别而非一刀切禁用，所以锁定的卡仍然能以 42-50 TFLOPS 跑标量 FP16、以 12.5 TIOPS 跑 INT32，而 FP32 融合乘加却暴跌到约 0.39 TFLOPS。目的是让这张卡对 AI 训练和高性能计算毫无用处——这两者恰恰依赖被砍掉的这些指令。
 
-**2. Memory capacity was strapped down.** The card reports 8 GB or 10 GB depending on the SKU.
-The memory controllers are physically capable of addressing far more, and the stacks contain
-far more. The cap is a single 32-bit configuration word selected by a hardware strap at boot,
-which programs the *addressing depth* of each memory partition. Set it lower and each
-partition addresses 512 MiB; set it to the value a real A100 uses and the same partition
-addresses 4096 MiB. Nothing physical changes.
+**2. 显存容量被压低。** 卡根据 SKU 报告 8 GB 或 10 GB。内存控制器物理上能寻址的远多于此，堆叠容纳的也远多于此。这个上限是一个由启动时硬件跳线选择的 32 位配置字，它编程每个显存分区的*寻址深度*。设低一些，每个分区寻址 512 MiB；设成真正 A100 所用的值，同一个分区就能寻址 4096 MiB。没有任何物理上的变化。
 
-**3. The PCIe link was capped twice over.** The card negotiates PCIe **Gen1** (2.5 GT/s) rather
-than the Gen4 the silicon supports, giving about 0.85 GB/s to the host. Separately, although
-all 16 lanes are wired into the edge connector, only **4** of them train, because NVIDIA left
-the AC-coupling capacitors off the other 12 lanes at manufacture. These are genuinely two
-different problems: the speed cap is enforced by fuses and firmware, the width cap is a
-missing component on the board.
+**3. PCIe 链路被双重限制。** 卡协商的是 PCIe **Gen1**（2.5 GT/s），而不是硅片支持的 Gen4，向主机只能提供约 0.85 GB/s。另外，尽管全部 16 条通道都接到了边缘连接器上，但只有 **4** 条能训练成功，因为 NVIDIA 在制造时没给另外 12 条通道装交流耦合电容。这确实是两个不同的问题：速度上限由熔丝和固件强制，宽度上限则是板上缺失的元器件。
 
-**4. NVLink and ECC were fused off.** NVLink is NVIDIA's high-speed GPU-to-GPU interconnect. On
-this board it is disabled in fuses *and* the interface chips are simply not fitted, so no
-software change can bring it back. ECC (error-correcting memory) is fused off with no
-telemetry and no known lever.
+**4. NVLink 和 ECC 被熔断关闭。** NVLink 是 NVIDIA 的高速 GPU 间互连。在这块板上，它在熔丝中被禁用*并且*接口芯片根本没装，所以任何软件改动都无法把它带回来。ECC（纠错内存）也被熔断关闭，没有遥测、没有已知开关。
 
-A careful independent review in 2023 added these up and concluded that the combination
-"guaranteed the uselessness of the GPU", judging that firmware signing made a bypass unlikely.
-The pessimism about firmware was correct. The conclusion was not.
+2023 年一份仔细的独立评估把上述加起来，得出结论：这个组合"保证了这张 GPU 的无用"，并判断固件签名使绕过不太可能。对固件的悲观是对的。但结论是错的。
 
-## What the community restored
+## 社区恢复了什么
 
-The story runs in three acts.
+故事分三幕。
 
-**Act one, December 2023: the workaround.** Someone benchmarking a fluid-dynamics simulator
-noticed that if the OpenCL kernel was recompiled with floating-point contraction disabled, so
-that the compiler emitted separate multiply and add instructions instead of a single fused
-multiply-add, throughput jumped from 0.395 to 6.285 TFLOPS. A factor of 15.9. That was the
-first hard evidence that the restriction was per-instruction rather than physical, and it
-turned into a family of practical patches: builds of llama.cpp with `--fmad=false` and DP4A
-disabled roughly doubled token generation on a completely locked card, with no register writes
-at all. Those patches are still useful for anyone who cannot or will not patch a driver.
+**第一幕，2023 年 12 月：变通方案。** 有人给流体力学模拟器做基准测试时发现，如果用禁用浮点收缩的方式重新编译 OpenCL 内核，让编译器发出分离的乘法和加法指令而不是单条融合乘加，吞吐从 0.395 跳到 6.285 TFLOPS。提升了 15.9 倍。这是"限制是按指令而非物理限制"的第一条硬证据，并演化成一个实用的补丁家族：使用 `--fmad=false` 并禁用 DP4A 构建的 llama.cpp 在完全锁定的卡上大致使 token 生成翻倍，全程不需要任何寄存器写入。对于那些不能或不愿打驱动补丁的人，这些补丁至今仍有用。
 
-**Act two, June and July 2026: the register unlock.** The real mechanism turned out to be a
-pair of override registers that sit above the fuses. GA100 has a `FEATURE_OVERRIDE` block, and
-within it two registers, `0x0082381c` and `0x00823820`, hold the effective speed-select fields
-for the nine arithmetic units. Writing `0x88888888` and `0x00000008` sets every unit to
-"override enabled, full rate". The fuses are unchanged and still read `0x5` afterwards; the
-override simply outranks them.
+**第二幕，2026 年 6 月和 7 月：寄存器解锁。** 真正的机制被证明是位于熔丝之上的一对覆盖寄存器。GA100 有一个 `FEATURE_OVERRIDE` 块，其中两个寄存器 `0x0082381c` 和 `0x00823820` 保存着九个算术单元的有效速度选择字段。写入 `0x88888888` 和 `0x00000008` 会把每个单元设成"启用覆盖，全速"。熔丝不变，事后仍读回 `0x5`；覆盖只是权限更高。
 
-The catch is that those registers are protected by a **privilege level mask**, a hardware gate
-that decides which agents may write a given register. Opening it requires the SEC2 security
-processor running in high-security mode, which requires code NVIDIA signed. The solution was
-to re-fire the signed **Booter Load** routine repeatedly with a crafted payload buffer, using
-it as a narrow arbitrary-write primitive to open four masks, one per pass, then perform the
-real writes from the host. The whole sequence was folded into NVIDIA's own open-source kernel
-modules as a patch set, so it runs automatically inside the GSP boot path every time the
-driver loads.
+难点在于这些寄存器受**权限级别掩码**保护——这是一个硬件门，决定哪些代理可以写某个寄存器。要打开它，需要 SEC2 安全处理器以高安全模式运行，而这需要 NVIDIA 签名的代码。解决办法是反复用精心构造的载荷缓冲区重新触发带签名的 **Booter Load** 例程，把它当作一个狭窄的任意写原语，逐次打开四个掩码，然后从主机执行真正的写入。整个序列被打包进 NVIDIA 自己的开源内核模块作为一组补丁，因此在每次驱动加载时都会在 GSP 引导路径内自动运行。
 
-The same primitive unlocked memory: with the framebuffer masks open, writing the A100
-addressing word to FBPA CFG1 (`0x009a0204`) and the matching size to the MMU local memory
-range register (`0x00100ce0`) makes the card enumerate its real capacity. Compute shipped
-first because of a hardware asymmetry: the compute registers live in the always-on power
-island and survive a function-level reset, while the memory geometry registers do not and must
-be re-applied on every driver load.
+同一个原语解锁了显存：打开帧缓冲掩码后，把 A100 的寻址字写入 FBPA CFG1（`0x009a0204`），把匹配的大小写入 MMU 本地显存范围寄存器（`0x00100ce0`），卡就会枚举出它真实的容量。算力先行发布，是因为一个硬件不对称：算力寄存器位于常电域并能在功能级复位后存活，而显存几何寄存器不行，必须每次驱动加载时重新应用。
 
-**Act three, July 2026: PCIe Gen2.** On 24 July 2026, a combined sequence of register writes
-issued from inside the same Booter privilege window, followed by a link retrain driven from
-the *upstream* bridge, trained a 170HX at 5 GT/s for the first time. It doubles host bandwidth
-to about 1.7 GB/s. It is real, it has been reproduced on multiple machines, and it is also
-fragile, not deterministic, absent from the shipping release, broken under virtual-machine
-passthrough, and completely useless over Thunderbolt. Treat it as experimental.
+**第三幕，2026 年 7 月：PCIe Gen2。** 2026 年 7 月 24 日，从同一个 Booter 权限窗口内部发出的一组寄存器写入序列，随后由*上游*桥发起链路重训练，首次把 170HX 训练到 5 GT/s。它使主机带宽翻倍到约 1.7 GB/s。它是真的，已在多台机器上复现，但它也很脆弱、不确定，不在发布版中，在虚拟机直通下会坏掉，而且在 Thunderbolt 上完全无用。把它当作实验性功能。
 
-## What you actually get, and what you do not
+## 你实际得到什么，以及得不到什么
 
-| You get | You do not get |
+| 你得到 | 你得不到 |
 |---|---|
-| 64 GB (8 GB SKU) or 40 GB (10 GB SKU) of stacked HBM | More than 70 SMs. Every path into the cluster-disable fuses is latched |
-| ~12.6 TFLOPS FP32, ~11.6 TFLOPS FP64 tensor, 170-190 TFLOPS BF16 | Even INT8. It is uneven, and why is unexplained: the library path measures 43-48 TOPS (slower than FP16), while the INT8 *tensor* MMA path measures 335.0-335.6 TOPS on the same cards. The 7.6x gap is an open question, not a demonstrated hardware restriction |
-| ~1.6 TB/s of memory bandwidth, never restricted in the first place | ECC. Fused off, with no lever and no telemetry |
-| A GPC clock offset on 8 GB cards carrying the 300 W OC VBIOS, usable as an undervolt | NVLink, fuse-closed with the interface parts unfitted and no lever found. PCIe peer-to-peer is absent too, but it is a separate mechanism that the NVLink fuse does not gate, and nobody has determined whether it is fused or driver-gated; the public `610.43.03-p2p` driver branch has never been tried on a 170HX |
-| Automatic re-application on every driver load | PCIe Gen3 or Gen4. Both remain unsolved |
-| Nothing written to flash, and a clean uninstall | A gaming card. Graphics remain poor even at x16 |
+| 64 GB（8 GB SKU）或 40 GB（10 GB SKU）堆叠 HBM | 超过 70 个 SM。通往集群禁用熔丝的每一条路径都被锁存 |
+| 约 12.6 TFLOPS FP32、约 11.6 TFLOPS FP64 张量、170-190 TFLOPS BF16 | 即便是 INT8。它不均匀，原因未明：库路径测得 43-48 TOPS（比 FP16 慢），而同一批卡上的 INT8 *张量* MMA 路径却测得 335.0-335.6 TOPS。这 7.6 倍差距是一个未解问题，而非被证实的硬件限制 |
+| 约 1.6 TB/s 显存带宽，从一开始就没被限制过 | ECC。熔断关闭，没有开关也没有遥测 |
+| 8 GB 卡上携带 300 W OC VBIOS 的 GPC 时钟偏移，可当作降频使用 | NVLink，熔丝关闭、接口部件未装、未找到开关。PCIe 点对点也不可用，但它是独立的机制，不受 NVLink 熔丝门控，也没有人确定它到底是熔断关闭还是驱动门控；公开的 `610.43.03-p2p` 驱动分支从没在 170HX 上试过 |
+| 每次驱动加载自动重新应用 | PCIe Gen3 或 Gen4。两者仍未解决 |
+| 不向闪存写入任何东西，且卸载干净 | 一张游戏卡。即使在 x16 下图形表现仍然糟糕 |
 
-## Before you go further
+## 在继续之前
 
-The card is **passively cooled with no fan at all**, and it is designed to sit in a server
-chassis with screaming 80 mm fans behind it. On a desk with no airflow it will overheat, and
-GA100 has a genuine leakage-driven runaway characteristic where getting hotter makes it draw
-more power. Its single 8-pin socket is an **EPS** (CPU-style) connector, not a PCIe one, and
-plugging a PCIe cable into it will damage the card.
+这张卡**完全被动散热、没有任何风扇**，设计上是放进服务器机箱，由身后尖叫的 80 mm 风扇吹。放在没有气流的桌面上它会过热，而 GA100 有一种真实的泄漏驱动的失控特性：越热功耗越高。它唯一的 8-pin 插座是 **EPS**（CPU 式）接口，不是 PCIe 接口，把 PCIe 线插进去会损坏卡片。
 
-Read [Risks](risks.md) next, then [Identify your card](identify-your-card.md), because whether
-you hold the 8 GB or the 10 GB SKU determines the capacity you can reach, the memory clock you
-are stuck with and whether the overclock VBIOS applies to you. From there,
-[Quick start](quick-start.md) and [Install](../procedures/install.md).
+接下来读[Risks](risks.md)，然后是[Identify your card](identify-your-card.md)，因为你拿的是 8 GB 还是 10 GB SKU，决定了你能达到的容量、你受困的显存时钟，以及超频 VBIOS 是否适用于你。从那里，继续[Quick start](quick-start.md) 和[Install](../procedures/install.md)。
 
-For the full specification, see [the hardware overview](../hardware/overview.md). For the
-mechanism in depth, start at [the unlock overview](../unlock/overview.md). For how this wiki
-signals what is proven and what is not, see
-[how to read this wiki](how-to-read-this-wiki.md).
+完整规格参见[硬件概述](../hardware/overview.md)。深入了解机制，从[解锁概述](../unlock/overview.md)开始。想知道本维基如何标示"已证实"和"未证实"，参见[如何阅读本维基](how-to-read-this-wiki.md)。

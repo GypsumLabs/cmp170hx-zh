@@ -1,213 +1,150 @@
-# Uninstalling and reverting
+# 卸载与还原
 
-**What this page covers.** How to remove the cmpunlocker driver patch cleanly, exactly what
-`remove.sh` touches, what it deliberately leaves behind, why reverting is safe at the hardware
-level, and the widely copied instruction that will simply fail because the file it names does not
-exist.
+**本页覆盖内容。** 如何干净移除 cmpunlocker 驱动补丁、`remove.sh` 恰好碰什么、它刻意留下什么、为什么还原在硬件层面安全、以及那条被广泛复制的、因它命名的文件不存在而只会失败的指示。
 
-The short version:
+短版：
 
 ```bash
 sudo ./remove.sh --yes
 ```
 
-That is the whole supported uninstall. It deletes
-`/lib/modules/*/updates/cmpunlocker/` on every installed kernel, re-runs `depmod`, rebuilds the
-initramfs, cleans up residue from two abandoned generation-1 designs, and reloads the stock
-NVIDIA modules. The card returns to its factory-reported 8192 MiB or 10240 MiB after the next
-cold boot; a warm reboot is not a reset and is not established to clear the geometry.
+那就是整个受支持的卸载。它删除**每个**已安装内核上的 `/lib/modules/*/updates/cmpunlocker/`、重跑 `depmod`、重建 initramfs、清理两个废弃的第一代设计的残留、并重载出厂商 NVIDIA 模块。卡在下次冷启动后回到它出厂报告的 8192 MiB 或 10240 MiB；热重启不是一次复位、也未确立能清除几何布局。
 
 > [!CAUTION]
-> **`uninstall.sh` does not exist**
+> **`uninstall.sh` 不存在**
 >
-> `docs/INSTALLATION.md` on the `docs` branch, line 40, instructs `sudo ./uninstall.sh --yes`.
-> **There is no `uninstall.sh` anywhere in the repository**, on `master` or on the `docs` branch
-> itself. Running it produces a shell error and does nothing, which some people have read as
-> "the uninstaller silently failed". The correct command is `remove.sh --yes`. The `docs` branch
-> also carries three other known defects and is not authoritative: see
-> [Verify](verify.md#the-sec2_debug-dmesg-trail).
+> `docs` 分支上的 `docs/INSTALLATION.md` 第 40 行指示 `sudo ./uninstall.sh --yes`。**仓库任何地方都没有 `uninstall.sh`**、在 `master` 或 `docs` 分支本身上都没有。运行它产生一个 shell 错误、什么都不做，有些人把这读作 "the uninstaller silently failed"（卸载器静默失败）。正确命令是 `remove.sh --yes`。`docs` 分支还携带另外三个已知缺陷、不是权威：见[验证](verify.md#the-sec2_debug-dmesg-trail)。
 
 ---
 
-## Why reverting is safe
+## 为什么还原是安全的
 
-Nothing about this unlock is persistent in hardware. There is no VBIOS flash, no fuse burn, no
-EEPROM write, and since the shipping design no firmware file on disk is modified either. The
-unlock is a sequence of volatile register writes performed by the patched kernel module every
-time it boots the GSP:
+这个解锁在硬件里没有任何持久的东西。没有 VBIOS 刷写、没有熔丝烧断、没有 EEPROM 写，而且自出货设计起、磁盘上也没有任何固件文件被修改。解锁是打过补丁的内核模块每次引导 GSP 时执行的一次易失寄存器写序列：
 
-| State | Survives a function-level reset? | Survives a power cycle? |
+| 状态 | 挺过功能级复位？ | 挺过断电循环？ |
 |---|---|---|
-| SS0 `0x0082381c`, SS1 `0x00823820`, FEAT_OVR_PLM `0x00823804` | yes (always-on island) | no |
-| CFG1 `0x009a0204`, per-FBPA CFG1, CSTATUS, LMR `0x00100ce0`, FB-geometry PLMs, AON LMR shadow `0x001180f0` | no | no |
+| SS0 `0x0082381c`、SS1 `0x00823820`、FEAT_OVR_PLM `0x00823804` | 是（常电岛） | 否 |
+| CFG1 `0x009a0204`、每-FBPA CFG1、CSTATUS、LMR `0x00100ce0`、FB-几何 PLM、AON LMR 影子 `0x001180f0` | 否 | 否 |
 
-Remove the patched modules and the writes stop happening. That is the entire mechanism of
-reverting. One tester running HiveOS reported both cards back to normal mining after
-`remove.sh`, which is the basis for calling the software side of the mod non-destructive (single
-first-hand report).
+移除打过补丁的模块、写就停止发生。那就是还原的全部机制。一位跑 HiveOS 的测试者报告 `remove.sh` 后两张卡恢复正常挖矿，那是称 mod 的软件侧为非破坏性的依据（单一一手报告）。
 
-Physical modifications are a different matter entirely and are **not** undone by anything on this
-page. If the card has had its PCIe AC-coupling capacitors populated, that is soldered hardware.
-See [Physical mods](../operations/physical-mods.md).
+物理改装完全是另一回事、**不**被本页任何东西撤销。如果卡已装上 PCIe 交流耦合电容，那是焊接好的硬件。见[物理改装](../operations/physical-mods.md)。
 
 ---
 
-## What `remove.sh` does, step by step
+## `remove.sh` 逐步做什么
 
-The script refuses to run without `--yes` or `-y`. Invoked bare, it prints a summary of what it
-would do and exits 1.
+脚本没有 `--yes` 或 `-y` 拒绝运行。裸调用它打印它会做什么的摘要并退出 1。
 
-### Guard and step 1: root
+### 守卫和第 1 步：root
 
-`[[ "${EUID}" -eq 0 ]]` or die with `Run as root: sudo ./remove.sh --yes`. Output is tee'd to
-`logs/remove_<YYYYmmdd_HHMMSS>.log` in the checkout, falling back to `/tmp` if the checkout is not
-writable.
+`[[ "${EUID}" -eq 0 ]]` 或死掉、带 `Run as root: sudo ./remove.sh --yes`。输出 tee 到检出里的 `logs/remove_<YYYYmmdd_HHMMSS>.log`、检出不可写时回退到 `/tmp`。
 
-### Step 2/5: stop the legacy systemd unit
+### 第 2/5 步：停止遗留 systemd 单元
 
-Stops and disables a `cmpunlocker` service, removes `/etc/systemd/system/cmpunlocker.service`,
-runs `systemctl daemon-reload` and `reset-failed`, then
-`pkill -f /opt/cmpunlocker/daemon/watchdog.py`.
+停止并禁用一个 `cmpunlocker` 服务、移除 `/etc/systemd/system/cmpunlocker.service`、跑 `systemctl daemon-reload` 和 `reset-failed`，然后 `pkill -f /opt/cmpunlocker/daemon/watchdog.py`。
 
-### Step 3/5: remove patched modules and legacy files
+### 第 3/5 步：移除打过补丁的模块和遗留文件
 
-- For every `/lib/modules/*/updates/cmpunlocker` directory found (so **all** installed kernels,
-  not just the running one): `rm -rf`, then `depmod -a "${kernel}"`.
-- If nothing matched, it warns `No patched kernel modules found`.
-- For each touched kernel it rebuilds the initramfs so stock modules are packed again, using the
-  first available of `update-initramfs -u -k`, `dracut --force --kver`, or `mkinitcpio -P`. This
-  matters as much on the way out as on the way in: an initramfs still holding patched modules
-  would keep loading them.
-- Deletes five firmware-era leftovers next to every `gsp_tu10x.bin`:
-  `.cmpunlocker.bak`, `.cmpunlocker.patched`, `.cmpunlocker.tmp`, `.cmpunlocker.cleanup`,
-  `.cmpunlocker.pat`.
-- Removes `/opt/cmpunlocker` if present, warning
-  `/opt/cmpunlocker not found (ok for module-only installs)` otherwise.
+- 对找到的每个 `/lib/modules/*/updates/cmpunlocker` 目录（所以**所有**已安装内核、不只运行中那个）：`rm -rf`，然后 `depmod -a "${kernel}"`。
+- 没匹配到时警告 `No patched kernel modules found`。
+- 对每个碰过的内核重建 initramfs、这样出厂模块被重新打包，用第一个可用的 `update-initramfs -u -k`、`dracut --force --kver` 或 `mkinitcpio -P`。这在出路上和入路上一样要紧：一个仍持有打过补丁模块的 initramfs 会继续加载它们。
+- 在每个 `gsp_tu10x.bin` 旁删除五个固件时代遗留：`.cmpunlocker.bak`、`.cmpunlocker.patched`、`.cmpunlocker.tmp`、`.cmpunlocker.cleanup`、`.cmpunlocker.pat`。
+- 移除 `/opt/cmpunlocker`（如果存在）、否则警告 `/opt/cmpunlocker not found (ok for module-only installs)`。
 
 > [!CAUTION]
-> **This deletes your only backup of a patched-era `gsp_tu10x.bin`**
+> **这会删除你唯一的补丁时代 `gsp_tu10x.bin` 备份**
 >
-> If you are mid-migration from the firmware-patching predecessor and have **not** yet restored
-> the stock GSP firmware, restore it *before* running `remove.sh`. Step 3 deletes
-> `gsp_tu10x.bin.cmpunlocker.bak`, which is the copy of the original blob. Restoring first:
-> `sudo cp /lib/firmware/nvidia/610.43.03/gsp_tu10x.bin.cmpunlocker.bak /lib/firmware/nvidia/610.43.03/gsp_tu10x.bin`.
+> 如果你正从固件打补丁前身迁移、且**尚未**恢复出厂商 GSP 固件，在跑 `remove.sh` **之前**恢复它。第 3 步删除 `gsp_tu10x.bin.cmpunlocker.bak`、即原 blob 的副本。先恢复：`sudo cp /lib/firmware/nvidia/610.43.03/gsp_tu10x.bin.cmpunlocker.bak /lib/firmware/nvidia/610.43.03/gsp_tu10x.bin`。
 
-### Step 4/5: reload the stock driver
+### 第 4/5 步：重载出厂商驱动
 
-Only if `lsmod` shows an `nvidia` module. In order:
+只有 `lsmod` 显示一个 `nvidia` 模块时。按顺序：
 
-1. Stop `gdm3`, `sddm`, `lightdm`, `display-manager`, then `nvidia-persistenced`.
-2. `killall -9 Xorg Xwayland nvidia-persistenced`, sleep 1.
-3. `modprobe -r nvidia_drm nvidia_uvm nvidia_modeset nvidia` (each ignoring failure), sleep 1.
-4. If anything is still loaded, `rmmod -f` the four modules.
-5. `modprobe nvidia`, then `nvidia-modeset`, `nvidia-uvm`, `nvidia-drm`. On failure it warns
-   `Could not reload NVIDIA driver, reboot to finish cleanup`.
-6. Restart the first display manager that was enabled.
+1. 停止 `gdm3`、`sddm`、`lightdm`、`display-manager`，然后 `nvidia-persistenced`。
+2. `killall -9 Xorg Xwayland nvidia-persistenced`，sleep 1。
+3. `modprobe -r nvidia_drm nvidia_uvm nvidia_modeset nvidia`（每个忽略失败），sleep 1。
+4. 若仍有东西已加载，`rmmod -f` 那四个模块。
+5. `modprobe nvidia`，然后 `nvidia-modeset`、`nvidia-uvm`、`nvidia-drm`。失败时警告 `Could not reload NVIDIA driver, reboot to finish cleanup`。
+6. 重启第一个曾启用的显示管理器。
 
 > [!CAUTION]
-> **Step 4 will kill your graphical session**
+> **第 4 步会杀掉你的图形会话**
 >
-> `remove.sh` stops display managers and force-unloads modules with `rmmod -f`. Run it from a
-> text console or over SSH, not from a terminal inside the desktop session you are about to
-> terminate. On a headless compute box this is harmless; on a workstation, expect the display
-> to go away and possibly not come back until you reboot.
+> `remove.sh` 停止显示管理器并用 `rmmod -f` 强制卸载模块。从文本控制台或 SSH 跑它、不要从你正要终止的桌面会话里的一个终端跑。在无头计算箱上这无害；在工作站上、预期显示会消失、并可能到重启前都不回来。
 
-### Step 5: summary
+### 第 5 步：摘要
 
-Prints the log path and, if the GPU or display is not working, tells you to `sudo reboot`.
+打印日志路径、如果 GPU 或显示不工作就告诉你 `sudo reboot`。
 
 ---
 
-## What `remove.sh` does **not** undo
+## `remove.sh` **不**撤销什么
 
-| Not touched | Why it matters | Manual action |
+| 不碰 | 为什么要紧 | 手动操作 |
 |---|---|---|
-| The kernel command line | Master's `remove.sh` contains no `iommu` or `cmdline` handling at all. IOMMU configuration exists on the `Gen2`, `far` and `deced` branches | If you installed from `Gen2`, `far` or `deced`, use **that same branch's** `remove.sh`, which restores from `<file>.cmpunlocker.bak` and prints `Reverted IOMMU kernel parameters (effective after reboot)`. Running master's `remove.sh` instead leaves the kernel command line permanently modified and an orphaned `/etc/default/grub.cmpunlocker.bak` behind |
-| `/etc/modprobe.d/cmp-pcie-gen2.conf` | Written by the Gen2-lineage installers with `options nvidia NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"` (or `0x2` on `far`/`deced`). Master never creates it and never deletes it | `sudo rm /etc/modprobe.d/cmp-pcie-gen2.conf` and rebuild the initramfs |
-| `/usr/local/sbin/retrain.sh`, `cmpretrain.service` | Installed only by the `debug-gen2` branch. The `Gen2` installer removes them; master does not know about them | `sudo systemctl disable --now cmpretrain.service; sudo rm -f /usr/local/sbin/retrain.sh` |
-| `/lib/firmware/nvidia/ga100/gsp/dmem.bin` | If you placed a custom payload override there, it stays. A future patched install reads it into the payload buffer instead of running the built-in fill, but the first `kgspSec2PostblTimingRefillPayload()` rewrites that buffer before any Booter Load consumes it, so on the released path the file has no effect | Delete it if you did not put it there deliberately |
-| `driver/.build/` cache | The downloaded NVIDIA source tarball and extracted tree, potentially hundreds of MB inside the checkout | `rm -rf driver/.build` or just delete the clone |
-| `logs/` | Install and remove transcripts | Keep them; they are useful for troubleshooting |
-| The NVIDIA driver itself | `remove.sh` reverts the *patch*, not the driver package. nvidia-open 610.43.0x stays installed | Use your distribution's package manager |
-| Anything physical | Capacitor mods, cooling shrouds, power adapters | Out of scope |
-| The card's VBIOS | Never written by any part of cmpunlocker | Nothing to do; see [VBIOS](../hardware/vbios.md) |
+| 内核命令行 | master 的 `remove.sh` 完全不含 `iommu` 或 `cmdline` 处理。IOMMU 配置存在于 `Gen2`、`far` 和 `deced` 分支上 | 如果你从 `Gen2`、`far` 或 `deced` 安装，用**那个同一分支的** `remove.sh`，它从 `<file>.cmpunlocker.bak` 恢复并打印 `Reverted IOMMU kernel parameters (effective after reboot)`。改用 master 的 `remove.sh` 会让内核命令行被永久修改、并留下一个孤儿 `/etc/default/grub.cmpunlocker.bak` |
+| `/etc/modprobe.d/cmp-pcie-gen2.conf` | 被 Gen2 谱系安装器写、带 `options nvidia NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"`（或 `far`/`deced` 上 `0x2`）。master 从不创建它、也从不删除它 | `sudo rm /etc/modprobe.d/cmp-pcie-gen2.conf` 并重建 initramfs |
+| `/usr/local/sbin/retrain.sh`、`cmpretrain.service` | 只被 `debug-gen2` 分支安装。`Gen2` 安装器移除它们；master 不知道它们 | `sudo systemctl disable --now cmpretrain.service; sudo rm -f /usr/local/sbin/retrain.sh` |
+| `/lib/firmware/nvidia/ga100/gsp/dmem.bin` | 如果你在那里放了自定义载荷覆盖、它留下。未来一次打过补丁的安装把它读进载荷缓冲区、而非运行内置填充，但第一次 `kgspSec2PostblTimingRefillPayload()` 在任何 Booter Load 消费它之前重写那个缓冲区，所以在发布路径上该文件无效果 | 如果不是你刻意放的、删除它 |
+| `driver/.build/` 缓存 | 下载的 NVIDIA 源码 tarball 和解压的树，检出内可能有几百 MB | `rm -rf driver/.build` 或直接删除克隆 |
+| `logs/` | 安装和移除转写 | 保留它们；它们对排障有用 |
+| NVIDIA 驱动本身 | `remove.sh` 还原的是*补丁*、不是驱动包。nvidia-open 610.43.0x 保持已安装 | 用你发行版的包管理器 |
+| 任何物理的东西 | 电容改装、散热导流罩、电源转接线 | 超出范围 |
+| 卡的 VBIOS | 永不被 cmpunlocker 的任何部分写 | 无事可做；见[VBIOS](../hardware/vbios.md) |
 
-There is also nothing to undo in the card's non-volatile state. The master kill fuse at
-`0x008203f0` reads `0x00000000` (unblown) on every card examined, and nothing in the unlock path
-blows fuses or writes OTP. See [Fuses and OTP](../hardware/fuses-and-otp.md).
+卡的易失状态里也没有任何要撤销的东西。主灭杀熔丝在 `0x008203f0` 在每张检查过的卡上都读 `0x00000000`（未烧断），而解锁路径里没有任何东西烧熔丝或写 OTP。见[熔丝与 OTP](../hardware/fuses-and-otp.md)。
 
 ---
 
-## Verifying the revert
+## 验证还原
 
 ```bash
-# Modules gone from every kernel
-ls /lib/modules/*/updates/cmpunlocker 2>/dev/null   # expect: no output at all
+# 模块从每个内核消失
+ls /lib/modules/*/updates/cmpunlocker 2>/dev/null   # 预期：完全无输出
 
-# The stock module is what resolves and what is loaded
+# 出厂商模块是解析和加载的那个
 modprobe -n -v nvidia
-cat /proc/driver/nvidia/version                      # should now say dvs-builder again
+cat /proc/driver/nvidia/version                      # 现在应再说 dvs-builder
 
-# Capacity back to stock (only after a cold boot)
+# 容量回到出厂（只在冷启动后）
 nvidia-smi --query-gpu=memory.total --format=csv,noheader
-#   8 GB card:  8192 MiB
-#   10 GB card: 10240 MiB
+#   8 GB 卡：  8192 MiB
+#   10 GB 卡： 10240 MiB
 
-# No unlock activity this boot
-sudo dmesg | grep -c SEC2_DEBUG                      # expect 0 after a reboot
+# 本次引导没有解锁活动
+sudo dmesg | grep -c SEC2_DEBUG                      # 重启后预期 0
 ```
 
-After `remove.sh` the card keeps reporting the unlocked size until a cold boot. This
-is the normal result, not evidence that the patched module is still resident, because the geometry
-registers survive a driver unload and reload. Judge the revert by `modprobe -n -v nvidia`,
-`/sys/module/nvidia/srcversion` and the absence of `SEC2_DEBUG` lines in `dmesg`, not by
-`memory.total`. If the unlocked size persists after a warm reboot, power the machine off fully and
-try again before concluding anything: a warm reboot is not a reset. If it persists after a genuine
-cold boot, check that the initramfs was actually rebuilt: a stale initramfs holding the patched
-`nvidia.ko` is the usual cause, mirroring the same failure on the install side.
+`remove.sh` 之后卡会继续报告解锁后大小、直到一次冷启动。这是正常结果、不是打过补丁的模块仍驻留的证据，因为几何寄存器挺过一次驱动卸载和重载。用 `modprobe -n -v nvidia`、`/sys/module/nvidia/srcversion` 和 `dmesg` 里 `SEC2_DEBUG` 行的缺失来判定还原、不要用 `memory.total`。如果解锁后大小在热重启后仍持续，完全断电再试一次、然后才下结论：热重启不是一次复位。如果在真正冷启动后仍持续，检查 initramfs 是否真的重建了：一个持有打过补丁的 `nvidia.ko` 的陈旧 initramfs 是常见原因、与安装侧的同一失败对称。
 
 ---
 
-## Uninstall before switching branches
+## 切换分支前卸载
 
-The maintainer's rule is to remove the old install before adding a new one: "In fact, I would
-always recommend to remove the old one before adding the new one." One tester who cloned the
-`Gen2` branch and installed on top of an existing install reported it did not work, and
-uninstalling first fixed it.
+维护者的规则是移除旧安装再加新的："In fact, I would always recommend to remove the old one before adding the new one."（事实上，我总是建议在加新的之前移除旧的。）一位克隆 `Gen2` 分支、在现有安装之上安装的测试者报告它不工作、先卸载就修好了。
 
-This is guidance rather than a hard law. At least two other testers installed on top with no
-problem, and the informal consensus was that most people are "just sending it on top". The
-failure is real but not universal and nobody identified the differentiating factor. Removal-first
-is the supported path:
+这是指导而非硬规则。至少另两位测试者在上层安装没有问题了、非正式共识是大多数人 "just sending it on top"（就直接发上去）。那个失败是真的却不普遍、没人识别出区分因素。先移除是受支持路径：
 
 ```bash
 cd /path/to/old-checkout && sudo ./remove.sh --yes
 cd /path/to/new-checkout && sudo ./install.sh
-sudo shutdown -h now      # cold boot
+sudo shutdown -h now      # 冷启动
 ```
 
 ---
 
-## If the card is wedged rather than merely patched
+## 如果卡被卡死而非仅仅被打过补丁
 
-`remove.sh` is for a healthy system. If the card is in a bad state (a failed boot leaving WPR2
-up, a Booter left mid-flight, `RmInitAdapter` failures, or a card that has stopped enumerating),
-uninstalling the modules is not the right first move. Go to [Recovery](recovery.md), which covers
-function-level reset via `/sys/bus/pci/devices/<BDF>/reset`, the
-`modprobe -r nvidia_uvm nvidia_drm nvidia_modeset nvidia` teardown order, and the cases where only
-a cold boot clears the state.
+`remove.sh` 为健康系统准备。如果卡处于坏状态（一次失败引导留下 WPR2 up、一个停在半途的 Booter、`RmInitAdapter` 失败、或一张已停止枚举的卡），卸载模块不是正确的第一步。去[恢复](recovery.md)，它覆盖经 `/sys/bus/pci/devices/<BDF>/reset` 的功能级复位、`modprobe -r nvidia_uvm nvidia_drm nvidia_modeset nvidia` 拆掉顺序、以及只有冷启动清除状态的情形。
 
-A practical multi-tenant example of the difference: one operator's renter killed an
-underperforming `llama.cpp` run and left ghost processes behind that wrecked the driver state.
-Recovery required a host reboot performed by the operator, because the cards could not be
-restarted from inside the container. No amount of uninstalling would have helped.
+一个实际的多租户例子说明区别：一位操作者的租户杀死了一个表现不佳的 `llama.cpp` 运行、留下毁掉驱动状态的幽灵进程。恢复需要由操作者执行的一次主机重启，因为卡无法从容器内重启。再多的卸载也没用。
 
 ---
 
-## Related pages
+## 相关页面
 
-- [Install](install.md) for the forward procedure
-- [Verify](verify.md) for what a healthy install looks like, so you know what you are removing
-- [Troubleshooting](troubleshooting.md) and [Recovery](recovery.md)
-- [Multi-GPU](multi-gpu.md), whose branch installers add files master's `remove.sh` does not know
-  about
+- [安装](install.md) 看正向流程
+- [验证](verify.md) 看健康安装长什么样，这样你知道你在移除什么
+- [排障](troubleshooting.md) 和[恢复](recovery.md)
+- [多卡](multi-gpu.md)，其分支安装器添加了 master 的 `remove.sh` 不知道的文件

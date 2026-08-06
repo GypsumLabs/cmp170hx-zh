@@ -1,65 +1,44 @@
-# VBIOS: structure, versions and DEVINIT
+# VBIOS：结构、版本与 DEVINIT
 
-**What this page covers.** The layout of the CMP 170HX SPI ROM image, how to dump it without
-bricking the card, what lives in each region, which parts are cryptographically protected and
-which are not, what DEVINIT is and what it does (and does not) control, the per-batch version
-inventory, and a ranked list of what can and cannot be modified.
+**本页覆盖内容。** CMP 170HX SPI ROM 映像的布局、如何在不弄砖卡的情况下转储它、每个区域里住着什么、哪些部分受密码保护哪些不受、DEVINIT 是什么以及它控制（和不控制）什么、按批次的版本清单，以及一张对可修改和不可修改内容的排序表。
 
-**The headline result: the community unlock does not touch the VBIOS at all.** The shipping
-`cmpunlocker` tool never reads, writes, flashes or parses the ROM. There is no `nvflash`, no SPI
-access and no image handling anywhere in the repository; the whole tool is six kernel-module
-patches plus `install.sh` and `remove.sh`. A whole-word search of the shipping tree for
-*flash*, *nvflash*, *spi*, *rom* and *vbios* returns no hits at all; the only substring matches
-are incidental, such as "from" inside the `remove.sh` completion banner. The unlock happens at runtime, inside the patched GSP boot path. See
-[how the unlock works](../unlock/how-it-works.md).
+**头条结果：社区解锁完全不碰 VBIOS。** 出货的 `cmpunlocker` 工具从不读取、写入、刷写或解析 ROM。整个仓库里没有 `nvflash`、没有 SPI 访问、也没有任何映像处理；整个工具就是六个内核模块补丁加 `install.sh` 和 `remove.sh`。对出货树做一次全词搜索 *flash*、*nvflash*、*spi*、*rom* 和 *vbios* 毫无命中；唯一子串匹配是偶然的，例如 `remove.sh` 完成横幅里的 "from"。解锁发生在运行时、在打过补丁的 GSP 引导路径内部。参见[解锁如何工作](../unlock/how-it-works.md)。
 
-The second headline: **the entire deliberate VBIOS-level restriction on this card is seven
-bytes.** Two bytes of CFG1 strap-4 addressing (tier `44` to `66`, which controls HBM address
-depth, 12 versus 14 row bits, and 2 versus 8 GB addressable per HBM2 stack) plus five bytes of PCIe
-speed DEVINIT spread across three sites. Both sit inside the MAC-verified range, and both
-therefore need a key nobody has. Everything else that differs between a 170HX ROM and an A100
-ROM is scattered device-ID references and per-build training calibration, neither of which is
-restriction-related.
+第二条头条：**这张卡上刻意的 VBIOS 级限制总共是七个字节。** 两个字节是 CFG1 跳线 4 的寻址字节（档位 `44` 到 `66`，它控制 HBM 寻址深度、12 对比 14 行位、以及每个 HBM2 堆叠 2 GB 对比 8 GB 可寻址），加上五个字节的 PCIe 速度 DEVINIT、散布在三个站点。两者都在 MAC 验证范围内，因此都需要一把没人拥有的密钥。170HX ROM 与 A100 ROM 之间剩下的其它差异，是零散的设备 ID 引用和按构建的训练校准，两者都与限制无关。
 
 ---
 
-## Quick orientation
+## 快速定位
 
-| Question | Answer |
+| 问题 | 答案 |
 |---|---|
-| Production ROM size | 1,044,480 bytes (1020 KB) on every GA100 production dump |
-| Magic at offset 0 | `NVGI` |
-| Runtime read aperture | NV_PROM at BAR0 + `0x300000` |
-| Cryptographically protected range (170HX 250 W) | `0x2200`-`0x43A00` |
-| Protection type | Symmetric MAC (Davies-Meyer hash + AES-KDF) keyed on csecret(2), **not** an RSA image signature |
-| Freely modifiable | `0x43A00` to end of image (unsigned FwSec tail, padding, backup mirror, InfoROM) |
-| Does VBIOS version affect the unlock? | No |
-| Can a modified image be flashed? | Not with `nvflash`/`omgvflash`/`nvflashk`. Unsigned-tail edits need a CH341A |
+| 量产 ROM 大小 | 每次 GA100 量产转储都是 1,044,480 字节（1020 KB） |
+| 偏移量 0 处的魔数 | `NVGI` |
+| 运行时读取孔径 | BAR0 + `0x300000` 处的 NV_PROM |
+| 受密码保护的范围（170HX 250 W） | `0x2200`-`0x43A00` |
+| 保护类型 | 对称 MAC（Davies-Meyer 哈希 + AES-KDF），密钥在 csecret(2)，**不是** RSA 映像签名 |
+| 可自由修改 | `0x43A00` 到映像末尾（未签名 FwSec 尾、填充、备份镜像、InfoROM） |
+| VBIOS 版本影响解锁吗？ | 不影响 |
+| 修改过的映像能刷吗？ | 不能，`nvflash`/`omgvflash`/`nvflashk` 都不行。未签名尾部的改动需要 CH341A |
 
 ---
 
-## Dumping the VBIOS
+## 转储 VBIOS
 
 > [!CAUTION]
-> **Always dump before you touch anything**
+> **动手之前永远先转储**
 >
-> A failed flash or a bad image is recoverable in the large majority of cases **only if a
-> stock ROM was saved first**. Standing advice from the people who have bricked and recovered
-> these cards: keep the stock dump, and have an external SPI programmer on hand *before*
-> touching the NVGI region. One researcher stated "if I corrupt NVGI there is no recovery
-> path at all" and self-corrected within one minute: a hardware SPI programmer makes it
-> recoverable. An `NV_PROM` MMIO dump is considered an adequate fallback image.
-> See [recovery](../procedures/recovery.md).
+> 失败的刷写或坏映像在绝大多数情况下**只有在先保存了出厂 ROM** 时才能恢复。那些弄砖并恢复过这些卡的人留下的常驻建议：保留出厂转储，并且在碰 NVGI 区域**之前**备好一个外部 SPI 编程器。一位研究者曾说 "如果我损坏了 NVGI，就完全没有恢复路径"，然后在一分钟内自我更正：硬件 SPI 编程器让它可恢复。NV_PROM MMIO 转储被视为一个充分的回退映像。参见[恢复](../procedures/recovery.md)。
 
-There are three dump paths. They produce different byte ranges and have different failure modes.
+有三条转储路径。它们产出不同的字节范围，有不同的失败模式。
 
-| Method | Range captured | Needs | Risk | Notes |
+| 方法 | 捕获的范围 | 需要 | 风险 | 备注 |
 |---|---|---|---|---|
-| `nvflash --save` | 1020 KB (`0x00000`-`0xFF000`) | Driver bound, root | Low | Standard route. On the 170HX this window **does** include the license region at `0xFE000`; on the A100 it does not, because the A100 license TOC is at `0xFF000` |
-| NV_PROM MMIO readback | 1,044,480 B from BAR0 + `0x300000` | Root, BAR0 mapping | Very low, read-only | The card's own view of the ROM. Used by the clean-room `ga100_topology_report.py` tooling. Can show `0xFF` where an SPI dump would show content (see the caveat below) |
-| CH341A + SOIC clip | Whole SPI part | Cooler removal, repaste | Physical | The only path that can *write* an edited image. Stock cards are hardware write-protected |
+| `nvflash --save` | 1020 KB（`0x00000`-`0xFF000`） | 驱动已绑定、root | 低 | 标准路径。在 170HX 上这个窗口**确实**包含 `0xFE000` 处的许可区域；在 A100 上不包含，因为 A100 的许可 TOC 在 `0xFF000` |
+| NV_PROM MMIO 回读 | 从 BAR0 + `0x300000` 起的 1,044,480 B | root、BAR0 映射 | 非常低，只读 | 卡自己对 ROM 的视角。被净室 `ga100_topology_report.py` 工具使用。可能在 SPI 转储会显示内容的地方显示 `0xFF`（见下面的注意事项） |
+| CH341A + SOIC 夹 | 整个 SPI 部件 | 拆散热器、重打导热膏 | 物理 | 唯一能*写*编辑过映像的路径。出厂卡是硬件写保护的 |
 
-### Identify the card and its VBIOS first
+### 先识别卡和它的 VBIOS
 
 ```bash
 lspci -nn -d 10de: | grep -i GA100
@@ -69,30 +48,27 @@ nvidia-smi --query-gpu=vbios_version,pci.device_id,pci.sub_device_id,memory.tota
            --format=csv
 ```
 
-`10de:20c2` is the 8 GB SKU, `10de:2082` the 10 GB SKU. See
-[board and variants](board-and-variants.md) for the full identification matrix.
+`10de:20c2` 是 8 GB SKU，`10de:2082` 是 10 GB SKU。完整的识别矩阵见[板卡与变体](board-and-variants.md)。
 
-### `nvflash` save
+### `nvflash` 保存
 
 ```bash
 sudo nvflash64 --save stock_$(date +%F)_$(hostname).rom
 sha256sum stock_*.rom
 ```
 
-### NV_PROM readback over BAR0
+### 通过 BAR0 的 NV_PROM 回读
 
-The SPI flash is readable at runtime through the NV_PROM aperture at **BAR0 + `0x300000`**,
-1,044,480 bytes, first four bytes `NVGI`. The aperture base was derived from the FWSEC
-disassembly.
+SPI 闪存在运行时可通过 **BAR0 + `0x300000`** 处的 NV_PROM 孔径读取，1,044,480 字节，前四个字节是 `NVGI`。孔径基址从 FWSEC 反汇编推导。
 
 ```python
 #!/usr/bin/env python3
-# Read-only NV_PROM dump. Root required. Replace the BDF with your card's.
+# 只读 NV_PROM 转储。需要 root。把 BDF 换成你卡的。
 import mmap, os
 
 BDF   = "0000:0d:00.0"
 BAR0  = f"/sys/bus/pci/devices/{BDF}/resource0"
-PROM  = 0x300000          # NV_PROM aperture offset within BAR0
+PROM  = 0x300000          # NV_PROM 孔径在 BAR0 内的偏移量
 SIZE  = 1044480           # 1020 KiB
 
 fd = os.open(BAR0, os.O_RDONLY)
@@ -104,39 +80,29 @@ print(f"wrote {len(rom)} bytes")
 ```
 
 > [!WARNING]
-> **MMIO readback is not always identical to an SPI dump**
+> **MMIO 回读并非总是与 SPI 转储一致**
 >
-> On a Drive A100 the NV_PROM readback showed all `0xFF` at both `0xFE000` and `0xFF000`.
-> Whether that region is genuinely empty on that part or whether the TOC structure simply does
-> not survive the NV_PROM path is unresolved. Anyone surveying license regions by MMIO should
-> confirm with an SPI dump before concluding a region is blank.
+> 在 Drive A100 上，NV_PROM 回读在 `0xFE000` 和 `0xFF000` 两处都显示全 `0xFF`。该区域在那个部件上是否真的为空，还是 TOC 结构只是经不起 NV_PROM 路径，未解决。任何用 MMIO 调查许可区域的人都应在得出区域空白之前用 SPI 转储确认。
 
-### CH341A dump, and verifying it
+### CH341A 转储并验证它
 
 ```bash
-# Two independent reads, compared. Never trust a single clip read.
+# 两次独立读取，作比较。永远不要信任单次夹子读取。
 flashrom -p ch341a_spi -r spi_dump_1.rom
 flashrom -p ch341a_spi -r spi_dump_2.rom
 cmp spi_dump_1.rom spi_dump_2.rom && echo "clip contact is good"
 ```
 
-On stock cards the SPI flash is hardware write-protected: the dumped status registers read
-`00000000 (0x00)`, `01000000 (0x40)`, `11111111 (0xFF)`. One tester defeated the protection and
-completed a flash within ten minutes of hitting it, so this is an obstacle rather than a wall.
+在出厂卡上，SPI 闪存是硬件写保护的：转储的状态寄存器读 `00000000 (0x00)`、`01000000 (0x40)`、`11111111 (0xFF)`。一位测试者在碰到它后十分钟内破解了保护并完成一次刷写，所以这是个障碍而非一堵墙。
 
 > [!CAUTION]
-> **Write-protect before powering back on**
+> **重新上电之前要写保护**
 >
-> Flashing failure `0xBADF3000`, with the board unable to read flash, is caused by **not**
-> re-enabling SPI write protection before power-on. Recovery is to reflash the SOIC directly
-> with a chip clip and then set write protection. The related symptom is an RM init adapter
-> failure. There is no OS-level flash path for this board.
+> 刷写失败 `0xBADF3000`、板卡无法读取闪存，是因为上电前**没有**重新启用 SPI 写保护。恢复是用芯片夹直接重刷 SOIC，然后设置写保护。相关症状是一次 RM 初始化适配器失败。这块板没有 OS 级的闪存路径。
 
-### SKU and integrity fingerprint
+### SKU 与完整性指纹
 
-Two truncated SHA-256 values over fixed ranges act as a cheap SKU and integrity check. Both
-pairs are byte-identical across every image checked of the matching SKU, so a mismatch means the
-VBIOS differs in code, not merely in per-unit data.
+两个在固定范围上的截断 SHA-256 值充当廉价的 SKU 和完整性检查。两个配对在匹配 SKU 的每一份检查过的映像上都逐字节相同，所以不匹配意味着 VBIOS 在代码上有别，而非仅仅在按单元数据上有别。
 
 ```bash
 IFR()  { dd if="$1" iflag=skip_bytes,count_bytes skip=0        count=$((0x1000))          status=none | sha256sum | cut -c1-16; }
@@ -147,737 +113,521 @@ echo "FIRMWARE $(FW  vbios_prom.rom)"
 
 | SKU | IFR `0x000000`-`0x001000` | FIRMWARE `0x001200`-`0x0C1000` |
 |---|---|---|
-| 10 GB (`0x2082`) | `3ca3d24230d6800f` | `8c4e1344c51b0940` |
-| 8 GB (`0x20C2`) | `2ff19960f9175320` | `e2c91c1808ae2759` |
+| 10 GB（`0x2082`） | `3ca3d24230d6800f` | `8c4e1344c51b0940` |
+| 8 GB（`0x20C2`） | `2ff19960f9175320` | `e2c91c1808ae2759` |
 
-The assignment above is adjudicated three reports to one; the single outlier attaches the 8 GB
-pair to 10 GB images and is treated as a transcription slip. Posting both SKUs' outputs side by
-side from one run of the topology tool would close it.
+上面的指派是三票对一票裁决的；那个离群者把 8 GB 配对贴到了 10 GB 映像上，被当作抄写笔误处理。从拓扑工具的一次运行里并排贴出两个 SKU 的输出就能定论它。
 
 ---
 
-## Region map
+## 区域图
 
-The published analysis calls this a 13-region map (content regions only). Expanded here to
-include padding, the mirror and the InfoROM. Sizes are from the 170HX 250 W images; "signed"
-means inside the `0x2200`-`0x43A00` MAC-verified range.
+已发布的分析称这是一张 13 区域图（仅内容区域）。这里扩展为包含填充、镜像和 InfoROM。大小来自 170HX 250 W 映像；"已签名"意味着在 `0x2200`-`0x43A00` 的 MAC 验证范围内。
 
-| Offset range | Contents | Size | Signed |
+| 偏移量范围 | 内容 | 大小 | 已签名 |
 |---|---|---|---|
-| `0x00000`-`0x02200` | NVGI header + RFRD manifest, cleartext | 8.5 KB | no (below signed start) |
-| `0x02200`-`0x05E00` | PciAt region, BIT tokens, PERF_PTRS | 15.0 KiB | **yes** |
-| `0x05E00`-`0x0C700` | FwSec headers, VN images 1 and 2, NPDS/NPDE | 27 KB | **yes** |
-| `0x0C700`-`0x0C800` | NPDS/NPDE headers | 256 B | **yes** |
-| `0x0C800`-`0x13E00` | Compressed Falcon code, 87 % shared with A100 at delta 0 | 29.5 KB | **yes** |
-| `0x13E00`-`0x14A00` | Inter-zone gap, zeros plus headers | 3 KB | **yes** |
-| `0x14A00`-`0x20000` | Encrypted firmware region A, AES-128-ECB | 45.5 KB | **yes** |
-| `0x20000`-`0x20700` | DMAP cleartext gap, `"Mar  5 2021"` build string plus Falcon fuc5 code | 1.8 KB | **yes** |
-| `0x20700`-`0x33800` | Encrypted firmware region B, AES-128-ECB | 76.2 KB | **yes** |
-| `0x33800`-`0x41200` | Configuration / DEVINIT-class tables, Shannon entropy 4.5-6.0 | 54.5 KB | **yes** |
-| `0x41200`-`0x42A00` | Strap and training tables; CFG1 strap-4 tier byte at `0x41D53` | 6 KB | **yes** |
-| `0x42A00`-`0x43A00` | Trailing zeros | 4 KB | **yes** (ends at the boundary) |
-| `0x43A00`-`0x47700` | **Unsigned FwSec tail** | 15,616 B | no |
-| `0x47700`-`0x60000` | `0xFF` padding | 100 KB | no |
-| `0x60000`-`0xA7700` | **Backup mirror of `0x00000`-`0x47700`** | 285 KB | no |
-| `0xA7700`-`0xC0000` | `0xFF` padding | 100 KB | no |
-| `0xC0000`-end of image | InfoROM (`0xFF000` in a 1020 KB dump, `0xFFFFF` in a full 1 MiB MMIO readback) | 252-256 KB | no |
+| `0x00000`-`0x02200` | NVGI 头 + RFRD 清单，明文 | 8.5 KB | 否（低于签名起点） |
+| `0x02200`-`0x05E00` | PciAt 区域、BIT 令牌、PERF_PTRS | 15.0 KiB | **是** |
+| `0x05E00`-`0x0C700` | FwSec 头、VN 映像 1 和 2、NPDS/NPDE | 27 KB | **是** |
+| `0x0C700`-`0x0C800` | NPDS/NPDE 头 | 256 B | **是** |
+| `0x0C800`-`0x13E00` | 压缩的 Falcon 代码，在 delta 0 处与 A100 共享 87% | 29.5 KB | **是** |
+| `0x13E00`-`0x14A00` | 区域间空隙，零加头 | 3 KB | **是** |
+| `0x14A00`-`0x20000` | 加密固件区域 A，AES-128-ECB | 45.5 KB | **是** |
+| `0x20000`-`0x20700` | DMAP 明文空隙，`"Mar  5 2021"` 构建字符串加 Falcon fuc5 代码 | 1.8 KB | **是** |
+| `0x20700`-`0x33800` | 加密固件区域 B，AES-128-ECB | 76.2 KB | **是** |
+| `0x33800`-`0x41200` | 配置 / DEVINIT 类表，Shannon 熵 4.5-6.0 | 54.5 KB | **是** |
+| `0x41200`-`0x42A00` | 跳线和训练表；CFG1 跳线 4 档位字节在 `0x41D53` | 6 KB | **是** |
+| `0x42A00`-`0x43A00` | 尾部零 | 4 KB | **是**（在边界处结束） |
+| `0x43A00`-`0x47700` | **未签名 FwSec 尾** | 15,616 B | 否 |
+| `0x47700`-`0x60000` | `0xFF` 填充 | 100 KB | 否 |
+| `0x60000`-`0xA7700` | **`0x00000`-`0x47700` 的备份镜像** | 285 KB | 否 |
+| `0xA7700`-`0xC0000` | `0xFF` 填充 | 100 KB | 否 |
+| `0xC0000`-映像末尾 | InfoROM（1020 KB 转储里在 `0xFF000`，完整 1 MiB MMIO 回读里在 `0xFFFFF`） | 252-256 KB | 否 |
 
-The `+0x60000` mirror explains every duplicate-table address in the comparison work: if a table
-appears at both `0x41D41` and `0xA1D41`, that is one table and its backup copy, not two tables.
+`+0x60000` 镜像解释了对比工作中每个重复表地址：如果一张表同时出现在 `0x41D41` 和 `0xA1D41`，那是一张表和它的备份副本，不是两张表。
 
 > [!NOTE]
-> **Two different meanings of 'NVGI region'**
+> **"NVGI 区域"的两种不同含义**
 >
-> The region map above uses NVGI for `0x00000`-`0x02200`. The 8 GB versus 10 GB diff analysis
-> uses NVGI for `0x00000`-`0x05E00`, which is why the four MAC blocks at `0x2CBF`, `0x38BA`,
-> `0x595C` and `0x5AF8` are described as being "in NVGI" despite sitting above `0x2200`.
+> 上面的区域图用 NVGI 表示 `0x00000`-`0x02200`。8 GB 对比 10 GB 的 diff 分析用 NVGI 表示 `0x00000`-`0x05E00`，这正是 `0x2CBF`、`0x38BA`、`0x595C` 和 `0x5AF8` 处的四个 MAC 块被描述为"在 NVGI 内"的原因，尽管它们坐在 `0x2200` 之上。
 
-### NPDS body composition
+### NPDS 主体构成
 
-The NPDS body `0x0C700`-`0x43A00` (226,048 bytes) breaks down by entropy class as:
+NPDS 主体 `0x0C700`-`0x43A00`（226,048 字节）按熵类分解为：
 
-| Class | Share | Detail |
+| 类 | 占比 | 详情 |
 |---|---|---|
-| AES-128-ECB ciphertext | 121.7 KB (54 %) | Two regions, one key, 101 internal repeat pairs |
-| DEVINIT-class config tables | 54.5 KB (24 %) | Entropy 4.5-6.0, structured cleartext |
-| Compressed Falcon code | 29.5 KB (13 %) | 87 % shared with the A100 at delta 0 |
-| Headers, gaps, strap tables, padding | 20.3 KB (9 %) | Cleartext |
+| AES-128-ECB 密文 | 121.7 KB（54%） | 两个区域、一个密钥、101 个内部重复对 |
+| DEVINIT 类配置表 | 54.5 KB（24%） | 熵 4.5-6.0，结构化明文 |
+| 压缩的 Falcon 代码 | 29.5 KB（13%） | 在 delta 0 处与 A100 共享 87% |
+| 头、空隙、跳线表、填充 | 20.3 KB（9%） | 明文 |
 
-That 24 % cleartext config band is why DEVINIT bytes can be located by pattern search while the
-FwSec firmware cannot.
+那 24% 的明文配置带来 DEVINIT 字节能通过模式搜索定位、而 FwSec 固件不能的原因。
 
 ---
 
-## The RFRD manifest and the signed range
+## RFRD 清单与已签名范围
 
-The MAC-verified range is not guessed, it is declared. The manifest at `0x2000` is an **image
-layout descriptor**, not a power table.
+MAC 验证范围不是猜的，是被声明的。`0x2000` 处的清单是一个**映像布局描述符**，不是功耗表。
 
-| Offset | Field | Value / meaning |
+| 偏移量 | 字段 | 值 / 含义 |
 |---|---|---|
-| `0x2000` | Magic | `"RFRD"` |
-| `0x2004` | u16 manifest version | `3` |
-| `0x2008` | u32 `pci_option_rom_offset` | Points at the PciAt image start, `0x5E00` |
-| `0x200C` | u32 `pci_option_rom_size` | **Size of the MAC-verified range** |
-| `0x200D` | (byte) | High byte of `pci_option_rom_size`. Touching it desynchronizes the declared size from the actual signed content, and MAC verification fails |
+| `0x2000` | 魔数 | `"RFRD"` |
+| `0x2004` | u16 清单版本 | `3` |
+| `0x2008` | u32 `pci_option_rom_offset` | 指向 PciAt 映像起点 `0x5E00` |
+| `0x200C` | u32 `pci_option_rom_size` | **MAC 验证范围的大小** |
+| `0x200D` | （字节） | `pci_option_rom_size` 的高字节。碰它会使声明的尺寸与实际签名内容失同步，MAC 验证失败 |
 | `0x201C` | u32 `secondary_base` | `0x2200` |
 
-Signed content always begins at `0x2200`. Per image:
+签名内容总是从 `0x2200` 开始。按映像：
 
-| Image | field_0C | MAC-verified range |
+| 映像 | field_0C | MAC 验证范围 |
 |---|---|---|
-| 170HX 8 GB and 10 GB, 250 W | `0x00041800` | `0x2200`-`0x43A00` (268,288 B) |
+| 170HX 8 GB 和 10 GB，250 W | `0x00041800` | `0x2200`-`0x43A00`（268,288 B） |
 | 170HX 300 W | `0x00041A00` | `0x2200`-`0x43C00` |
 | A100 PCIe 40 GB | `0x00042200` | `0x2200`-`0x44400` |
 | Drive A100 32 GB | `0x00058A00` | `0x2200`-`0x5AC00` |
 
-### The range was bounded empirically, not just read
+### 这个范围是经验界定的，不只是读出来的
 
-Four physical CH341A flash cycles on 2026-05-08 settled it. Writing `0xFF` padding *outside* the
-declared range boots fine and the driver loads normally. Changing a single byte *inside* the
-`0x2200`-`0x43A00` window stalls the Booter. The canonical broken-MAC failure signature on GA100
-is:
+2026-05-08 的四次物理 CH341A 刷写周期定了它。在声明范围*之外*写 `0xFF` 填充能正常启动、驱动也正常加载。在 `0x2200`-`0x43A00` 窗口*内*改一个字节就让 Booter 卡住。GA100 上标准的坏-MAC 失败签名是：
 
 ```text
-GFW_BOOT = 0x401    (or 0x001)
+GFW_BOOT = 0x401    （或 0x001）
 ```
 
-The single-byte test was performed at `0x41D53`, the CFG1 tier byte, which is exactly the byte a
-memory unlock would want to change. That is the empirical proof that in-MAC edits are closed.
+单字节测试在 `0x41D53`、即 CFG1 档位字节处进行，那正是显存解锁想改的字节。这就是"MAC 内的改动已关闭"的经验证明。
 
 ---
 
-## Cryptography
+## 密码学
 
-Two different keys, two different mechanisms, frequently conflated.
+两把不同的密钥、两种不同的机制，经常被混为一谈。
 
-| Mechanism | Covers | Key | Status |
+| 机制 | 覆盖 | 密钥 | 状态 |
 |---|---|---|---|
-| Symmetric MAC, Davies-Meyer hash + AES-KDF | The `0x2200`-end-of-range content | csecret(2), held in SCP hardware | Forgery requires the key; stated to be extractable only by a DFA hardware attack |
-| AES-128-ECB | The two FwSec firmware regions | csecret(6) | Same key across every GA100 variant |
-| RSA | Boot ROM authenticating Booter code | NVIDIA production | Separate mechanism, often mistaken for an image signature |
+| 对称 MAC，Davies-Meyer 哈希 + AES-KDF | `0x2200` 到范围末尾的内容 | csecret(2)，保存在 SCP 硬件里 | 伪造需要密钥；据称只能通过 DFA 硬件攻击提取 |
+| AES-128-ECB | 两个 FwSec 固件区域 | csecret(6) | 每个 GA100 变体同一把密钥 |
+| RSA | 引导 ROM 认证 Booter 代码 | NVIDIA 量产 | 独立的机制，常被误认为映像签名 |
 
-### AES-128-ECB, proven three ways
+### AES-128-ECB，三路证明
 
-1. **Cross-ROM re-convergence.** 442 of 2,667 blocks identical between the 170HX and the A100
-   across 13 matching runs. CBC can never re-converge after plaintext divergence.
-2. **Internal repeated blocks** (the "ECB penguin"). 24 repeated 16-byte pairs within the 170HX
-   image, 28 within the A100 image. That rules out CTR.
-3. **Strict 16-byte alignment.** Shifting the comparison by one byte drops matches from 442 to
-   exactly 0.
+1. **跨 ROM 重新收敛。** 13 次匹配运行里，170HX 与 A100 之间 2,667 个块中有 442 个相同。明文分歧后 CBC 永远不可能重新收敛。
+2. **内部重复块**（"ECB 企鹅"）。170HX 映像内 24 个重复 16 字节对、A100 映像内 28 个。这排除了 CTR。
+3. **严格的 16 字节对齐。** 把比较移动一个字节，匹配数从 442 掉到恰好 0。
 
-**One key encrypts the FwSec blobs across every GA100 variant.** The first four ECB blocks at
-`0x14A00` are byte-identical across 170HX 8 GB, 170HX 10 GB, 170HX 300 W and A100 PCIe; the
-Drive A100 was added on 2026-05-31 with 30 ECB oracle hits and the same first four blocks,
-beginning `b2a93eaa0300209b`. Recovering csecret(6) once would decrypt every GA100 VBIOS in
-existence.
+**一把密钥加密每个 GA100 变体的 FwSec 块。** `0x14A00` 处的前四个 ECB 块在 170HX 8 GB、170HX 10 GB、170HX 300 W 和 A100 PCIe 上逐字节相同；Drive A100 于 2026-05-31 加入，带 30 次 ECB 预言命中、同样的前四个块、以 `b2a93eaa0300209b` 开头。恢复 csecret(6) 一次就能解密存在的每一份 GA100 VBIOS。
 
-### The free known-plaintext oracle
+### 免费的已知明文预言
 
-The ROM contains all-`0xFF` plaintext padding blocks, giving:
+ROM 包含全 `0xFF` 明文填充块，给出：
 
 ```text
 AES_ECB(key, FF x 16) = 717d1494 eaca317f f1061952 58b38377
 ```
 
-Repeating ciphertext blocks are at `0x1F8F0` and `0x1FB60` (labelled "end of imem_sec" in ImHex),
-21 such padding blocks in ECB region A and 13 in region B, and the pattern reproduces across all
-ROM variants. A candidate key can therefore be validated offline in microseconds with no flash
-cycle, which is what would make a DFA campaign practical.
+重复的密文块在 `0x1F8F0` 和 `0x1FB60`（在 ImHex 里标为 "end of imem_sec"），ECB 区域 A 里 21 个这样的填充块、区域 B 里 13 个，且该模式在所有 ROM 变体里复现。因此一个候选密钥可以在没有刷写周期的情况下在微秒内离线验证，这正是让 DFA 行动变得可行的东西。
 
-The same 128-bit value is separately the marker for **debug-build Falcon IMEM sections encrypted
-with the trivial non-secret key `01234567...`**. The recommended workflow for attacking
-DEVINIT/FWSEC is: pull a VBIOS from a public collection, search for that padding pattern,
-decrypt those IMEM sections with the simple key, then annotate the disassembly. That recipe is a
-consistent expert recommendation with no in-channel result posted yet.
+同一个 128 位值另外是**用琐碎的非机密密钥 `01234567...` 加密的调试构建 Falcon IMEM 段**的标记。攻击 DEVINIT/FWSEC 的推荐工作流是：从公开合集拉一份 VBIOS，搜索那个填充模式，用简单密钥解密那些 IMEM 段，然后给反汇编加注释。这个配方是一条一致的专业建议，目前还没有频道内结果贴出。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> A separate claim, that "the key is on NVIDIA's own website, I think it's debug #37", was
-> never substantiated. Neither the key nor a decrypted production image was ever posted. Treat
-> the `01234567...` debug-IMEM recipe as actionable and the "debug #37" claim as unverified.
+> 一个独立的说法，"密钥在 NVIDIA 自己的网站上，我觉得是 debug #37"，从未被证实。密钥和解密的量产映像都没被贴出过。把 `01234567...` 调试-IMEM 配方当作可操作的，把 "debug #37" 的说法当作未验证的。
 
 ---
 
-## Tables the image contains
+## 映像包含的表
 
-### Inside the signed range (documentation value only)
+### 在已签名范围内（仅文档价值）
 
-| Table | Offset | Notes |
+| 表 | 偏移量 | 备注 |
 |---|---|---|
-| BIT table | `0x5EB0`, 16 tokens | Same offset and token count on all six production ROMs |
-| FwSec NPDS device ID | in the FwSec headers | Declares `0x2080` (generic GA100) on **all seven** images regardless of their PciAt device ID |
-| CFG1 / HBM2 strap table | `0x41D41` (170HX 8 GB, 10 GB, "16 GB"), backup `0xA1D41` | 16 × 32-bit words, **not** word-aligned; secondary `strap_info` table at `0x6A09` |
-| CFG1 strap-4 tier byte | `0x41D53` (250 W) / `0x41F53` (300 W) | The two-byte half of the seven-byte restriction |
-| PCIe speed DEVINIT | 5 bytes across 3 sites in `0x33800`-`0x41200` | The other half |
+| BIT 表 | `0x5EB0`，16 个令牌 | 六份量产 ROM 上相同的偏移量和令牌数 |
+| FwSec NPDS 设备 ID | 在 FwSec 头里 | 在全部**七份**映像上声明 `0x2080`（通用 GA100），无论它们的 PciAt 设备 ID 是什么 |
+| CFG1 / HBM2 跳线表 | `0x41D41`（170HX 8 GB、10 GB、"16 GB"），备份 `0xA1D41` | 16 × 32 位字，**非**字对齐；次要 `strap_info` 表在 `0x6A09` |
+| CFG1 跳线 4 档位字节 | `0x41D53`（250 W）/ `0x41F53`（300 W） | 七字节限制的两个字节那一半 |
+| PCIe 速度 DEVINIT | `0x33800`-`0x41200` 里 3 个站点的 5 字节 | 另一半 |
 
-Strap-table offsets per image:
+按映像的跳线表偏移量：
 
-| Image | Version | Primary | Backup |
+| 映像 | 版本 | 主 | 备份 |
 |---|---|---|---|
-| 170HX 8 GB and "16 GB" | `92.00.67` | `0x41D41` | `0xA1D41` |
+| 170HX 8 GB 和 "16 GB" | `92.00.67` | `0x41D41` | `0xA1D41` |
 | 170HX 10 GB | `92.00.66` | `0x41D41` | `0xA1D41` |
 | 170HX 300 W | `92.00.6D` | `0x41F41` | `0xA1F41` |
 | A100 PCIe 40 GB | `92.00.90` | `0x4285A` | `0xA285A` |
 | A100 SXM4 40 GB | `92.00.45` | `0x419E5` | `0xA19E5` |
-| Drive A100 32 GB | `92.00.A0` | `0x3A7D2` | not determined |
+| Drive A100 32 GB | `92.00.A0` | `0x3A7D2` | 未确定 |
 
-The 300 W ROM places its whole table set exactly `0x200` bytes later than the 250 W siblings.
-Leaked GA100 emu/sim ROMs use an entirely different ~230 KB layout with both copies inside the
-same image at `0x0864C` and `0x1AD72`, so nothing transplants from them.
+300 W ROM 把它的整组表放在比 250 W 兄弟恰好晚 `0x200` 字节处。泄露的 GA100 仿真/模拟 ROM 使用一个完全不同的约 230 KB 布局、两份副本都在同一个映像里、位于 `0x0864C` 和 `0x1AD72`，所以没有任何东西能从它们移植。
 
-**Tier byte decode.** The third byte of each 32-bit strap word is a tier nibble pair taking the
-values `44`, `55`, `66`, `77`, encoding 2 GB / intermediate / 8 GB / 16 GB addressable per HBM2
-stack. Most entries are the filler pattern `00 90 66 22`. In the 10 GB VBIOS only strap 4 is
-nerfed to `44`; in the 8 GB VBIOS straps 5 and 7 are also nerfed. Strap 4 is the physical strap
-for 10 GB cards, strap 7 for 8 GB cards. This is the same tier encoding the runtime unlock writes
-into CFG1 at `0x009a0204`; see [memory geometry](../unlock/memory-geometry.md).
+**档位字节解码。** 每个 32 位跳线字的第三个字节是一个档位半字节对，取值 `44`、`55`、`66`、`77`，编码每个 HBM2 堆叠 2 GB / 中间 / 8 GB / 16 GB 可寻址。大多数条目是填充模式 `00 90 66 22`。在 10 GB VBIOS 里只有跳线 4 被削弱到 `44`；在 8 GB VBIOS 里跳线 5 和 7 也被削弱。跳线 4 是 10 GB 卡的物理跳线，跳线 7 是 8 GB 卡的。这是运行时解锁写进 `0x009a0204` 处 CFG1 的同一个档位编码；参见[显存几何布局](../unlock/memory-geometry.md)。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Two incompatible decodes of the per-strap HBM part fields were posted hours apart on
-> 2026-07-25. The **vendor and revision fields agree** (Micron/Samsung/Hynix, rev1/rev2/rev3/
-> rev6/rev10); the **per-die capacity and stack-height fields do not** (for example strap 5 as
-> `Hynix_rev6_16Gb_org0x4` versus `Hynix_rev6_8Gb_4H_org0x4`). The author of the second decode
-> noted the publicly circulating forum decoder script "was not fully correct for HBM memory
-> configs". The `44`/`66`/`77` capacity mapping is not in dispute. Settling it needs an
-> authoritative field-width definition, or one decoded entry matched against a physically
-> identified HBM stack part number.
+> 2026-07-25 数小时内贴出两种不兼容的每跳线 HBM 部件字段解码。**厂商和修订字段一致**（Micron/Samsung/Hynix，rev1/rev2/rev3/rev6/rev10）；**每晶片容量和堆叠高度字段不一致**（例如跳线 5 作为 `Hynix_rev6_16Gb_org0x4` 对比 `Hynix_rev6_8Gb_4H_org0x4`）。第二种解码的作者指出公开流传的论坛解码脚本"对 HBM 显存配置并不完全正确"。`44`/`66`/`77` 容量映射没有争议。定论它需要一份权威的字段宽度定义，或把一条解码条目与一个物理识别的 HBM 堆叠料号匹配起来。
 
-### Outside the signed range (actually editable)
+### 在已签名范围外（实际可编辑）
 
-Everything at or above `0x43A00` is unsigned and freely modifiable with an SPI programmer, in
-the same class as the `0xFF`-padding test that already booted successfully.
+`0x43A00` 及以上的每一样东西都未签名、可用 SPI 编程器自由修改，与已经成功启动的 `0xFF` 填充测试属于同一类。
 
-| Item | Offset | Value / detail | Status |
+| 条目 | 偏移量 | 值 / 详情 | 状态 |
 |---|---|---|---|
-| Board power limit | `0x45E45`, 3 bytes | `90 D0 03` = 250 W, would become `E0 93 04` for 300 W | Outside the MAC. **Open, untested since 2026-05-09** |
-| `NV_FUSE_CTRL_OPT_*` table | `0x47341`, 25 entries | All-zero across 13 probed GA100 cards | Outside. Semantics undetermined |
-| `freqDelta` | `0x47177` / `0x47179` | ±1000 on the 8 GB image, `0` on the 10 GB and A100 images | Outside. Explains why core offsetting works only on 8 GB cards |
-| M0205 memory training table | `0x467f8` (10 GB) / `0x469f8` (the other image examined) | Header `ver=0x10 hdr=8 entsz=1 cnt=1`, raw `10 08 01 01 10 07 00 00`, 16 strap sub-entries of 7 bytes | Outside |
-| InfoROM | `0xC0000` upward | Entirely unsigned | Outside |
-| License / HULK TOC | `0xFE000`-`0xFEFFF` | See below | Outside |
+| 板卡功耗上限 | `0x45E45`，3 字节 | `90 D0 03` = 250 W，若想 300 W 会变成 `E0 93 04` | 在 MAC 之外。**开放，自 2026-05-09 起未测试** |
+| `NV_FUSE_CTRL_OPT_*` 表 | `0x47341`，25 项 | 13 块被探测的 GA100 卡上全零 | 在外。语义未确定 |
+| `freqDelta` | `0x47177` / `0x47179` | 8 GB 映像上 ±1000，10 GB 和 A100 映像上 `0` | 在外。解释了核心偏移为何只在 8 GB 卡上有效 |
+| M0205 显存训练表 | `0x467f8`（10 GB）/ `0x469f8`（检查的另一个映像） | 头 `ver=0x10 hdr=8 entsz=1 cnt=1`，原始 `10 08 01 01 10 07 00 00`，16 个 7 字节跳线子条目 | 在外 |
+| InfoROM | `0xC0000` 向上 | 完全未签名 | 在外 |
+| 许可 / HULK TOC | `0xFE000`-`0xFEFFF` | 见下 | 在外 |
 
-The M0205 strap sub-entries are byte-identical between the two images examined, for example
-strap0 `0f ff ff ff ff ff ff`, strap2 `ff ff ff 0f ff ff ff`, strap4 `ff ff ff ff ff ff 0f`,
-strap7 `ff ff 0f ff ff ff ff`, strap9 `ff ff ff ff ff 0f ff`, strap12 `ff 0f ff ff ff ff ff`,
-strap14 `ff ff ff ff 0f ff ff`; all odd straps other than 7 and 9 are all-`ff`.
+M0205 跳线子条目在检查的两个映像之间逐字节相同，例如 strap0 `0f ff ff ff ff ff ff`、strap2 `ff ff ff 0f ff ff ff`、strap4 `ff ff ff ff ff ff 0f`、strap7 `ff ff 0f ff ff ff ff`、strap9 `ff ff ff ff ff 0f ff`、strap12 `ff 0f ff ff ff ff ff`、strap14 `ff ff ff ff 0f ff ff`；除 7 和 9 外所有奇数跳线都是全 `ff`。
 
-**Derived from the offsets above and the MAC boundary:** every memory-related table read out in
-July 2026 (`freqDelta`, M0205, CTRL_OPT) sits above `0x43C00` and is therefore outside every
-170HX MAC range, while the CFG1 strap tier table at `0x41D41`/`0x41D53` sits roughly 10 KB below
-the boundary and is inside. **That is the clean dividing line: memory timings and clock offsets
-are editable in the image; memory capacity straps are not.**
+**从上面的偏移量和 MAC 边界派生：** 2026 年 7 月读出的每张显存相关表（`freqDelta`、M0205、CTRL_OPT）都坐在 `0x43C00` 之上、因此在每份 170HX MAC 范围之外，而 `0x41D41`/`0x41D53` 处的 CFG1 跳线档位表坐在边界下方约 10 KB、在范围内。**那是一条干净的分界线：显存时序和时钟偏移在映像里可编辑；显存容量跳线不能。**
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Do unsigned-tail memory edits actually take effect? The natural experiment is to write
-> `±1000` into `freqDelta` on a 10 GB image (where it is `0`) and see whether core offsetting
-> appears. One CH341A cycle on a card with a saved stock dump would answer it. Nobody has
-> reported trying.
+> 未签名尾部的显存改动真的生效吗？自然的实验是在 10 GB 映像上把 `±1000` 写进 `freqDelta`（那里它是 `0`），看看核心偏移是否出现。在一次带已保存出厂转储的卡上的 CH341A 周期就能回答。没人报告试过。
 
-### Per-strap timing bytes
+### 每跳线时序字节
 
-Recorded values, medium confidence (the dump was re-read and self-corrected by the same
-researcher the following day):
+记录的值，中等置信度（转储在第二天被同一位研究者重读并自我更正）：
 
-| Index | Bytes |
+| 索引 | 字节 |
 |---|---|
-| idx4 (10 GB) | `46 14 41 04 00 00 00 83 ff ff 00 00 ff ff` |
-| idx7 (80 GB) | `76 67 aa 00 00 00 00 15 ff ff 02 00 ff ff` |
-| idx8 (80 GB) | `86 18 a3 04 00 00 00 87 ff ff 01 00 ff ff` |
-| idx10 (80 GB) | `a6 fa a0 00 00 00 00 01 ff ff 03 00 ff ff` |
+| idx4（10 GB） | `46 14 41 04 00 00 00 83 ff ff 00 00 ff ff` |
+| idx7（80 GB） | `76 67 aa 00 00 00 00 15 ff ff 02 00 ff ff` |
+| idx8（80 GB） | `86 18 a3 04 00 00 00 87 ff ff 01 00 ff ff` |
+| idx10（80 GB） | `a6 fa a0 00 00 00 00 01 ff ff 03 00 ff ff` |
 
-### License region and the HULK slot
+### 许可区域和 HULK 槽
 
-**The 170HX license region is at `0xFE000`-`0xFEFFF`, not `0xFF000`.** That corrected a
-community-wide assumption borrowed from the A100. Verified across five separate 170HX dumps
-obtained by three methods (three 10 GB dumps, one of them by SPI and one by MMIO, plus two
-8 GB dumps). On
-every 170HX the top 4 KB at `0xFF000` is all-`0xFF` and unused. It matters because `nvflash` on
-the 170HX dumps 1020 KB, so the region *is* inside the nvflash window on this card even though
-it is not on an A100.
+**170HX 的许可区域在 `0xFE000`-`0xFEFFF`，不在 `0xFF000`。** 这更正了一个从 A100 借来的全社区假设。通过三种方法取得的五份独立 170HX 转储验证（三份 10 GB 转储，其中一份用 SPI、一份用 MMIO，加两份 8 GB 转储）。在每份 170HX 上，`0xFF000` 处的顶部 4 KB 都是全 `0xFF`、未使用。它要紧是因为 `nvflash` 在 170HX 上转储 1020 KB，所以该区域*确实*在这张卡的 nvflash 窗口内，尽管在 A100 上不在。
 
-| Offset | Contents |
+| 偏移量 | 内容 |
 |---|---|
-| `0xFE000` | 8 zero bytes |
-| `0xFE008` | `"LU"` + `00 10 00 00 00 01`: region header, size `0x1000`, version 1 |
-| `0xFE010` | Slot table: `"LIC" 01 00 1D 00` (LIC at +0x1D), `"ULF" 1D 00` (unlock flags), `"UPR" 7D 04` (unlock params at +0x47D), `"HLK" ED 04` (HULK cert at +0x4ED), `"ULF" 01 00 60 04` terminator |
-| `0xFE48D` | UPR slot header, empty payload |
-| `0xFE4FD` | HLK slot header `"HLK" 01 00 60 04`, version 1, flags 0, slot size `0x0460` (1120 B) |
-| `0xFE504` | HLK payload, 1113 bytes of capacity, **all zeros on stock 170HX** |
+| `0xFE000` | 8 个零字节 |
+| `0xFE008` | `"LU"` + `00 10 00 00 00 01`：区域头，大小 `0x1000`，版本 1 |
+| `0xFE010` | 槽表：`"LIC" 01 00 1D 00`（LIC 在 +0x1D）、`"ULF" 1D 00`（解锁标志）、`"UPR" 7D 04`（解锁参数在 +0x47D）、`"HLK" ED 04`（HULK 证书在 +0x4ED）、`"ULF" 01 00 60 04` 终止符 |
+| `0xFE48D` | UPR 槽头，空载荷 |
+| `0xFE4FD` | HLK 槽头 `"HLK" 01 00 60 04`，版本 1，标志 0，槽大小 `0x0460`（1120 B） |
+| `0xFE504` | HLK 载荷，1113 字节容量，**出厂 170HX 上全零** |
 
-The reasoning is that a pre-built but empty HULK TOC implies FWSECLIC scans the license region
-on every boot, since NVIDIA would not ship a fully formed slot table plus a 1120-byte reserved
-slot if nothing read it. The corollary is that a forged or production-signed HULK cert at
-`0xFE504` would be an unlock path. This has never been demonstrated by instrumenting FWSECLIC.
+推理是：一个预建但空的 HULK TOC 意味着 FWSECLIC 在每次启动时都扫描许可区域，因为如果没人读它，NVIDIA 不会发货一张完整成形的槽表外加一个 1120 字节保留槽。推论是，在 `0xFE504` 处放一张伪造或量产签名的 HULK 证书会是一条解锁路径。这从没通过给 FWSECLIC 加插桩演示过。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Injecting a HULK cert at `0xFE504`. The slot exists, is 1113 bytes, is all-zero on stock, and
-> sits inside the window `nvflash` writes, so no CH341A is needed in principle. Two blockers:
-> the same analysis states `nvflash` is blocked by FwSecLic write-time verification even for
-> unsigned-tail changes, and whether the license region is exempt has never been tested; and
-> nobody has a signed cert. Cheapest next step: flash an arbitrary non-zero pattern into the
-> HLK payload and see whether the write is accepted at all, which separates "the region is
-> writable" from "we need a valid cert".
+> 在 `0xFE504` 注入 HULK 证书。槽存在、是 1113 字节、出厂全零，并且坐在 `nvflash` 写入的窗口内，所以原则上不需要 CH341A。两个阻碍：同一份分析声称 `nvflash` 即使对未签名尾部改动也被 FwSecLic 的写时验证阻挡，而许可区域是否豁免从未被测试；而且没人有签名证书。最便宜的下一步：把一个任意的非零模式刷进 HLK 载荷，看写入是否被接受，这会把"区域可写"和"我们需要有效证书"分开。
 
 ### InfoROM
 
-Entirely unsigned. Notable tags: `IMG` container header, `BRD` board info / part number, `OBD`
-card name, `PPO` power/performance (**empty on all 170HX ROMs**), `BBX` BlackBox telemetry,
-`RPR` row remap for HBM RAS, and `ECC` ECC configuration (**A100 only**). Card name strings are
-`"NVIDIA-A100-PCIe-40GB"`, `"NVIDIA A100-SXM4-40GB"` and `"CMP 170HX"`.
+完全未签名。值得注意的标签：`IMG` 容器头、`BRD` 板卡信息 / 料号、`OBD` 卡名、`PPO` 功耗/性能（**所有 170HX ROM 上都为空**）、`BBX` BlackBox 遥测、`RPR` HBM RAS 的行重映射、和 `ECC` ECC 配置（**仅 A100**）。卡名字符串是 `"NVIDIA-A100-PCIe-40GB"`、`"NVIDIA A100-SXM4-40GB"` 和 `"CMP 170HX"`。
 
-A live 10 GB card enumerates **17 distinct object types**: APP, BBX, BRD, DEM, IMG, NEN, NVL,
-OBD, OCT, OEM, OMS, PPO, ROM, RPR, RRL, SEN, ULF, at versions APP v6, BBX v4 and v6, BRD v2,
-DEM v6, IMG v2, NEN v14, NVL v6, OBD v2, OCT v6, OEM v2, OMS v14, PPO v6, ROM v2, RPR v6,
-RRL v6, SEN v14, ULF v0. `nvidia-smi` on the same SKU reports Inforom Image Version
-`1001.0105.01.02`, OEM Object 2.0, with ECC Object and Power Management Object both N/A,
-consistent with `ECC` being A100-only and `PPO` being empty.
+一张活的 10 GB 卡枚举 **17 种不同的对象类型**：APP、BBX、BRD、DEM、IMG、NEN、NVL、OBD、OCT、OEM、OMS、PPO、ROM、RPR、RRL、SEN、ULF，版本为 APP v6、BBX v4 和 v6、BRD v2、DEM v6、IMG v2、NEN v14、NVL v6、OBD v2、OCT v6、OEM v2、OMS v14、PPO v6、ROM v2、RPR v6、RRL v6、SEN v14、ULF v0。同一 SKU 上的 `nvidia-smi` 报告 Inforom Image Version `1001.0105.01.02`、OEM Object 2.0，ECC Object 和 Power Management Object 都是 N/A，与 `ECC` 仅 A100、`PPO` 为空一致。
 
 > [!WARNING]
-> **Do not fingerprint a card by total InfoROM object count**
+> **不要用 InfoROM 对象总数给卡做指纹**
 >
-> Totals of 22, 23 and 28 have all been reported and **all are correct**: BBX and DEM are
-> telemetry records that accumulate with runtime. Only the 17 distinct types and the per-object
-> versions are structurally meaningful.
+> 22、23 和 28 的总数都被报告过，而且**全部都对**：BBX 和 DEM 是随运行时累积的遥测记录。只有 17 种不同类型和按对象版本才有结构意义。
 
 ---
 
 ## DEVINIT
 
-DEVINIT is the VBIOS-resident initialisation script that programs GPU registers at boot, before
-the driver ever sees the device. On GA100 it lives in the `0x33800`-`0x41200` configuration
-region: structured cleartext, entropy 4.5-6.0, which is why its bytes can be located by pattern
-search while the encrypted FwSec firmware cannot. **Because that region ends at `0x41200`, well
-below the `0x43A00` MAC boundary, every DEVINIT modification breaks the Booter MAC.**
+DEVINIT 是 VBIOS 驻留的初始化脚本，在驱动看到设备之前于启动时编程 GPU 寄存器。在 GA100 上它住在 `0x33800`-`0x41200` 配置区域：结构化明文、熵 4.5-6.0，这就是它的字节能通过模式搜索定位、而加密的 FwSec 固件不能的原因。**因为该区域结束于 `0x41200`、远低于 `0x43A00` 的 MAC 边界，每一次 DEVINIT 修改都会破坏 Booter 的 MAC。**
 
-### Where it runs
+### 它在哪里运行
 
-The closed NVIDIA RM contains an **x86 DEVINIT-script interpreter, symbol `_nv000358rm`**, using
-ASCII-opcode dispatch. It reads the strap register `0x101000` at code address `0x264fb1` and
-executes VBIOS DEVINIT register writes generically. That is why the L2 decode register
-`0x17e2a0` never appears as an immediate anywhere in RM code: its address arrives from the VBIOS
-script stream, not from RM. Three registry keys control where DEVINIT runs:
+封闭的 NVIDIA RM 含有一个 **x86 DEVINIT 脚本解释器，符号 `_nv000358rm`**，用 ASCII 操作码分派。它在代码地址 `0x264fb1` 读取跳线寄存器 `0x101000` 并泛化执行 VBIOS DEVINIT 寄存器写入。这就是 L2 解码寄存器 `0x17e2a0` 从不作为立即数出现在任何 RM 代码中的原因：它的地址来自 VBIOS 脚本流，而非 RM。三个注册表键控制 DEVINIT 在哪里运行：
 
-| Registry key | Effect |
+| 注册表键 | 作用 |
 |---|---|
-| `RMExecuteDevinitOnPmu` | Run DEVINIT on the PMU |
-| `RmDisableFbflcnDevinitBoot` | Disable the FBFLCN DEVINIT boot path |
-| `RMDevinitBySecureBoot` | Run DEVINIT via secure boot |
+| `RMExecuteDevinitOnPmu` | 在 PMU 上运行 DEVINIT |
+| `RmDisableFbflcnDevinitBoot` | 禁用 FBFLCN DEVINIT 引导路径 |
+| `RMDevinitBySecureBoot` | 通过安全启动运行 DEVINIT |
 
-Confidence medium: this comes from binary analysis with specific symbols and offsets that has not
-been independently reproduced.
+中等置信度：这来自带具体符号和偏移量的二进制分析，尚未被独立复现。
 
-### Boot order
+### 启动顺序
 
 ```text
-NVGI records execute
-  -> IFR ucode fetches the FWSEC descriptors and starts FWSEC
-  -> FWSEC raises the PLMs
-  -> devinit / UDE08 programs all 29 FBPA registers
-  -> FBFLCN trains the HBM
+NVGI 记录执行
+  -> IFR ucode 取 FWSEC 描述符并启动 FWSEC
+  -> FWSEC 拉起 PLM
+  -> devinit / UDE08 编程全部 29 个 FBPA 寄存器
+  -> FBFLCN 训练 HBM
 ```
 
-Two consequences follow directly, and both close off obvious attacks: anything NVGI writes into
-MR1/MR2/MR3 is overwritten by DEVINIT moments later using the table values for the boot strap,
-and writing PLMs from NVGI is futile because FWSEC re-raises them afterwards. Confidence medium;
-this is an ordering argument from firmware analysis, not an empirical test.
+两个后果直接随之而来，而两个都关死了明显的攻击：NVGI 写进 MR1/MR2/MR3 的任何东西在片刻后被 DEVINIT 用启动跳线的表值覆盖，而从 NVGI 写 PLM 是徒劳的，因为 FWSEC 事后会重新拉起它们。中等置信度；这是一个来自固件分析的排序论证，不是经验测试。
 
-### DEVINIT and the PCIe Gen1 lock
+### DEVINIT 与 PCIe Gen1 锁
 
-The PCIe speed restriction is **5 bytes across 3 DEVINIT sites** (Gen1 versus Gen3/4), all inside
-the MAC range. The ROM route is therefore closed for the same reason the memory strap byte is
-closed: no csecret(2), no MAC forgery, no boot.
+PCIe 速度限制是**3 个 DEVINIT 站点的 5 字节**（Gen1 对比 Gen3/4），全部在 MAC 范围内。因此 ROM 路径因与显存跳线字节相同的理由而关闭：没有 csecret(2)、没有 MAC 伪造、不能启动。
 
-What replaced it is entirely runtime. The unreleased `Gen2`-family branches reach Gen2 (5 GT/s)
-by writing PCIe registers from the patched driver, never touching the ROM, giving
-`LnkCap max Gen2 0x00456102`, `LnkCap2 0x00000006`, `LnkSta trained Gen2 x4 0x1042` and
-`nvidia-smi` cur/max/width `2,2,4`. That is link **speed** only; link **width** is a separate,
-purely physical matter. See [PCIe Gen2](../unlock/pcie-gen2.md) and
-[the PCIe subsystem](pcie-subsystem.md).
+取代它的是完全运行时的东西。未发布的 `Gen2` 系分支通过从打过补丁的驱动写 PCIe 寄存器来达到 Gen2（5 GT/s），从不碰 ROM，给出 `LnkCap max Gen2 0x00456102`、`LnkCap2 0x00000006`、`LnkSta trained Gen2 x4 0x1042` 和 `nvidia-smi` cur/max/width `2,2,4`。那是链路**速度**；链路**位宽**是独立的、纯粹物理的事。参见[PCIe Gen2](../unlock/pcie-gen2.md) 和[PCIe 子系统](pcie-subsystem.md)。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Gen3 and Gen4 remain unreached. `FUSE_PCIE_GEN23_DIS` `0x0082057c` and `FUSE_PCIE_GEN3_DIS`
-> `0x00820580` both read `0x00000001` on every 170HX probed, alongside `FUSE_PCIE_MAGIC_D`
-> `0x00820520` = `0x16680000`, and the supported-speeds vector clips at `0x00000006` even after
-> the PHY rate is forced to a Gen3-capable `0x00340036`. Two unresolved questions: whether the
-> residual cap is the same DEVINIT bytes replayed or the fuse triple enforced independently
-> downstream, and whether the five-byte DEVINIT edit alone would restore Gen4 given a flash
-> that could be re-signed. See [Gen3 and Gen4](../frontier/pcie-gen3-gen4.md).
+> Gen3 和 Gen4 仍未达到。`FUSE_PCIE_GEN23_DIS` `0x0082057c` 和 `FUSE_PCIE_GEN3_DIS` `0x00820580` 在每个被探测的 170HX 上都读 `0x00000001`，连同 `FUSE_PCIE_MAGIC_D` `0x00820520` = `0x16680000`，而受支持速度向量即使在 PHY 速率被强制到一个 Gen3 能力的 `0x00340036` 之后也裁剪在 `0x00000006`。两个未解决的问题：残余上限是同一个 DEVINIT 字节重放，还是熔丝三元组在下游被独立强制，以及考虑到一份能重新签名的闪存，那五字节 DEVINIT 改动本身能否恢复 Gen4。参见[Gen3 和 Gen4](../frontier/pcie-gen3-gen4.md)。
 
-### DEVINIT and ECC
+### DEVINIT 与 ECC
 
 > [!NOTE]
-> **The evidence points away from DEVINIT here**
+> **证据在这里指向 DEVINIT 之外**
 >
-> **This VBIOS analysis provides no evidence that DEVINIT controls ECC.** The only ECC-related
-> datum in the entire ROM comparison is that the InfoROM `ECC` object is present on the A100 and
-> absent on the 170HX. No DEVINIT-side ECC bytes were found anywhere in the 54.5 KB config
-> table region. Chat-side theories blaming DEVINIT for the 170HX ECC behaviour are unsupported
-> by static analysis. This is a notable absence of evidence rather than a positive finding, so
-> confidence is medium.
+> **这份 VBIOS 分析没有提供 DEVINIT 控制 ECC 的证据。** 整份 ROM 对比中唯一与 ECC 相关的数据点是 InfoROM `ECC` 对象存在于 A100、不存在于 170HX。在 54.5 KB 配置表区域的任何地方都没找到 DEVINIT 侧的 ECC 字节。聊天侧把 170HX 的 ECC 行为归咎于 DEVINIT 的理论得不到静态分析支持。这是一个显著的证据缺失而非正面发现，所以置信度为中等。
 
-Corroborating from the silicon side: `FEAT_OVR_ECC_PLM` `0x00823800` reads `0xffffff8f` cold and
-gates `0x82380c`, `0x823810` and `0x82382C`. The HS ROP can open it, and **opening it is inert**,
-because the ECC-enable readout at `0x823814` is POR/fuse-latched and does not respond to live
-override writes; the overrides revert on FLR anyway. The branch named `ecc` contains no ECC code
-at all (a single commit, "Fixed dual geometry support"). ECC is fused off with no known lever.
-Whether the HBM stacks carry ECC provisioning is only partly answered: the A100 per-FBPA
-`CSTATUS_RAMAMOUNT` differential reads as ECC being reserved capacity inside the same stacks, on
-one participant's inference rather than a datasheet. See [ECC](../frontier/ecc.md).
+从硅片侧佐证：`FEAT_OVR_ECC_PLM` `0x00823800` 冷读 `0xffffff8f` 并门控 `0x82380c`、`0x823810` 和 `0x82382C`。HS ROP 能打开它，而**打开它是惰性的**，因为 `0x823814` 处的 ECC 使能回读是 POR/熔丝锁存的、对活的覆盖写入无响应；覆盖反正会在 FLR 时还原。名为 `ecc` 的分支根本不含任何 ECC 代码（一个提交，"Fixed dual geometry support"）。ECC 熔断关闭、没有已知杠杆。HBM 堆叠是否携带 ECC 配置只被部分回答：A100 每-FBPA `CSTATUS_RAMAMOUNT` 的差值被解读为 ECC 是同一批堆叠内预留的容量，这是基于一位参与者的推断而非数据手册。参见[ECC](../frontier/ecc.md)。
 
-### Re-executing DEVINIT at runtime
+### 在运行时重新执行 DEVINIT
 
 > [!WARNING]
-> **Experimental**
+> **实验性**
 >
-> Re-executing DEVINIT at runtime via the PMU **did** change hardware state, on one card, in
-> one session. It did not produce more usable memory.
+> 通过 PMU 在运行时重新执行 DEVINIT **确实**改变了硬件状态，在一张卡上、在一次会话里。它没有产生更多可用显存。
 
-| Register | Before | After |
+| 寄存器 | 之前 | 之后 |
 |---|---|---|
 | CFG1 `0x009a0204` | `0x02669000` | `0x22779000` |
-| CSTATUS | `0x00000800` | `0x00000800` (unchanged) |
-| LMR `0x00100ce0` | `0x0000028a` | `0x0000028a` (unchanged) |
+| CSTATUS | `0x00000800` | `0x00000800`（不变） |
+| LMR `0x00100ce0` | `0x0000028a` | `0x0000028a`（不变） |
 | `0x9a038c` | `0xa7` | `0xa6` |
 | `0x9a0330` | `0x00100093` | `0x0010009c` |
 | `0x9a0334` | `0x002000cf` | `0x00200041` |
 | `0x9a0338` | `0x003000ea` | `0x003000f1` |
 | `0x9a0390` | `0x00c0052d` | `0x00c00528` |
 | `0x9a0394` | `0x000028d9` | `0x0000394f` |
-| `0x9a0300` | `0x00000003` | `0x00000003` (unchanged) |
+| `0x9a0300` | `0x00000003` | `0x00000003`（不变） |
 
-Six of seven HBM timing registers moved to strap-5 values, but the geometry still resolved to
-40960 MiB because the tier `0x77` was halved to 2048 MiB per FBPA across 20 live FBPAs. Strap-5
-timings themselves would not load. The resulting state was informally called "the pg199 config"
-in-channel. PG199 is NVIDIA's board code for the Drive A100, and there is an unreleased branch
-of that name, but `0x22779000` is not a value any shipping or branch code writes, so the label
-should not be read as naming a configuration the tooling implements.
+七个 HBM 时序寄存器中的六个移到跳线 5 值，但几何布局仍解析到 40960 MiB，因为档位 `0x77` 被减半到每 FBPA 2048 MiB、跨 20 个活 FBPA。跳线 5 的时序本身无法加载。结果状态在频道内被非正式称为 "the pg199 config"。PG199 是 NVIDIA 对 Drive A100 的板卡代码，而且有一个那个名字的未发布分支，但 `0x22779000` 不是任何出货或分支代码写的值，所以这个标签不应被读作指代工具实现的某个配置。
 
-Note also that **neither the shipping tool nor any unreleased branch re-executes DEVINIT, drives
-the PMU, or touches FBFLCN.** A search of the full branch set for `devinit`, `PMU`, `FBFLCN` and
-`0x101000` returns nothing. All DEVINIT work described here lives in analysis artifacts, not in
-shipped code.
+还要注意，**出货工具或任何未发布分支都不重新执行 DEVINIT、不驱动 PMU、也不碰 FBFLCN。** 对完整分支集合搜索 `devinit`、`PMU`、`FBFLCN` 和 `0x101000` 一无所获。这里描述的所有 DEVINIT 工作都活在分析工件里，不在出货代码里。
 
 ---
 
-## Version inventory
+## 版本清单
 
-### The seven-ROM comparison baseline
+### 七 ROM 对比基线
 
-| Image | Version | Build date | Device | Subsystem |
+| 映像 | 版本 | 构建日期 | 设备 | 子系统 |
 |---|---|---|---|---|
 | A100 PCIe 40 GB | `92.00.90.00.08` | 2022-01-05 | `0x20F1` | |
 | A100 SXM4 40 GB | `92.00.45.00.03` | 2021-06-16 | `0x20B0` | `0x134F` |
 | CMP 170HX 8 GB | `92.00.67.00.01` | 2021-05-14 | `0x20C2` | `0x1585` |
 | CMP 170HX 10 GB | `92.00.66.00.02` | 2021-04-23 | `0x2082` | `0x1557` |
-| CMP 170HX "16 GB" | `92.00.67.00.01` | same as 8 GB | `0x20C2` | `0x1585` |
+| CMP 170HX "16 GB" | `92.00.67.00.01` | 与 8 GB 相同 | `0x20C2` | `0x1585` |
 | CMP 170HX 300 W | `92.00.6D.00.0A` | 2022-04-07 | `0x20C2` | `0x1585` |
 | Drive A100 32 GB | `92.00.A0.00.01` | | `0x20BB` | |
 
-### Revisions in the field on 8 GB cards
+### 野外 8 GB 卡上的修订
 
-| Version | Date | Power limit | Memory clock field | Notes |
+| 版本 | 日期 | 功耗上限 | 显存时钟字段 | 备注 |
 |---|---|---|---|---|
-| `92.00.67.00.01` | 2021-05-14 | 250 W | 364 MHz | The stock production 8 GB image |
-| `92.00.6D.00.09` | 2021-11-01 | 300 W | no memory OC | Exists but is not in the TechPowerUp collection; reported by a researcher holding the file, medium-high confidence |
-| `92.00.6D.00.0A` | 2022-04-07 | 300 W | 432 MHz | The "mining" / OC image |
+| `92.00.67.00.01` | 2021-05-14 | 250 W | 364 MHz | 出厂量产 8 GB 映像 |
+| `92.00.6D.00.09` | 2021-11-01 | 300 W | 无显存超频 | 存在但不在 TechPowerUp 合集里；由一位持有该文件的研究者报告，中高置信度 |
+| `92.00.6D.00.0A` | 2022-04-07 | 300 W | 432 MHz | "挖矿" / OC 映像 |
 
-**VBIOS version makes no difference to whether the unlock works.** Four cards across two hosts,
-two on each of `92.00.67.00.01` and `92.00.6D.00.0A`, showed identical unlock and Gen2 results:
-`LnkCap 0x00456102`, `LnkCap2 0x00000006`, `LnkSta 0x1042`, `nvidia-smi` cur/max/width `2,2,4`,
-identical Board PN `900-11001-0108-000`, GPU PN `20C2-105-A1`, subsystem `0x158510DE`, and the
-same fuse triple `OPT=00000001/00000001/16680000`. Writing that "the 8 GB SKU carries
-`92.00.6D.00.0A`" as a blanket statement is wrong; both versions are in the field.
+**VBIOS 版本对解锁能否工作毫无区别。** 两台主机上的四张卡、`92.00.67.00.01` 和 `92.00.6D.00.0A` 各两张，显示了相同的解锁和 Gen2 结果：`LnkCap 0x00456102`、`LnkCap2 0x00000006`、`LnkSta 0x1042`、`nvidia-smi` cur/max/width `2,2,4`、相同的板卡料号 `900-11001-0108-000`、GPU 料号 `20C2-105-A1`、子系统 `0x158510DE`，以及相同的熔丝三元组 `OPT=00000001/00000001/16680000`。把 "8 GB SKU 携带 `92.00.6D.00.0A`" 写成一句笼统陈述是错的；两个版本都在野外。
 
-### Memory clock: one clock, four multiples
+### 显存时钟：一个时钟，四个倍数
 
-The VBIOS memory field is **quarter-rate**. This resolves what was logged for two years as a
-three-way conflict between 432, 729 and 1458 MHz.
+VBIOS 显存字段是**四分之一速率**。这解决了被当作 432、729 和 1458 MHz 之间的三方冲突记录了两年的事。
 
-| Relation | Multiplier | `92.00.67` (364 MHz field) | `92.00.6D.00.0A` (432 MHz field) |
+| 关系 | 倍数 | `92.00.67`（364 MHz 字段） | `92.00.6D.00.0A`（432 MHz 字段） |
 |---|---|---|---|
-| VBIOS field | ×1 | 364 MHz | 432 MHz |
-| CUDA `deviceQuery` memory clock rate | ×2 | 729 MHz | |
-| Marketing / spec MHz | ×4 | 1458 MHz | 1728 MHz |
-| Gbps effective | ×8 ÷ 1000 | 2.9 Gbps | |
+| VBIOS 字段 | ×1 | 364 MHz | 432 MHz |
+| CUDA `deviceQuery` 显存时钟速率 | ×2 | 729 MHz | |
+| 营销 / 规格 MHz | ×4 | 1458 MHz | 1728 MHz |
+| Gbps 有效 | ×8 ÷ 1000 | 2.9 Gbps | |
 
-The 1728 MHz figure was confirmed via `nvidia-smi` on a card running `0A`.
+1728 MHz 数字通过一张运行 `0A` 的卡上的 `nvidia-smi` 确认。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Whether `1728 MHz` on the `0A` image is a valid strap or a boost point. Asked directly, the
-> answer was an explicit guess: "I wanna say boost". Whether that VBIOS also changes voltage,
-> power or core clock was asked and never answered.
+> `0A` 映像上 `1728 MHz` 是有效跳线还是加速点。被直接问到时，答案是明确的猜测："我想说 boost"。那个 VBIOS 是否也改变电压、功耗或核心时钟被问过、从没回答。
 
-### Public TechPowerUp images
+### 公开的 TechPowerUp 映像
 
-Four CMP 170HX images exist publicly. **The "16 GB" and "0 GB" size labels are wrong and neither
-unlocks memory.** TPU's "Memory Size" column could not be traced to any field in the `.rom` files
-and is unreliable.
+四份 CMP 170HX 映像公开存在。**"16 GB" 和 "0 GB" 的大小标签是错的，两者都不解锁显存。** TPU 的 "Memory Size" 列无法追溯到 `.rom` 文件里的任何字段，不可靠。
 
-| TPU entry | Label | Actual | Device / subsystem |
+| TPU 条目 | 标签 | 实际 | 设备 / 子系统 |
 |---|---|---|---|
-| 257744 | 8 GB | The 8 GB production image | `10DE 20C2` / `10DE 1585` |
-| 239457 | "16 GB" | Bit-for-bit identical to the normal 8 GB VBIOS apart from the `flash_status_ledger`, which changes on every flash including at the factory | `10DE 20C2` / `10DE 1585` |
-| 268495 | "0 GB" | The 300 W `92.00.6D.00.0A` OC ROM | `10DE 20C2` / `10DE 1585` |
-| 268984 | 10 GB | The 10 GB image | `10DE 2082` / `10DE 1557` |
+| 257744 | 8 GB | 8 GB 量产映像 | `10DE 20C2` / `10DE 1585` |
+| 239457 | "16 GB" | 与普通 8 GB VBIOS 逐位相同，除了 `flash_status_ledger`，它在每次刷写时都变（包括在工厂） | `10DE 20C2` / `10DE 1585` |
+| 268495 | "0 GB" | 300 W `92.00.6D.00.0A` OC ROM | `10DE 20C2` / `10DE 1585` |
+| 268984 | 10 GB | 10 GB 映像 | `10DE 2082` / `10DE 1557` |
 
-TPU 268495 is identified as the 300 W ROM by a full field match: version `92.00.6D.00.0A`, build
-2022-04-07, 1020 KB, device `0x10DE 0x20C2`, subsystem `10DE 1585`, MD5
-`a58aae86e72b13d50603c15653350664`, SHA1 `efad37d514bb94ac345719a0c56d9cd147cddfb7`, UEFI not
-supported, GPU clock 1140 MHz, boost 1410 MHz, memory clock 432 MHz, HBM2, memory size reported
-as 0 MB, board power target 250.0 W, limit 300.0 W, adjustment range -60 % / +20 %.
+TPU 268495 通过完整字段匹配被识别为 300 W ROM：版本 `92.00.6D.00.0A`、构建 2022-04-07、1020 KB、设备 `0x10DE 0x20C2`、子系统 `10DE 1585`、MD5 `a58aae86e72b13d50603c15653350664`、SHA1 `efad37d514bb94ac345719a0c56d9cd147cddfb7`、UEFI 不支持、GPU 时钟 1140 MHz、boost 1410 MHz、显存时钟 432 MHz、HBM2、报告显存大小 0 MB、板卡功耗目标 250.0 W、上限 300.0 W、调整范围 -60% / +20%。
 
-A tester who flashed 239457 over 268495 reported memory ~300 MHz lower, the power limit dropped
-to 250 W and no core offset available, consistent with moving from a 432 MHz field at 300 W to a
-364 MHz field at 250 W, a 272 MHz effective drop.
+一位把 239457 刷到 268495 上的测试者报告显存低了约 300 MHz、功耗上限掉到 250 W、没有可用核心偏移，与从 300 W 的 432 MHz 字段移到 250 W 的 364 MHz 字段一致，有效降低 272 MHz。
 
 > [!CAUTION]
-> **TPU entry 283106 is not a CMP 170HX and must never be flashed to one**
+> **TPU 条目 283106 不是 CMP 170HX，绝不能刷到一张上**
 >
-> 283106 is an NVIDIA A100 / DRIVE-PG199-PROD image: version `92.00.A0.00.01`, build
-> 2022-07-08, 976 KB, MD5 `ba22571080e412612964d130f0ce3880`, SHA1
-> `ccac3c86cb901c5bb6758d3423d00383e6355c13`, device `0x10DE 0x20BB`, subsystem `10DE 14A1`,
-> memory size 32751 MB, GPU clock 1260 MHz, boost 1260 MHz, memory clock 351 MHz, HBM2, no
-> board power limit block. It has circulated as a "170HX reference". Flashing it via SPI
-> programmer produced `NVRM: GPU 0000:0d:00.0: RmInitAdapter failed! (0x62:0x55:2674)` in
-> dmesg, and the reported DevID stayed `10DE:20C2`. A follow-up attempt with `omgvflash` on a
-> Windows laptop caused a BSOD.
+> 283106 是一份 NVIDIA A100 / DRIVE-PG199-PROD 映像：版本 `92.00.A0.00.01`、构建 2022-07-08、976 KB、MD5 `ba22571080e412612964d130f0ce3880`、SHA1 `ccac3c86cb901c5bb6758d3423d00383e6355c13`、设备 `0x10DE 0x20BB`、子系统 `10DE 14A1`、显存大小 32751 MB、GPU 时钟 1260 MHz、boost 1260 MHz、显存时钟 351 MHz、HBM2、没有板卡功耗上限块。它以 "170HX 参考" 流传。用 SPI 编程器刷它会 dmesg 里产生 `NVRM: GPU 0000:0d:00.0: RmInitAdapter failed! (0x62:0x55:2674)`，报告的 DevID 停留在 `10DE:20C2`。一次用 `omgvflash` 在 Windows 笔记本上的后续尝试导致蓝屏。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Whether a genuinely distinct "16 GB" 170HX ROM exists. The comparison collection lists
-> `cmp170hx_16gb_92.00.67.00.01.rom` as a separate file with the same version, build date,
-> device ID and subsystem as the 8 GB image and the note "no cards ever shipped"; independently,
-> TPU 239457 was found bit-for-bit identical to the 8 GB VBIOS. These may be the same file
-> counted twice. An MD5 or SHA of the collection file against 239457 and 257744 would settle it.
+> 一份真正不同的 "16 GB" 170HX ROM 是否存在。对比合集把 `cmp170hx_16gb_92.00.67.00.01.rom` 列为一个独立文件、带与 8 GB 映像相同的版本、构建日期、设备 ID 和子系统，并注 "no cards ever shipped"（从未有卡出货）；独立地，TPU 239457 被发现与 8 GB VBIOS 逐位相同。这些可能是同一份文件被数了两次。合集文件对 239457 和 257744 的 MD5 或 SHA 能定论它。
 
-### Per-SKU and cross-product ROM diffs
+### 按 SKU 和跨产品 ROM 差异
 
-| Comparison | Total delta | Breakdown |
+| 对比 | 总差异 | 分解 |
 |---|---|---|
-| 170HX 8 GB vs 10 GB | 2,684 B | NVGI `0x0000`-`0x5E00` 2,399 B (including four MAC blocks of ~384 B, about 1,533 B of MAC content); PciAt `0x5E00`-`0xC000` 36 B, all version and device ID; FwSec body `0xC700`-`0x47700` 249 B, training and config only |
-| Drive A100 vs A100 PCIe 40 GB | 468,557 B (45 % of the ROM) | 96 KB larger signed range plus a completely different firmware build |
-| Drive A100 GPU0 vs GPU1 | 49,852 B | 49,797 B (99.5 %) InfoROM, 55 B NVGI: same firmware, per-unit calibration only |
+| 170HX 8 GB vs 10 GB | 2,684 B | NVGI `0x0000`-`0x5E00` 2,399 B（包括四个约 384 B 的 MAC 块、约 1,533 B MAC 内容）；PciAt `0x5E00`-`0xC000` 36 B，全是版本和设备 ID；FwSec 主体 `0xC700`-`0x47700` 249 B，仅训练和配置 |
+| Drive A100 vs A100 PCIe 40 GB | 468,557 B（ROM 的 45%） | 签名范围大 96 KB 加一个完全不同的固件构建 |
+| Drive A100 GPU0 vs GPU1 | 49,852 B | 49,797 B（99.5%）InfoROM、55 B NVGI：相同固件，仅按单元校准 |
 
-Only **two bytes differ in the NVGI bootstrap** between the 8 GB and 10 GB images: `0x0004` is
-`0x52` versus `0x80` (header size/version field) and `0x000E` is `0x85` versus `0x57`, the
-subsystem ID low byte encoding `0x1585` versus `0x1557`. Net of MAC content, the genuinely
-functional SKU difference is tiny, which is consistent with the seven-byte restriction figure.
+8 GB 和 10 GB 映像之间**只有两个字节**在 NVGI 引导程序里不同：`0x0004` 是 `0x52` 对比 `0x80`（头大小/版本字段）和 `0x000E` 是 `0x85` 对比 `0x57`，子系统 ID 低字节编码 `0x1585` 对比 `0x1557`。扣除 MAC 内容后，真正有功能的 SKU 差异很小，这与七字节限制的数字一致。
 
-The published Drive A100 region breakdown (NVGI 155 B, PciAt 4,799 B, FwSec body 91,694 B,
-unsigned tail 11,142 B, InfoROM 52,847 B) sums to 160,637 B, not 468,557 B. That is a real
-inconsistency in the source analysis; the most likely explanation is that the region table covers
-only overlapping windows while the total is a whole-file diff across images whose signed ranges
-differ by 96 KB, shifting everything after them. Not reconciled by any source.
+已发布的 Drive A100 区域分解（NVGI 155 B、PciAt 4,799 B、FwSec 主体 91,694 B、未签名尾 11,142 B、InfoROM 52,847 B）加起来是 160,637 B，不是 468,557 B。那是源分析里一个真实的矛盾；最可能的解释是区域表只覆盖重叠窗口，而总是一份跨映像的整文件差异、那些映像的签名范围相差 96 KB，把之后的一切都移位了。没有任何来源调和它。
 
-**FwSec body sizes differ between every GA100 product line**, which rules out FwSec/VN image
-swapping structurally rather than merely as untested:
+**FwSec 主体大小在每一条 GA100 产品线之间都不同**，这从结构上排除了 FwSec/VN 映像交换，而非仅仅未测试：
 
-| Image | FwSec body | Span |
+| 映像 | FwSec 主体 | 跨度 |
 |---|---|---|
-| 170HX 8 GB / 10 GB / "16 GB" | 241,664 B (baseline) | `0xC700`-`0x47700` |
-| 170HX 300 W | 242,176 B (+512) | `0xC700`-`0x47900` |
-| A100 SXM4 40 GB | 240,640 B (-1024) | `0xC700`-`0x47300` |
-| A100 PCIe 40 GB | 244,224 B (+2560) | `0xC700`-`0x48100` |
-| Drive A100 32 GB | **Unresolved**: the recorded body size (362,496 B) and the recorded span disagree; `0x5AC00 - 0xC700` = 320,768 B. Use the span, not the total, until a re-read settles it | `0xC700`-`0x5AC00` |
+| 170HX 8 GB / 10 GB / "16 GB" | 241,664 B（基线） | `0xC700`-`0x47700` |
+| 170HX 300 W | 242,176 B（+512） | `0xC700`-`0x47900` |
+| A100 SXM4 40 GB | 240,640 B（-1024） | `0xC700`-`0x47300` |
+| A100 PCIe 40 GB | 244,224 B（+2560） | `0xC700`-`0x48100` |
+| Drive A100 32 GB | **未解决**：记录的正文大小（362,496 B）与记录的跨度不符；`0x5AC00 - 0xC700` = 320,768 B。在重读定论前用跨度而非总数 | `0xC700`-`0x5AC00` |
 
-The VN preambles being identical across 170HX SKUs is the one thing that would have made a swap
-plausible.
+VN 前导在 170HX SKU 之间相同，是唯一会让交换看似可行的事。
 
 ---
 
-## What is and is not modifiable
+## 什么可修改、什么不可
 
-Five targets, ranked by MAC-range membership.
+五个目标，按 MAC 范围成员排序。
 
-| Target | Offset | Inside MAC? | Status |
+| 目标 | 偏移量 | 在 MAC 内？ | 状态 |
 |---|---|---|---|
-| CFG1 strap-4 tier byte | `0x41D53` | Inside | **CLOSED.** Needs csecret(2). Proven by the 2026-05-08 byte-flip that stalled the Booter |
-| PCIe Gen1 lock, 5 bytes / 3 DEVINIT sites | in `0x33800`-`0x41200` | Inside | **CLOSED.** Runtime Gen2 branches supersede it |
-| ECB firmware blob | `0x14A00`-`0x33800` | Inside, and encrypted with csecret(6) | Contents unknown |
-| Power limit 250 W to 300 W | `0x45E45` | Outside | **OPEN but untested.** CH341A only |
-| `CTRL_OPT` fuse table | `0x47341` | Outside | Under investigation, semantics undetermined |
+| CFG1 跳线 4 档位字节 | `0x41D53` | 内 | **已关闭。** 需要 csecret(2)。由 2026-05-08 那次卡住 Booter 的字节翻转证明 |
+| PCIe Gen1 锁，5 字节 / 3 个 DEVINIT 站点 | 在 `0x33800`-`0x41200` 里 | 内 | **已关闭。** 运行时 Gen2 分支取代了它 |
+| ECB 固件块 | `0x14A00`-`0x33800` | 内，且用 csecret(6) 加密 | 内容未知 |
+| 功耗上限 250 W 到 300 W | `0x45E45` | 外 | **开放但未测试。** 仅 CH341A |
+| `CTRL_OPT` 熔丝表 | `0x47341` | 外 | 调查中，语义未确定 |
 
-### The write path: verify-then-write binds payload to image
+### 写路径：先验证再写把载荷绑定到映像
 
-A controlled 2×2 experiment (VV-authenticated image × EWR payload) established the rule:
+一次受控的 2×2 实验（VV 认证的映像 × EWR 载荷）确立了这条规则：
 
-| VV'd image | EWR payload | Result |
+| VV'd 映像 | EWR 载荷 | 结果 |
 |---|---|---|
 | live | live | ERR = 0 |
 | live | 8 GB | `0x9C` |
-| 8 GB | 8 GB | ERR = 0 (success) |
+| 8 GB | 8 GB | ERR = 0（成功） |
 | 8 GB | live | `0x9C` |
 
-The fourth row is the clincher: the payload was the live flash content and was still rejected,
-because VV had authenticated a different image. The rule is: authenticate a genuinely signed
-image with VV, then write *that image's* bytes. It was proved end to end by writing 7,878 bytes
-of foreign 8 GB content into the real VBIOS block, reading it back, and restoring it
-byte-identically. **A genuinely signed 80 GB A100 VBIOS would therefore flash. Modified images
-still die earlier, at `0x40` in VV.**
+第四行是关键：载荷是活的闪存内容却仍被拒绝，因为 VV 已经认证了另一份映像。规则是：用 VV 认证一份真正签名的映像，然后写*那份映像的*字节。通过把 7,878 字节的 8 GB 外来内容写进真正的 VBIOS 块、读回、再逐字节恢复，它被端到端证明了。**因此一份真正签名的 80 GB A100 VBIOS 会刷进去。修改过的映像仍更早死掉，在 VV 的 `0x40` 处。**
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> What is missing is a signed image that the 170HX's Board ID and fused device ID gates will
-> then accept at boot; every cross-flash to date failed at that gate, not at the write. The
-> cleanest next step is a VV+EWR of the *same-SKU* 300 W ROM onto a 250 W card, which is
-> signed, same device ID and same board, to establish whether the boot-side gate is Board ID or
-> something narrower.
+> 缺的是一份签名映像，能让 170HX 的板卡 ID 和熔断设备 ID 门在启动时接受；到目前每一次跨刷都失败在那道门上，而不是写入。最干净的下一步是对一块 250 W 卡做一次**同 SKU** 300 W ROM 的 VV+EWR，它是签名、同设备 ID、同板卡的，以确立启动侧的门是板卡 ID 还是更窄的东西。
 
 ---
 
-## Failure signatures
+## 失败签名
 
-Keep this table next to you before any flash attempt. See also
-[troubleshooting](../procedures/troubleshooting.md).
+任何刷写尝试前把这表放在身边。另见[排障](../procedures/troubleshooting.md)。
 
-| Signature | Meaning |
+| 签名 | 含义 |
 |---|---|
-| `GFW_BOOT = 0x401` or `0x001` | Broken MAC. A byte inside the signed range changed |
-| `GFW_BOOT = 0x8F`, PROM reads all `0xFF` | FWSEC HS-exit taint. FWSEC ran but GFW never proceeded past it, so the driver never reaches Booter |
-| `kgspExtractVbiosFromRom_TU102: did not find valid ROM signature` then `RmInitAdapter failed! (0x62:0x25:2028)` | VBIOS state-register (SReg) data destroyed. **Reflashing a stock ROM does not help** |
-| `kgspWaitForGfwBootOk_TU102: failed to wait for GFW boot complete: 0x65` | Seen during VBIOS-modification attempts on `92.00.66.00.02` |
-| `RmInitAdapter failed! (0x62:0x55:2674)`, DevID unchanged | A foreign (Drive A100) image was flashed and did nothing functionally |
-| `falcon halted` from `nvflash` | `nvflash` got past image validation with `--protectoff` and then failed running its own SPI-writer ucode |
-| VV error `0x40` | A modified image, rejected in verify before the write stage |
-| `0xBADF3000` | SPI not write-protected before power-on |
-| Device Manager Code 10 (Windows) | Every locally patched 170HX VBIOS a tester produced gave this |
+| `GFW_BOOT = 0x401` 或 `0x001` | 坏 MAC。已签名范围内的一个字节变了 |
+| `GFW_BOOT = 0x8F`，PROM 读全 `0xFF` | FWSEC HS-退出污染。FWSEC 运行了但 GFW 从未越过它，所以驱动永远到不了 Booter |
+| `kgspExtractVbiosFromRom_TU102: did not find valid ROM signature` 然后 `RmInitAdapter failed! (0x62:0x25:2028)` | VBIOS 状态寄存器（SReg）数据被毁。**重刷出厂 ROM 也无济于事** |
+| `kgspWaitForGfwBootOk_TU102: failed to wait for GFW boot complete: 0x65` | 在 `92.00.66.00.02` 上 VBIOS 修改尝试期间看到 |
+| `RmInitAdapter failed! (0x62:0x55:2674)`，DevID 不变 | 一份外来的（Drive A100）映像被刷了、功能上什么都没做 |
+| `nvflash` 的 `falcon halted` | `nvflash` 用 `--protectoff` 通过了映像验证，然后在运行它自己的 SPI 写入器 ucode 时失败 |
+| VV 错误 `0x40` | 一份修改过的映像，在写入阶段之前于验证中被拒绝 |
+| `0xBADF3000` | 上电前 SPI 未写保护 |
+| Device Manager Code 10（Windows） | 测试者生产的每一份本地修补的 170HX VBIOS 都给出这个 |
 
 ---
 
-## Dead ends
+## 死路
 
-Every entry was a real attempt with a real result. None should be retried without new
-information. See [dead ends](../history/dead-ends.md) for the full project-wide list.
+每一条都是带真实结果的真实尝试。没有新信息就不该重试。完整的项目级清单见[死路](../history/dead-ends.md)。
 
-| Attempt | Result |
+| 尝试 | 结果 |
 |---|---|
-| Full A100 VBIOS cross-flash onto a 170HX | Card does not boot in secured mode and is unusable; memory size, SM count and shader count do not change; only the subsystem ID changes. Disproved 2024-07-17, reconfirmed 2026-07-19 and 2026-07-25 |
-| A100 VBIOS onto a strap-modified 10 GB card | Bricks the card. Recovery required re-flashing the saved original ROM with an SPI programmer |
-| Editing the strap byte `44` to `66` in the image and fixing the checksum | Driver fails to load. Consistent with the Falcon validating at power-up and dropping the chip into non-secure mode. Superseded by the runtime CFG1 write at `0x009a0204` |
-| Single byte flip inside the signed range (`0x41D53`) | Booter stalls, `GFW_BOOT=0x001` |
-| Simple ROM splicing, A100 sections into a 170HX image | Fails twice over: strap-table offsets differ per ROM and each section is independently MAC'd |
-| FwSec / VN image swap between SKUs | Ruled out structurally by the body-size mismatch |
-| A30 FWSEC module transplant | Dead on arrival: the signed code modules are already **identical** between the 10 GB 170HX and the A30, so the module gains nothing. The differentiating data is non-code configuration inside the verified section |
-| `nvflash` with patched image validation plus `--protectoff` | Gets further, then `falcon halted` when nvflash runs its ucode, which is the SPI writer itself. `omgvflash` and `nvflashk` likewise refuse an edited BIOS |
-| Writing the SPI controller registers from software | See below. Closed hard |
-| NVGI as an attack surface | Closed by boot ordering: DEVINIT overwrites NVGI's MR1/MR2/MR3 writes, and FWSEC re-raises any PLM NVGI lowers |
-| TOCTOU on the VBIOS | Wiped the SReg data; card fails with no valid ROM signature and reflashing stock does not recover it |
-| 8 GB VBIOS onto a 10 GB card | Flashed and reverted successfully with a patched nvflash, but the 8 GB image does not boot on the 10 GB card, and strap edits fail an image check during flashing. Caveat: no reboot between flashes, so this is suggestive rather than definitive |
-| Maxwell-era ECC unlock ported to Ampere | Never demonstrated on GA100; caveated by its own author as non-trivial for Ampere |
-| The sim/emu HBM2e ROM as a template | Sim ROMs are ~230 KB with a completely different layout, and even there only the primary strap table was raised `66` to `77` while the copy at `0x1AD72` still reads `00 90 66 02` |
-| Modifying an already-decrypted VBIOS | Undervolting and memory-timing locations were identified, but **every modification attempted resulted in a failed driver load**. Patching the driver to accept the modified state was never tried |
-| Self-signing a custom VBIOS | Reported to have been briefly possible during a leak window. No usable signing capability exists now. Treat the leak-window detail as anecdote |
-| VBIOS modification as a route around the GSP-RM problem | "Checksum failed". Defeating the Booter chip-ID gate by VBIOS flash "didn't work at all" |
-| Believing the TechPowerUp "Memory Size" column | It maps to no field in the `.rom` files |
+| 完整 A100 VBIOS 跨刷到 170HX | 卡在安全模式下不启动、不可用；显存大小、SM 数和着色器数都不变；只有子系统 ID 变。2024-07-17 证伪，2026-07-19 和 2026-07-25 再确认 |
+| A100 VBIOS 刷到一张跳线修改的 10 GB 卡 | 弄砖卡。恢复需要用一个 SPI 编程器重刷保存的原始 ROM |
+| 编辑映像里的跳线字节 `44` 到 `66` 并修复校验和 | 驱动加载失败。与 Falcon 在上电时验证并把芯片丢进非安全模式一致。被 `0x009a0204` 处的运行时 CFG1 写入取代 |
+| 在已签名范围内翻转单个字节（`0x41D53`） | Booter 卡住，`GFW_BOOT=0x001` |
+| 简单 ROM 拼接，把 A100 段接进 170HX 映像 | 双重失败：跳线表偏移量逐 ROM 而异，每个段被独立 MAC |
+| SKU 之间的 FwSec / VN 映像交换 | 被正文大小不匹配从结构上排除 |
+| A30 FWSEC 模块移植 | 一到达就死：签名代码模块在 10 GB 170HX 和 A30 之间已经**相同**，所以模块一无所获。区分性数据是已验证节内的非代码配置 |
+| 用打过补丁的映像验证加 `--protectoff` 的 `nvflash` | 走得更远，然后当 nvflash 运行它的 ucode（即 SPI 写入器本身）时 `falcon halted`。`omgvflash` 和 `nvflashk` 同样拒绝编辑过的 BIOS |
+| 从软件写 SPI 控制器寄存器 | 见下。彻底关闭 |
+| NVGI 作为攻击面 | 被启动顺序关闭：DEVINIT 覆盖 NVGI 的 MR1/MR2/MR3 写入，FWSEC 重新拉起 NVGI 降低的任何 PLM |
+| 对 VBIOS 的 TOCTOU | 抹掉 SReg 数据；卡以无有效 ROM 签名失败，重刷出厂也不能恢复 |
+| 8 GB VBIOS 刷到 10 GB 卡 | 用打过补丁的 nvflash 成功刷入并还原，但 8 GB 映像在 10 GB 卡上不启动，跳线改动在刷写期间未通过映像检查。注意：两次刷写之间没有重启，所以这是提示性而非定论性的 |
+| Maxwell 时代 ECC 解锁移植到 Ampere | 从未在 GA100 上演示；被它自己的作者告诫对 Ampere 不平凡 |
+| 仿真/模拟 HBM2e ROM 作模板 | 模拟 ROM 约 230 KB、布局完全不同，而且即便在那里也只有主跳线表被从 `66` 提到 `77`、`0x1AD72` 处的副本仍读 `00 90 66 02` |
+| 修改一份已解密的 VBIOS | 欠压和显存时序位置被识别，但**每一次尝试的修改都导致驱动加载失败**。打补丁让驱动接受修改后状态从没试过 |
+| 自签名一份定制 VBIOS | 据报在泄露窗口期间短暂可行。现在不存在可用的签名能力。把泄露窗口的细节当轶事 |
+| 把 VBIOS 修改当绕开 GSP-RM 问题的路径 | "Checksum failed"。通过 VBIOS 刷写击败 Booter 芯片 ID 门"完全不管用" |
+| 相信 TechPowerUp 的 "Memory Size" 列 | 它不对应 `.rom` 文件里的任何字段 |
 
-### The SPI controller cannot be written from software
+### SPI 控制器不能从软件写
 
-Documented explicitly so it is not retried. The refire-chain HS exploit **did** successfully open
-the SPI PLM at `0xD7D8`, setting it to `0x00000000`, confirmed open with rp=0 wp=0, which proves
-the exploit reaches and modifies the PLM from HS mode. Despite the PLM reading fully open:
+明确记录以免重试。重发链 HS 利用**确实**成功打开了 `0xD7D8` 处的 SPI PLM、把它设成 `0x00000000`，用 rp=0 wp=0 确认打开，这证明利用能从 HS 模式到达并修改 PLM。尽管 PLM 读起来完全打开：
 
-| Register | Write | Readback |
+| 寄存器 | 写入 | 回读 |
 |---|---|---|
-| `SPI_DATA` `0xE4A0` | `0xDEADBEEF` from PL0 | `0x00000000` |
-| `SPI_CTRL` `0xE5A0` | `0xDEADBEEF` from PL0 | `0x00000000` |
-| `ROM_SERIAL_BYPASS` `0xE204` | `0xDEADBEEF` from PL0 | `0x00000000` |
-| `0xE4A0` / `0xE5A0` | direct HS-ROP writes | report "~" (not landed), registers stay `0x0` |
+| `SPI_DATA` `0xE4A0` | 从 PL0 `0xDEADBEEF` | `0x00000000` |
+| `SPI_CTRL` `0xE5A0` | 从 PL0 `0xDEADBEEF` | `0x00000000` |
+| `ROM_SERIAL_BYPASS` `0xE204` | 从 PL0 `0xDEADBEEF` | `0x00000000` |
+| `0xE4A0` / `0xE5A0` | 直接 HS-ROP 写入 | 报告 "~"（未落地），寄存器停在 `0x0` |
 
-Conclusion: a hardware write filter enforced by the secure boot state machine drops all writes to
-the SPI controller from any agent except the GFW boot firmware (SEC2/PMU during boot). **The CFG1
-flash byte cannot be written by any software path on this card.**
+结论：一个由安全启动状态机强制的硬件写过滤器，丢弃任何除 GFW 引导固件（启动时的 SEC2/PMU）之外的代理对 SPI 控制器的所有写入。**这张卡上没有任何软件路径能写 CFG1 的闪存字节。**
 
 ---
 
-## Open questions specific to the VBIOS
+## 特定于 VBIOS 的开放问题
 
-Ranked most tractable first. The cross-cutting list is on
-[open questions](../frontier/open-questions.md).
+按最易处理优先排序。跨领域清单在[未解问题](../frontier/open-questions.md)。
 
-1. **Flash the 250 W to 300 W power limit at `0x45E45`.** The three-byte field reads `90 D0 03`
-   and should become `E0 93 04`. It sits 9,285 bytes into the 15,616-byte unsigned tail
-   (`0x43A00`-`0x47700`) so it cannot break
-   the MAC, the same class of change as the `0xFF`-padding test that already booted. Blocked only
-   because `nvflash` is refused even for unsigned-tail changes, so it needs a CH341A, cooler
-   removal and repaste. Open and untested since 2026-05-09.
-2. **Determine `NV_FUSE_CTRL_OPT_*` semantics.** The 25-entry table at `0x47341` reads all-zero
-   across 13 probed GA100 cards. Also in play: `PBUS_SW_SCRATCH(1)` at `0x001404` reads
-   `0x20042000` with bit 14 clear, and bit 14 is *believed*, never write-tested, to make firmware
-   skip its CTRL_OPT-zeroing loop. Inert on cards already at their fuse floor.
-3. **Inject a HULK cert at `0xFE504`** (see above).
-4. **Recover csecret(2)**, which would open every in-MAC edit at once, all seven restriction
-   bytes. The offline oracle removes the need for flash cycles during a DFA campaign. Very high
-   effort.
-5. **Do unsigned-tail memory edits take effect?** The `freqDelta` experiment described above.
-6. **Decrypt the production Falcon/DEVINIT code** via the debug-IMEM recipe.
-7. **The A30 alignment lead.** An A30 VBIOS `92.00.66.00.0x` is reported to be almost identical
-   to the 10 GB 170HX's `92.00.66.00.0x`, on the reasoning that the A30 is an A100 with three
-   HBM2 stacks in operation and stack count is fuse-controlled. Complication: the signed code
-   modules are already identical, so the only value is in the non-code configuration data inside
-   the covered region, which is exactly the part that needs csecret(2). Diffing an A30 ROM
-   against the 10 GB 170HX ROM would enumerate that configuration delta.
-8. **Diff software versus hardware SPI traffic.** The unverified third-hand claim is that
-   `nvflash`/`omgvflash` write "in-between registers" a bare SPI programmer does not touch. A
-   logic analyzer on the SPI bus during both a software and a hardware flash would be cheap and
-   decisive.
+1. **把 `0x45E45` 处的功耗上限从 250 W 刷到 300 W。** 三字节字段读 `90 D0 03`、应变成 `E0 93 04`。它坐在 15,616 字节未签名尾（`0x43A00`-`0x47700`）里 9,285 字节处，所以不能破坏 MAC，与已经启动的 `0xFF` 填充测试同属一类改动。只被"`nvflash` 即使对未签名尾部改动也被拒绝"卡住，所以需要 CH341A、拆散热器和重打导热膏。自 2026-05-09 起开放且未测试。
+2. **确定 `NV_FUSE_CTRL_OPT_*` 语义。** `0x47341` 处的 25 项表在 13 块被探测的 GA100 卡上读全零。也相关的：`0x001404` 处的 `PBUS_SW_SCRATCH(1)` 读 `0x20042000`、位 14 清除，而位 14 *被认为*（从未写测试过）让固件跳过它的 CTRL_OPT 清零循环。在已处熔丝下限的卡上惰性。
+3. **在 `0xFE504` 注入 HULK 证书**（见上）。
+4. **恢复 csecret(2)**，那会一次打开每一个 MAC 内编辑、全部七个限制字节。离线预言消除了 DFA 行动期间对刷写周期的需要。极高工作量。
+5. **未签名尾部的显存改动生效吗？** 上面描述的 `freqDelta` 实验。
+6. **通过调试-IMEM 配方解密量产 Falcon/DEVINIT 代码。**
+7. **A30 对齐线索。** 一份 A30 VBIOS `92.00.66.00.0x` 据报与 10 GB 170HX 的 `92.00.66.00.0x` 几乎相同，理由是 A30 是带三个运行的 HBM2 堆叠的 A100、而堆叠数由熔丝控制。复杂点：签名代码模块已经相同，所以唯一的价值在被覆盖区域内的非代码配置数据，而那正是需要 csecret(2) 的部分。把一份 A30 ROM 对 10 GB 170HX ROM 做 diff 会枚举那份配置差异。
+8. **对比软件与硬件 SPI 流量。** 未验证的三手说法是 `nvflash`/`omgvflash` 写裸 SPI 编程器不碰的"中间寄存器"。在软件和硬件刷写期间对 SPI 总线放一个逻辑分析仪会既便宜又决定性。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Whether the strap table is MAC-verified *in practice*. One position holds that even if
-> `0x41D53` is inside the declared range, the Falcon may not actually check it. The counter is
-> the 2026-05-08 byte-flip test at that exact offset, which stalled the Booter. Weight strongly
-> favours "it is verified". The complication is that the *observed* in-channel failure
-> ("can't modify the straps or image check fails") is a **host-side nvflash check**, not a
-> boot-time Falcon check, so the two positions are partly talking past each other. A CH341A
-> flash of a strap-edited image, bypassing nvflash entirely, plus a `GFW_BOOT` read would
-> settle it. Nobody has reported doing this.
+> 跳线表*实际上*被 MAC 验证吗。一个立场认为即使 `0x41D53` 在声明范围内，Falcon 也可能不真正检查它。反方是 2026-05-08 在那个精确偏移量处的字节翻转测试，它卡住了 Booter。天平强烈倾向于"它被验证"。复杂点是*观察到的*频道内失败（"改不了跳线否则映像检查失败"）是**主机侧 nvflash 检查**，不是启动时 Falcon 检查，所以两个立场部分在彼此错位。用 CH341A 刷一份跳线编辑的映像、完全绕过 nvflash，加一次 `GFW_BOOT` 读取能定论它。没人报告做过这个。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Fuses versus VBIOS as the residence of the 170HX limits. The engineering-sample A/B flash
-> shows the VBIOS carries the memory cap, the PCIe cap and *part* of the compute penalty, but
-> not all of it: cross-flashing a 170HX VBIOS onto an engineering-sample GA100 that skips
-> signature checking imposed only **1/12 FP64 and 1/8 FP32**, versus **1/64 and 1/32** on a real
-> 170HX, a residual factor of roughly 5 on FP64 and 4 on FP32 that must come from elsewhere. The shipping unlock recovers full
-> SM throughput by writing SS0/SS1 at runtime, which strongly suggests the remainder was the
-> `0x00823804`-gated feature override, but the engineering-sample experiment has never been
-> re-run with SS0/SS1 also written. That the shipping unlock is pure software does not settle
-> the question: it overrides state at runtime rather than proving where the default came from.
+> 170HX 限制驻留在熔丝还是 VBIOS。工程样品 A/B 刷写显示 VBIOS 携带显存上限、PCIe 上限和*部分*算力惩罚，但并非全部：把一份 170HX VBIOS 跨刷到一颗跳过签名检查的工程样品 GA100 上，只施加了 **1/12 FP64 和 1/8 FP32**，对比真实 170HX 上的 **1/64 和 1/32**，在 FP64 上有一个约 5 倍、FP32 上约 4 倍的残余因子，它必然来自别处。出货解锁通过运行时写 SS0/SS1 恢复完整 SM 吞吐，这强烈暗示余下部分是被 `0x00823804` 门控的特性覆盖，但工程样品实验从没在也写了 SS0/SS1 的情况下重跑过。出货解锁是纯软件并不定论这个问题：它在运行时覆盖状态，而不是证明默认值来自哪。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Batch-level VBIOS variation from suppliers. A single commercially interested source
-> identifying as a technical employee of a bulk holder stated "we have two kinds of VBIOS for
-> 170hx here, one has higher bandwidth". No version strings and no bandwidth figures were given.
-> It is at least consistent with both `92.00.67.00.01` (364 MHz field) and `92.00.6D.00.0A`
-> (432 MHz field) being in the field. Unresolvable from the record.
+> 供应商的批次级 VBIOS 变化。一个自称是某批量持有者技术员工的商业利益相关来源说 "we have two kinds of VBIOS for 170hx here, one has higher bandwidth"（我们这里有两种 170hx 的 VBIOS，一种带宽更高）。没有给出版本字符串也没有带宽数字。它至少与 `92.00.67.00.01`（364 MHz 字段）和 `92.00.6D.00.0A`（432 MHz 字段）都在野外一致。从记录中无法解决。
 
 ---
 
-## Related pages
+## 相关页面
 
-- [Board and variants](board-and-variants.md): device IDs, board part numbers, die markings
-- [Memory subsystem](memory-subsystem.md) and [memory geometry](../unlock/memory-geometry.md):
-  what CFG1 and LMR actually do
-- [Fuses and OTP](fuses-and-otp.md): the layer the VBIOS cannot reach
-- [Falcon and Booter](../unlock/falcon-and-booter.md): the mechanism that replaced VBIOS modding
-- [PCIe subsystem](pcie-subsystem.md) and [PCIe Gen2](../unlock/pcie-gen2.md)
-- [Recovery](../procedures/recovery.md): what to do when a flash goes wrong
-- [Register index](../appendix/register-index.md)
+- [板卡与变体](board-and-variants.md)：设备 ID、板卡料号、晶片标记
+- [显存子系统](memory-subsystem.md) 和[显存几何布局](../unlock/memory-geometry.md)：CFG1 和 LMR 实际做什么
+- [熔丝与 OTP](fuses-and-otp.md)：VBIOS 够不到的那一层
+- [Falcon 与 Booter](../unlock/falcon-and-booter.md)：取代 VBIOS 改装的机制
+- [PCIe 子系统](pcie-subsystem.md) 和 [PCIe Gen2](../unlock/pcie-gen2.md)
+- [恢复](../procedures/recovery.md)：刷写出错时怎么办
+- [寄存器索引](../appendix/register-index.md)

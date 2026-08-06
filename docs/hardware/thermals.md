@@ -1,132 +1,93 @@
-# Thermal design
+# 热设计
 
-## What this page covers
+## 本页内容
 
-The CMP 170HX's cooler, the temperatures the silicon will tolerate, the sensors the driver
-exposes, and every measured temperature in the corpus. This is the reference page: for
-choosing an actual fan or waterblock, see [Cooling](../operations/cooling.md). For the
-power side of the same problem, see [Power and PSU](../operations/power-and-psu.md) and
-[Power delivery](power-delivery.md).
+CMP 170HX 的散热器、硅片能承受的温度、驱动暴露的传感器，以及语料库中每一个实测温度。这是参考页：要选实际的风扇或水冷头，参见[散热](../operations/cooling.md)。同一问题的供电侧，参见[供电与 PSU](../operations/power-and-psu.md) 和[板载供电](power-delivery.md)。
 
-Two facts frame everything else. First, **the cooler is fully passive**: a bare heatsink
-with no fan and no fan header the driver can see, designed for the forced air of a 1U/2U
-server chassis. `nvidia-smi` reports `Fan Speed : N/A` in every capture ever posted, so the
-card will never spin anything up on its own and will happily cook itself in a quiet desktop
-case. Second, **the card is hard to load**: a conventional FP32 burn-in draws only about
-60 W on a 250 W part, so a cooler validated that way is not validated at all.
+两个事实框定了其它一切。第一，**散热器完全被动**：一个裸散热片，没有风扇，也没有驱动能看见的风扇接口，专为 1U/2U 服务器机箱的强制风设计。`nvidia-smi` 在贴出的每一次捕获里都报告 `Fan Speed : N/A`，所以卡永远不会自己转起任何东西，并在安静的小型桌面机箱里乐呵呵地把自己烤熟。第二，**这块卡很难加负载**：一块 250 W 的部件上，常规 FP32 老化测试只抽约 60 W，所以用那种方式验证过的散热器根本就没被验证。
 
-The unlock is irrelevant here. A keyword sweep of the shipping unlocker and all 12
-unreleased branches for `thermal`, `pstate`, `power_limit`, `vid_pwm`, `clkdomain`,
-`freqDelta`, `0x20340`, `MHz` and `watt` returns nothing in any patch, script or config.
-Every thermal characteristic below is a property of the stock board and stock VBIOS.
+解锁在这里无关紧要。对出货解锁器和全部 12 个未发布分支做 `thermal`、`pstate`、`power_limit`、`vid_pwm`、`clkdomain`、`freqDelta`、`0x20340`、`MHz` 和 `watt` 的关键字扫描，在任何补丁、脚本或配置里都一无所获。下面每一个热特性都是出厂板和出厂 VBIOS 的属性。
 
 ---
 
-## The physical cooler
+## 物理散热器
 
-| Property | Value | Basis |
+| 属性 | 值 | 依据 |
 |---|---|---|
-| Cooler type | Fully passive bare heatsink, no fan, no shroud fan | direct observation |
-| Slot width | Dual-slot, approximately 40 mm / 1.57 in thick | measured by owners fitting brackets, medium confidence |
-| PCB length | 27 cm bare; 29 cm including I/O shield and a plugged-in EPS connector | direct measurement |
-| Clearance above the PCIe edge connector | roughly 5-6 mm (1/4 in) | measured, medium confidence |
-| Heatsink bolt pattern around the die | 57 x 68 mm centre-to-centre (68 mm vertical, 57 mm horizontal) | direct measurement |
-| Die package | approximately 55 x 55 mm; die itself 826 mm² | measurement plus die database |
-| Fasteners | Torx T10 and T15 | teardown |
-| Thermal interface, main areas | 1.5 mm soft pad | one owner with the card open and a photo; a second guessed 2 mm without confidence |
-| Thermal interface, inductors | 3 mm soft pad | same source |
-| Thermal interface, die | liquid thermal compound / liquid thermal pad | same source |
-| Published CFM, static pressure, dBA, fin pitch | **none exist** | no vendor or teardown figure in any source |
+| 散热器类型 | 完全被动裸散热片，无风扇，无导流罩风扇 | 直接观察 |
+| 槽宽 | 双槽，约 40 mm / 1.57 in 厚 | 装支架的拥有者实测，中等置信度 |
+| PCB 长度 | 裸 27 cm；含 I/O 挡板和插上的 EPS 连接器 29 cm | 直接测量 |
+| PCIe 边缘连接器上方的净距 | 约 5-6 mm（1/4 in） | 实测，中等置信度 |
+| 晶片周围散热器螺栓孔型 | 57 × 68 mm 中心到中心（68 mm 垂直，57 mm 水平） | 直接测量 |
+| 晶片封装 | 约 55 × 55 mm；晶片本身 826 mm² | 测量加晶片数据库 |
+| 紧固件 | Torx T10 和 T15 | 拆解 |
+| 热界面，主要区域 | 1.5 mm 软垫 | 一位拥有者开卡并拍照片；第二位没把握地猜 2 mm |
+| 热界面，电感 | 3 mm 软垫 | 同一来源 |
+| 热界面，晶片 | 液态导热膏 / 液态导热垫 | 同一来源 |
+| 已发布的 CFM、静压、dBA、鳍片间距 | **都不存在** | 任何来源中都没有厂商或拆解数值 |
 
-The 40 mm slot width matters for bracket shopping: A100/H100-style 40 mm blower brackets
-advertised for A100, H100, A20, A30, A40 and CMP 170HX measure 1.57 in wide and therefore
-fit standard 2-slot spacing.
+40 mm 槽宽对买支架很重要：为 A100、H100、A20、A30、A40 和 CMP 170HX 宣传的 A100/H100 式 40 mm 涡轮支架测量为 1.57 in 宽，因此适配标准 2 槽间距。
 
 > [!NOTE]
-> **Open problem: nobody has measured this heatsink**
+> **未解问题：没人测量过这个散热器**
 >
-> No CFM, static-pressure, dBA or fin-pitch figure for the stock 170HX heatsink is
-> published anywhere in this corpus. Every airflow number in this wiki is a community
-> measurement of a fan-plus-card system, not a heatsink specification. The closest thing
-> to an anchor is the two-120 mm-fans-for-four-cards result at `-pl 160`. Closing this
-> needs one person with a known fan curve correlating fan operating point against
-> steady-state die temperature at a fixed power limit.
+> 出厂 170HX 散热器的 CFM、静压、dBA 或鳍片间距数值在本语料库的任何地方都没有发布。本维基里的每一个气流数值都是对一个风扇加卡系统的社区测量，不是散热器规格。最接近锚点的是 `-pl 160` 下四卡用两把 120 mm 风扇的结果。关闭它需要一个带已知风扇曲线的人，在固定功耗上限下把风扇工作点与稳态晶片温度关联起来。
 
 ---
 
-## Thermal limits
+## 热限制
 
-The first four come straight out of the driver on an unlocked 10 GB card (driver
-`610.43.02`, captured 2026-07-25 at 18:32, P0, 18% utilisation). The last two rows are
-community observations, not driver-reported.
+前四个直接来自一块解锁的 10 GB 卡上的驱动（驱动 `610.43.02`，2026-07-25 18:32 捕获，P0，18% 利用率）。最后两行是社区观察，非驱动报告。
 
-| Limit | Value | Layer |
+| 限制 | 值 | 层 |
 |---|---|---|
-| GPU Shutdown Temp | **98 C** | hardware, driver-reported |
-| GPU Slowdown Temp | **95 C** | hardware slowdown, driver-reported |
-| GPU Max Operating Temp | **85 C** | driver-reported operating ceiling |
-| Memory Max Operating Temp | **95 C** | driver-reported, HBM |
-| Reported throttle onset | **~80 C** | a single unsourced reading, no telemetry posted, low confidence |
-| GA100 memory throttle (recalled) | ~85 C, "not on all bios" | two hedged recollections, low confidence |
+| GPU 关机温度 | **98 C** | 硬件，驱动报告 |
+| GPU 降速温度 | **95 C** | 硬件降速，驱动报告 |
+| GPU 最大工作温度 | **85 C** | 驱动报告的工作上限 |
+| 显存最大工作温度 | **95 C** | 驱动报告，HBM |
+| 报告的节流起始 | **约 80 C** | 单次无来源读数，没贴遥测，低置信度 |
+| GA100 显存节流（回忆） | 约 85 C，"不是所有 BIOS" | 两次含糊的回忆，低置信度 |
 
-At that capture the card read GPU 34 C, memory 48 C, `Fan Speed : N/A`, and every clocks
-event reason `Not Active`, including HW Thermal Slowdown and HW Power Brake Slowdown, with
-every event counter at `0 us`.
+那次捕获时卡读 GPU 34 C、显存 48 C、`Fan Speed : N/A`，每一个时钟事件原因都 `Not Active`，包括 HW Thermal Slowdown 和 HW Power Brake Slowdown，且每个事件计数器都在 `0 us`。
 
 > [!NOTE]
-> **Open problem: the throttle layering is inferred, not established**
+> **未解问题：节流分层是推断的，未确立**
 >
-> Four numbers are on the record for "when does it throttle": 80 C (one tester's own
-> telemetry), 85 C (two GA100 recollections and the driver's Max Operating Temp), 95 C
-> (driver Slowdown Temp) and "above 100 C" (described for a card whose cooling failed
-> entirely). These may all be true at different layers: a soft VBIOS-level clock
-> reduction at 80 C, a driver operating ceiling at 85 C, a hardware slowdown at 95 C,
-> and runaway when there is no cooling loop at all. **No one has posted a throttle log
-> correlating clock reduction against temperature.** What would settle it is a logged
-> sweep through 75-95 C of `nvidia-smi
-> --query-gpu=temperature.gpu,clocks.sm,clocks_throttle_reasons.active --format=csv -l 1`.
+> "它什么时候节流"有四个数字记录在案：80 C（一位测试者自己的遥测）、85 C（两次 GA100 回忆和驱动的最大工作温度）、95 C（驱动降速温度）和 "above 100 C"（对一张散热彻底失效的卡的描述）。这些可能在不同的层都是真的：80 C 处一个软的 VBIOS 级时钟降低、85 C 处一个驱动工作上限、95 C 处一个硬件降速，以及完全没有散热回路时的失控。"没人贴过一张把时钟降低与温度关联起来的节流日志。" 什么能定论它，是一次扫过 75-95 C 的记录 `nvidia-smi --query-gpu=temperature.gpu,clocks.sm,clocks_throttle_reasons.active --format=csv -l 1`。
 
-### The community design target
+### 社区设计目标
 
-Independently of the driver limits, testers converged on **70 C core and 75-76 C memory
-hotspot under load** as the design target for a cooling solution. 90 C hotspot is treated as
-unacceptable and was the basis for rejecting a single 40 mm fan. In the exchange that settled
-this, a participant shopping for fans asked whether 90 C was acceptable for the chip, then
-reported reading that throttling starts at 80 C, and was answered "Absolutely not!". No
-telemetry was posted alongside the 80 C figure, so treat it as a reading rather than a
-measurement.
+独立于驱动限制，测试者收敛到 **负载下核心 70 C、显存热点 75-76 C** 作为散热方案的设计目标。90 C 热点被视为不可接受，并是拒绝单颗 40 mm 风扇的依据。在定下这一点的交流中，一位正在买风扇的参与者问 90 C 对芯片是否可接受，然后报告读到节流在 80 C 开始，得到的回答是 "Absolutely not!"（绝对不行！）。80 C 数字旁边没有贴遥测，所以把它当作一个读数而非一次测量。
 
 ---
 
-## Sensors and telemetry
+## 传感器与遥测
 
-The card exposes GPU temperature and memory temperature, and nothing else thermal. There is
-no fan tachometer, no per-stack HBM sensor, no exposed VRM or hotspot-delta sensor, and no
-`nvidia-settings` fan control path because there is no fan.
+卡暴露 GPU 温度和显存温度，别无其它热量。没有风扇转速计、没有每堆栈 HBM 传感器、没有暴露的 VRM 或热点差传感器，也没有 `nvidia-settings` 风扇控制路径，因为没有风扇。
 
 ```bash
-# Static limits and the current reading
+# 静态限制和当前读数
 nvidia-smi -q -d TEMPERATURE
 
-# Continuous log, one row per second, suitable for finding the real throttle point
+# 连续日志，每秒一行，适合找真实节流点
 nvidia-smi --query-gpu=timestamp,temperature.gpu,temperature.memory,clocks.sm,\
 clocks.mem,power.draw,clocks_throttle_reasons.active --format=csv -l 1
 ```
 
-Fields confirmed present on the 170HX:
+确认在 170HX 上存在的字段：
 
-| Field | Confirmed value in a real capture |
+| 字段 | 真实捕获中的确认值 |
 |---|---|
-| `GPU Current Temp` | `34 C` (idle, unlocked 10 GB) |
+| `GPU Current Temp` | `34 C`（空转，解锁 10 GB） |
 | `GPU Shutdown Temp` | `98 C` |
 | `GPU Slowdown Temp` | `95 C` |
 | `GPU Max Operating Temp` | `85 C` |
-| `Memory Current Temp` | `48 C` (idle) |
+| `Memory Current Temp` | `48 C`（空转） |
 | `Memory Max Operating Temp` | `95 C` |
-| `Fan Speed` | `N/A` on every capture ever posted |
-| Clocks Event Reasons | all `Not Active` at idle; all counters `0 us` |
+| `Fan Speed` | 贴出的每一次捕获都 `N/A` |
+| 时钟事件原因 | 空转时全部 `Not Active`；所有计数器 `0 us` |
 
-`nvtop` reports the same sensors in one line, and is what most testers pasted:
+`nvtop` 一行报告同样的传感器，也是大多数测试者粘贴的东西：
 
 ```text
 GPU 1440MHz MEM 1890MHz TEMP 76C FAN N/A POW 278 / 300 W
@@ -134,160 +95,119 @@ PCIe GEN 1@ 4x
 GPU 100%  MEM 57.534Gi/64.000Gi
 ```
 
-A practical note from a tester building a fan curve: driving the curve from the reported
-**hotspot** sensor makes the controller hunt, and **die temperature is the better control
-input**.
+一位测试者在构建风扇曲线时的一条实用笔记：从报告的**热点**传感器驱动曲线会让控制器振荡，**晶片温度是更好的控制输入**。
 
 ---
 
-## Leakage feedback and thermal runaway
+## 泄漏反馈与热失控
 
-GA100 exhibits a genuine leakage-driven positive feedback loop. Higher junction temperature
-means higher CMOS leakage current, which means more heat, which means more leakage.
+GA100 表现出一个真实的泄漏驱动正反馈回路。更高的结温意味着更高的 CMOS 泄漏电流，意味着更多热量，又意味着更多泄漏。
 
-The cleanest measurement of it was taken by accident. One researcher dry-ran a card with a
-waterblock fitted but no coolant in it: idle draw started at about **40 W**, climbed to
-**60 W at 80 C**, and was still rising when the card was powered off.
+对它的最干净测量是意外取得的。一位研究者干跑了一张装好水冷头但没有冷却液的卡：空转功耗从约 **40 W** 起步，爬到 **80 C 时的 60 W**，断电时还在上升。
 
 > [!CAUTION]
-> **Never power a card with a mounted-but-dry waterblock for more than 5 minutes**
+> **绝不要让带已装但无水的水冷头的卡运行超过 5 分钟**
 >
-> A dry block is worse than no block: it insulates. The measured 40 W to 60 W climb had
-> not stabilised at 80 C. If you must dry-fit to check clearances, power off within
-> 5 minutes.
+> 干的水冷头比没有水冷头更糟：它隔热。实测的 40 W 到 60 W 爬升在 80 C 时还没稳定。如果你必须干装来检查净距，5 分钟内断电。
 
-Two consequences follow, one benign and one not:
+两个后果随之而来，一个良性一个不：
 
-- **Benign:** cooling the card better lowers its idle power, because it suppresses the
-  leakage term as well as removing heat. This is the most likely explanation for the 30 W
-  versus 44 W idle spread between testers.
-- **Not benign:** if cooling fails outright, GA100 does not settle at its throttle point.
-  One account from hands-on A100-class experience: "The thermal throttling runs at such a
-  high power that if the cooling fails, it'll thermally throttle, but to a temperature above
-  100 degrees, that then consumes more power, thus increased temperature... and you end up
-  with a volcano." The exact temperature is BIOS-dependent and was disputed in the same
-  exchange, so treat the shape of the curve as established and the number as not.
+- **良性：** 给卡散热更好会降低它的空转功耗，因为它既抑制泄漏项又移除热量。这是测试者之间 30 W 对 44 W 空转差距最可能的解释。
+- **不良性：** 如果散热彻底失效，GA100 不会停在它的节流点。一段来自 A100 级实操经验的叙述："The thermal throttling runs at such a high power that if the cooling fails, it'll thermally throttle, but to a temperature above 100 degrees, that then consumes more power, thus increased temperature... and you end up with a volcano."（热节流在这么高的功率下运行，如果散热失效，它会热节流，但到一个超过 100 度的温度，于是消耗更多功率、温度随之更高……最后你得到一座火山。）确切的温度依赖 BIOS，在同一场交流中被争论过，所以把曲线的形状当作已确立、数字当作未确立。
 
 ---
 
-## Measured temperatures
+## 实测温度
 
-Every temperature in the corpus, on a 170HX unless the row says otherwise. "Proxy card"
-rows are A100 or MI100 results included because the A100 40 GB shares the PCB and cooler.
+语料库中每一个温度，除非行里另有说明，都在一块 170HX 上。"代理卡"行是 A100 或 MI100 结果，因为 A100 40 GB 共享 PCB 和散热器。
 
-### Idle
+### 空转
 
-| Cooling | Temperature | Conditions | Confidence |
+| 散热 | 温度 | 条件 | 置信度 |
 |---|---|---|---|
-| 360 mm radiator, fan and pump at minimum | **30 C** @ 30 W | Bykski N-TESLA-A100-X-V2 | high |
-| 1 x Arctic P12 Pro PST 120 mm @ 1000 RPM, feeding 2 cards | **32 C** @ ~34 W each | printed shroud, taped for static pressure | high |
-| Unstated (driver capture) | **34 C** GPU / **48 C** memory | unlocked 10 GB, P0, 18% util | high |
-| 1 x 140 mm Noctua NF-A14 industrialPPC, 3 cards | **~38 C** | repurposed P100 shroud, wattage-driven curve | high |
-| Unstated, cold room | **29 C** @ 37 W | locked 8 GB, driver `580.159.04` | high |
-| Unstated, 3 unlocked 40 GB cards | **44 / 45 / 41 C** | `nvtop`, 210 MHz core / 1215 MHz memory | high |
-| Unstated, during MIG testing | **61-62 C** @ 44 W in P0 | 250 W cap | high |
-| A100 proxy, 2 x 120 mm case fans at maximum | 64 C | before shroud fitted | medium |
-| A100 proxy, 9733S blower + printed shroud | 36 C | after shroud fitted | medium |
+| 360 mm 冷排，风扇和泵开到最小 | **30 C** @ 30 W | Bykski N-TESLA-A100-X-V2 | 高 |
+| 1 × Arctic P12 Pro PST 120 mm @ 1000 RPM，喂 2 卡 | **32 C** @ 约 34 W 每卡 | 打印导流罩，用胶带封静压 | 高 |
+| 未说明（驱动捕获） | **34 C** GPU / **48 C** 显存 | 解锁 10 GB，P0，18% 利用率 | 高 |
+| 1 × 140 mm Noctua NF-A14 industrialPPC，3 卡 | **约 38 C** | 复用 P100 导流罩，瓦特驱动曲线 | 高 |
+| 未说明，冷室 | **29 C** @ 37 W | 锁定 8 GB，驱动 `580.159.04` | 高 |
+| 未说明，3 张解锁 40 GB 卡 | **44 / 45 / 41 C** | `nvtop`，210 MHz 核心 / 1215 MHz 显存 | 高 |
+| 未说明，MIG 测试期间 | **61-62 C** @ 44 W 在 P0 | 250 W 上限 | 高 |
+| A100 代理，2 × 120 mm 机箱风扇开到最大 | 64 C | 装导流罩之前 | 中等 |
+| A100 代理，9733S 涡轮 + 打印导流罩 | 36 C | 装导流罩之后 | 中等 |
 
-### Under load
+### 负载下
 
-| Cooling | Temperature | Load | Confidence |
+| 散热 | 温度 | 负载 | 置信度 |
 |---|---|---|---|
-| 360 mm radiator, fan and pump at minimum | **45 C** after 30 min | 180 W, FluidX3D FP32/FP16S, FMA disabled | high |
-| Budget generic full-cover waterblock | **48 C core / 58 C memory** | 1 h stress test, 8 GB card, in service about a year | medium |
-| A100 proxy, 9733S blower + printed shroud | 40-50 C | LLM load, down from 80+ C on 2 x 120 mm case fans | medium |
-| Stock passive heatsink, datacenter chassis (80 mm fans) | **60 C** peak | 254 W, 8-card rental | medium |
-| Two-fan printed shroud shipped with a card | never above 60 C | under half fan speed, card not yet unlocked, workload never stated | medium |
-| Unstated | **61 C** @ 208 W | sustained 100% load at the stock 250 W cap | high |
-| San Ace B97 1.85 A + USB controller, curve capped at 66% | **below 65 C** | 250 W sustained | medium |
-| 2 x Arctic P12 Pro PST CO 120 mm in ducts, feeding 4 cards | **under 65 C** | `-pl 160` per card | medium |
-| Large blower, 300 W A/B test | core and memory **both below 65 C** | BF16 at 300 W | high |
-| 80 mm 10k-RPM server fan @ 3500 RPM | **under 70 C core / 75 C memory** | `-pl 200` | medium |
-| 80 mm server fan @ 7500 RPM | **70 C core / 75 C memory** | full 300 W with an overclock | high |
-| Cooling unstated | **~70 C ±2** | default clocks; same owner and same card as the 300 W row below | high |
-| 2 x Arctic S4028-15K 40 mm @ 15000 RPM, custom 2-slot bracket | **never above 70 C GPU / 76 C hotspot** | heavy load, curve 100% at 70 C | high |
-| 1 x 120 mm @ 3000 RPM, ducted | **73 C** peak | stock clocks | high |
-| EFB0251S3 blower (3.24 W) | **saturates at 73 C** | `-pl 200`, sustained 100% | medium |
-| Cooling unstated, 30 min `gpu_burn` | **75 C rising to 77 C** | unlocked 64 GB at a 300 W limit, 278/300 W drawn. One report, not reproduced | high |
-| 1 x 140 mm Noctua industrialPPC, 3 cards | **under 80 C** | LLM inference | high |
-| 2 x stacked Noctua 140 mm | **~80 C down to ~70 C** when the second fan was added | unstated load | high |
-| Arctic 12038-4K 120 mm | **~85 C** | memory-overclock `gpu_burn`; owner reported no further headroom on air, HBM errors within the first couple of minutes | medium |
-| **1 x Arctic S4028-15K 40 mm** | **90 C hotspot, rejected** | same bracket as the 2-fan row above | high |
-| Unstated, SM-unlock GEMM ramp | 62 C to 73 C in about 25-30 s | 8 GB card, shows the ramp rate | high |
+| 360 mm 冷排，风扇和泵开到最小 | **45 C** 30 分钟后 | 180 W，FluidX3D FP32/FP16S，FMA 禁用 | 高 |
+| 便宜的通用全覆盖水冷头 | **48 C 核心 / 58 C 显存** | 1 小时压力测试，8 GB 卡，服役约一年 | 中等 |
+| A100 代理，9733S 涡轮 + 打印导流罩 | 40-50 C | LLM 负载，从 2 × 120 mm 机箱风扇的 80+ C 降下来 | 中等 |
+| 出厂被动散热片，数据中心机箱（80 mm 风扇） | **60 C** 峰值 | 254 W，8 卡租用 | 中等 |
+| 随卡发货的双风扇打印导流罩 | 从未高于 60 C | 半风扇速度下，卡尚未解锁，工作负载从未说明 | 中等 |
+| 未说明 | **61 C** @ 208 W | 出厂 250 W 上限下持续 100% 负载 | 高 |
+| San Ace B97 1.85 A + USB 控制器，曲线封顶 66% | **低于 65 C** | 250 W 持续 | 中等 |
+| 2 × Arctic P12 Pro PST CO 120 mm 在风道内，喂 4 卡 | **低于 65 C** | 每卡 `-pl 160` | 中等 |
+| 大涡轮，300 W A/B 测试 | 核心和显存**都低于 65 C** | 300 W 下 BF16 | 高 |
+| 80 mm 10k-RPM 服务器风扇 @ 3500 RPM | **核心低于 70 C / 显存低于 75 C** | `-pl 200` | 中等 |
+| 80 mm 服务器风扇 @ 7500 RPM | **70 C 核心 / 75 C 显存** | 带超频的完整 300 W | 高 |
+| 散热未说明 | **约 70 C ±2** | 默认时钟；与下面 300 W 行同一位拥有者、同一张卡 | 高 |
+| 2 × Arctic S4028-15K 40 mm @ 15000 RPM，定制 2 槽支架 | **GPU 从不高于 70 C / 热点 76 C** | 重负载，曲线在 70 C 处 100% | 高 |
+| 1 × 120 mm @ 3000 RPM，风道 | **73 C** 峰值 | 出厂时钟 | 高 |
+| EFB0251S3 涡轮（3.24 W） | **饱和在 73 C** | `-pl 200`，持续 100% | 中等 |
+| 散热未说明，30 分钟 `gpu_burn` | **75 C 升至 77 C** | 解锁 64 GB 在 300 W 上限、278/300 W 抽取。一次报告，未复现 | 高 |
+| 1 × 140 mm Noctua industrialPPC，3 卡 | **低于 80 C** | LLM 推理 | 高 |
+| 2 × 堆叠 Noctua 140 mm | 加第二把后 **约 80 C 降到约 70 C** | 负载未说明 | 高 |
+| Arctic 12038-4K 120 mm | **约 85 C** | 显存超频 `gpu_burn`；拥有者报告风冷没有更多余量，头几分钟内就有 HBM 错误 | 中等 |
+| **1 × Arctic S4028-15K 40 mm** | **90 C 热点，被拒绝** | 与上面 2 风扇行同一支架 | 高 |
+| 未说明，SM 解锁 GEMM 爬升 | 约 25-30 秒内 62 C 到 73 C | 8 GB 卡，展示爬升速率 | 高 |
 
-The ramp figure is worth internalising: a 170HX goes from 62 C to 73 C in roughly 25 to 30
-seconds once a real kernel starts. Idle temperature tells you almost nothing about whether
-your cooling is adequate.
+爬升数字值得内化：一旦真实内核启动，一块 170HX 在约 25 到 30 秒内从 62 C 升到 73 C。空转温度几乎不告诉你散热是否足够。
 
-### The HBM floor on air
+### 风冷下的 HBM 下限
 
-After a multi-configuration power and clock sweep on a card under a 140 mm shroud with a
-120 mm fan at 3000 RPM, one tester concluded: "with the right tuning.. the temp baseline is
-right here.. you can save watts, but you wont be able to drop temps on air" and "getting
-lower hbm temps on air seems impossible". A 30-minute `gpu_burn` at those settings
-(`EFF / Balanced +300MHz / 1400`) completed with no errors.
+在一块 140 mm 导流罩下带 120 mm 风扇 @ 3000 RPM 的卡上做了多配置的供电和时钟扫描后，一位测试者总结道："with the right tuning.. the temp baseline is right here.. you can save watts, but you wont be able to drop temps on air"（调好之后……温度基线就在这……你可以省瓦数，但没法在风冷下降温）以及 "getting lower hbm temps on air seems impossible"（在风冷下让 HBM 温度更低似乎不可能）。在那些设置下（`EFF / Balanced +300MHz / 1400`）一次 30 分钟 `gpu_burn` 零错误完成。
 
 > [!NOTE]
-> **Open problem: is the HBM temperature floor a cooling limit or intrinsic?**
+> **未解问题：HBM 温度下限是散热限制还是固有的？**
 >
-> A direct request for waterblock HBM temperature data went unanswered, so the floor is
-> unbounded from below: nobody knows whether water gets HBM materially cooler than air.
-> The single cheapest high-value experiment in this domain is for the owner of the
-> budget waterblock (48 C core / 58 C memory over one hour) to re-run the same
-> `EFF / Balanced +300MHz / 1400` sweep with the memory sensor logged.
+> 一个直接请求水冷头 HBM 温度数据的询问无人回应，所以下限从下方是无界的：没人知道水是否能让 HBM 实质性地比空气更冷。这个领域里最便宜的单一高价值实验，是让便宜水冷头（48 C 核心 / 58 C 显存一小时）的拥有者用记录显存传感器的方式重跑同一个 `EFF / Balanced +300MHz / 1400` 扫描。
 
 ---
 
-## Thermals are usually not the limiter
+## 热通常不是瓶颈
 
-This surprises people, and it changes how you should spend money on cooling.
+这让人们意外，并改变你该在散热上怎么花钱。
 
-- Raising the power limit from 250 W to 300 W on a well-cooled card gained **+2.8%** BF16
-  throughput (about 180 to 185 TFLOPS) with **core and memory both below 65 C**. The core
-  simply does not want to clock higher.
-- `mmapeak` on an 8 GB card with the OC VBIOS sat at **1470 MHz drawing only ~150 W** with
-  GPU-T reporting `PerfCap: None`, even with the power limit at 300 W. Neither power nor an
-  exposed cap explains that ceiling, and it remains unexplained.
-- The 80 GB configuration's instability is not thermal and not power-related: the failing
-  cards **never drew above about 80 W** during the crashing workload.
+- 把一块散热良好的卡的功耗上限从 250 W 提到 300 W 换来 **+2.8%** BF16 吞吐（约 180 到 185 TFLOPS），而**核心和显存都低于 65 C**。核心就是不想跑得更高。
+- 一块带 OC VBIOS 的 8 GB 卡上的 `mmapeak` 停在 **1470 MHz、只抽约 150 W**，`GPU-T` 报告 `PerfCap: None`，即便功耗上限在 300 W。既不是功耗也不是暴露的上限解释那个天花板，它仍未解释。
+- 80 GB 配置的不稳定性不是热、也不是供电问题：崩溃工作负载下失败的卡**从未超过约 80 W**。
 
-One genuine thermal fault mode does exist. Cards that have never been re-pasted or
-re-padded can throttle heavily: one owner with two 8 GB cards could only bench one, because
-the second "throttles a lot" and needed re-padding and re-pasting. If a card throttles far
-earlier than its neighbours under identical airflow, suspect the factory thermal interface
-before you suspect the silicon.
+确实存在一种真正的热故障模式。从未重新打导热膏或换垫的卡可能严重节流：一位有两张 8 GB 卡的拥有者只能给一张跑基准，因为第二张 "throttles a lot"（节流得很厉害），需要换垫和重打膏。如果一张卡在相同气流下比邻居早得多地节流，先怀疑出厂热界面，再怀疑硅片。
 
 ---
 
-## Airflow guidance
+## 气流指南
 
-There is no measured requirement, only a set of rules that emerged from the measurements
-above. They are collected and compared against real coolers on
-[Cooling](../operations/cooling.md).
+没有实测需求，只有从上面测量中浮现的一组规则。它们在[散热](../operations/cooling.md) 里被收集并与真实散热器对比。
 
-| Quantity | Value | Status |
+| 量 | 值 | 状态 |
 |---|---|---|
-| Target static pressure for full-power operation | 20 mm | spec-derived recommendation, **not measured** |
-| Arctic P12 Pro CO published spec | ~7 mm static pressure, 130 m³/h | vendor spec; this fan nonetheless held 4 cards under 65 C at `-pl 160` |
-| Minimum practical fan power | above 4 W, i.e. 0.35 A at 12 V | practical guidance, unchallenged, unmeasured |
-| Preferred fan classes | radial high-static-pressure blowers, or 38 mm thick axial fans | thin 120 mm fans were doubted for 300 W and for two cards |
-| Airflow direction | **pull, do not push** | consistent first-hand reports of blowback from push-through sleeve shrouds |
-| Single 40 mm fan | insufficient at any RPM | 1 x S4028-15K gives 90 C hotspot; 2 x gives 70 C / 76 C |
+| 满功率运行的靶向静压 | 20 mm | 规格推导的建议，**未实测** |
+| Arctic P12 Pro CO 发布规格 | 约 7 mm 静压，130 m³/h | 厂商规格；这把风扇却在 `-pl 160` 下把 4 卡压到 65 C 以下 |
+| 最低实用风扇功率 | 高于 4 W，即 12 V 下 0.35 A | 实用指导，无争议，未实测 |
+| 首选风扇类别 | 径流式高静压涡轮，或 38 mm 厚轴流风扇 | 薄 120 mm 风扇在 300 W 和双卡上被怀疑 |
+| 气流方向 | **拉，不要推** | 关于推式套筒导流罩回风的、一致的一手报告 |
+| 单颗 40 mm 风扇 | 任何转速下都不够 | 1 × S4028-15K 给 90 C 热点；2 × 给 70 C / 76 C |
 
-Whatever cooler is used **must also cool the VRM**, not just the die. A deshroud plus a
-pressure-mounted tower cooler on the die still needs a separate 80-120 mm fan over the power
-delivery area. See [Power delivery](power-delivery.md) for where those parts sit.
+无论用什么散热器，**还必须给 VRM 散热**，不只是晶片。去导流罩加一颗压力安装的塔式散热器在晶片上，仍需要一颗独立的 80-120 mm 风扇对着供电区域。参见[板载供电](power-delivery.md) 了解那些部件坐在哪。
 
 ---
 
-## See also
+## 相关页面
 
-- [Cooling](../operations/cooling.md): real coolers, measured, with a recommendation table
-  by target wattage.
-- [Power and PSU](../operations/power-and-psu.md): power limiting, idle draw, PSU sizing.
-- [Power delivery](power-delivery.md): the on-board VRM and rail topology.
-- [Physical mods](../operations/physical-mods.md): teardown, waterblock installation, and
-  the capacitor mod.
-- [Tuning](../operations/tuning.md): the clock-ceiling and offset sweep behind the
-  efficiency figures.
-- [Board and variants](board-and-variants.md): SKU identification and board part numbers.
+- [散热](../operations/cooling.md)：真实散热器，实测，带按目标瓦数的推荐表。
+- [供电与 PSU](../operations/power-and-psu.md)：功耗限制、空转功耗、PSU 尺寸。
+- [板载供电](power-delivery.md)：板载 VRM 和电压轨拓扑。
+- [物理改装](../operations/physical-mods.md)：拆解、水冷头安装，以及电容改装。
+- [调优](../operations/tuning.md)：效率数字背后的时钟天花板和偏移扫描。
+- [板卡与变体](board-and-variants.md)：SKU 识别和板卡料号。

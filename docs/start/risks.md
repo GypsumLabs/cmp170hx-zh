@@ -1,381 +1,226 @@
-# Risks
+# 风险
 
-**What this page covers.** An honest assessment of what can go wrong if you unlock a CMP 170HX,
-ranked by how permanent the damage is. What is recoverable and what is not, whether the card can
-actually be bricked and by which specific actions, the thermal and power hazards that are far more
-likely to destroy a card than any software step, the irreversible risk in the capacitor mod, what
-this does to host stability and Secure Boot, and where the legal and warranty questions sit.
+**本页内容。** 对解锁 CMP 170HX 时可能出问题的诚实评估，按损坏的永久程度排序。哪些可恢复、哪些不可，卡到底能不能变砖、被哪些具体动作变砖，远比任何软件步骤更可能毁掉卡的热与供电危险、电容改装中的不可逆风险、这对主机稳定性和安全启动的影响，以及法律和质保问题的所在。
 
-**The short version.** The unlock itself is close to risk-free for the card. It writes only volatile
-registers, it blows no fuses, it never touches the VBIOS or any EEPROM, and it lives entirely inside
-a patched kernel module in `/lib/modules/$(uname -r)/updates/cmpunlocker/`. Delete that directory,
-power cycle, and the card is bit-for-bit the card you started with. **No permanent brick caused by
-the unlock has ever been confirmed.** The genuine, irreversible risks in this project are all
-physical: inadequate airflow on a 250 W passively cooled card, the wrong power cable in the EPS
-socket, a soldering iron near the PCIe fingers, and a VBIOS flash without a hardware programmer to
-recover from.
+**简短版。** 解锁本身对卡几乎零风险。它只写易失寄存器，不烧熔丝，从不碰 VBIOS 或任何 EEPROM，而且完全活在 `/lib/modules/$(uname -r)/updates/cmpunlocker/` 里的一个补丁内核模块内。删掉那个目录、断电重启，卡就和开始时逐位相同。**从未确认过由解锁导致的永久变砖。** 这个项目中真正不可逆的风险全是物理性的：250 W 被动散热卡气流不足、EPS 插座插错电源线、烙铁靠近 PCIe 金手指，以及没有硬件编程器可用来恢复的 VBIOS 刷写。
 
-Read [Recovery](../procedures/recovery.md) for the full reset ladder and register-persistence table.
-This page is the decision-time summary.
+完整的复位阶梯和寄存器持久性表，读[恢复](../procedures/recovery.md)。本页是决策时的总结。
 
 ---
 
-## 1. What is recoverable and what is not
+## 1. 什么可恢复、什么不可
 
-| Failure | Permanence | Cost to recover |
+| 失败 | 永久性 | 恢复代价 |
 |---|---|---|
-| Unlock does not take; card still reports 8192 / 10240 MiB | None | Cold reboot, or `sudo ./remove.sh --yes` |
-| GSP will not boot; `nvidia-smi` says "No devices were found" | None | Cold power cycle (60 s with the PSU off) |
-| Card wedged, `nvidia-smi` hangs, Xid 119 / 154 / 31 | None | Reset ladder: FLR, then SBR, then cold boot |
-| Host CUDA runtime wedged, `cuInit` returns 999 | None | Host reboot |
-| Machine will not shut down, card boots pre-wedged | None | Boot with the module blacklisted, then clean up |
-| System left at a text console after a failed retrain | None | Blacklist `nvidia` from the bootloader, reinstall |
-| Workload data in VRAM at the moment of an Xid | **Lost** | Nothing; the job dies |
-| HBM degraded by chronic over-temperature operation | **Permanent** | None |
-| Board damaged by a PCIe 8-pin cable in the EPS socket | **Permanent** | Component-level repair, if at all |
-| PCB warped, traces broken or ICs cooked during rework | **Permanent** | Usually none; these defects are very hard to diagnose |
-| Bad VBIOS flash | **Permanent without a programmer** | External SPI programmer with a 1.8 V adapter |
+| 解锁未生效；卡仍报告 8192 / 10240 MiB | 无 | 冷重启，或 `sudo ./remove.sh --yes` |
+| GSP 无法启动；`nvidia-smi` 说 "No devices were found" | 无 | 冷断电循环（PSU 关闭 60 秒） |
+| 卡卡死，`nvidia-smi` 挂起，Xid 119 / 154 / 31 | 无 | 复位阶梯：FLR，然后 SBR，然后冷启动 |
+| 主机 CUDA 运行时卡死，`cuInit` 返回 999 | 无 | 主机重启 |
+| 机器无法关机，卡以预先卡死状态启动 | 无 | 以模块被列入黑名单的方式启动，然后清理 |
+| 失败的重训练后系统停留在文本控制台 | 无 | 从引导器把 `nvidia` 列入黑名单，重装 |
+| Xid 发生时 VRAM 里的工作负载数据 | **丢失** | 无；任务死了 |
+| HBM 因长期过热运行而退化 | **永久** | 无 |
+| EPS 插座里插入 PCIe 8-pin 线导致板卡损坏 | **永久** | 元件级维修，如果还能修的话 |
+| 返工期间 PCB 弯曲、走线断裂或 IC 被烤熟 | **永久** | 通常无法修；这些缺陷极难诊断 |
+| 刷坏 VBIOS | **没有编程器则永久** | 带 1.8 V 转接器的外部 SPI 编程器 |
 
-Everything in the first six rows is inconvenience. That is most of what actually happens to people.
+前六行的一切都只是不便。而那就是大多数人实际遇到的东西。
 
 ---
 
-## 2. Can the card be bricked?
+## 2. 卡能变砖吗？
 
-### 2.1 By the unlock: no confirmed case
+### 2.1 由解锁造成：没有确认案例
 
-The structural argument is stronger than the (also complete) absence of reports. The shipping
-unlock:
+结构论证比（同样完整的）报告缺失更强。当前发布的解锁：
 
-* writes only volatile registers, all of which revert on power loss;
-* never writes the master kill fuse `0x008203f0`, which reads `0x00000000` on shipping cards and
-  would, if blown, lock out every feature override permanently;
-* does not flash the VBIOS or any EEPROM;
-* modifies no file under `/lib/firmware` (the abandoned firmware-patching predecessor did, which is
-  why `remove.sh` still cleans up `gsp_tu10x.bin.cmpunlocker.*` leftovers);
-* is fully reverted by `remove.sh` plus a power cycle.
+* 只写易失寄存器，全部在断电后恢复原状；
+* 从不写主清除熔丝 `0x008203f0`，出厂卡上它读 `0x00000000`，一旦烧断会永久锁死所有功能覆盖；
+* 不刷 VBIOS 或任何 EEPROM；
+* 不改动 `/lib/firmware` 下的任何文件（被放弃的固件补丁前身确实改，这就是为什么 `remove.sh` 仍会清理 `gsp_tu10x.bin.cmpunlocker.*` 残留）；
+* 由 `remove.sh` 加一次断电循环完全还原。
 
-Memory geometry (CFG1, LMR, per-FBPA CSTATUS, the FB-geometry PLMs) does not survive a
-function-level reset, let alone a power cycle. Only SS0, SS1 and the feature-override PLM at
-`0x00823804` sit in the always-on island, and even those are gone after the power goes off.
+显存几何布局（CFG1、LMR、每-FBPA CSTATUS、FB 几何 PLM）在功能级复位后都不存活，更不用说断电循环了。只有 SS0、SS1 和 `0x00823804` 处的功能覆盖 PLM 位于常电域，而就连它们也在断电后消失。
 
-The three public brick claims all dissolve on inspection. The one "bricked" report inside the
-clean-room work was an LLM agent's mistaken conclusion after it lost track of the fact that the
-cards could be reset. The public "NVIDIA-poisoned drivers brick cards" claim has no first-hand
-report behind it; the specific case cited was assessed as a 10 GB card being pushed to the unstable
-80 GB geometry. Seller talk of a "defective batch" during the late-July 2026 price spike was a
-cancellation excuse used against listings that had already shown working cards.
+三个公开的变砖说法一查即散。净室工作中唯一一份"变砖"报告是一个 LLM 代理的误判——它忘了这些卡可以复位。公开的 "NVIDIA-poisoned drivers brick cards"（NVIDIA 下毒驱动变砖）说法背后没有任何一手报告；被引用的具体案例被评估为一张 10 GB 卡被推到不稳定的 80 GB 几何布局。2026 年 7 月下旬涨价期间卖家的"缺陷批次"说法，是对已经展示过可工作卡的那些上架的取消借口。
 
 > [!NOTE]
-> **Open problem: one report that does not fit**
+> **未解问题：一份对不上号的报告**
 >
-> One first-hand account describes a 10 GB card wedged with three stuck D-state threads that would
-> not clear with FLR, SBR, PCI detach and reattach, **or a full PSU power-off cold boot**: "when I
-> rebooted, the registers were still written, and the D-threads were still there... card booted
-> pre-wedged". Recovery eventually required holding the power switch with the power strip off and
-> physically removing the card for a few hours. The observation was doubted in-channel and remains
-> unexplained. It contradicts the otherwise well-supported no-persistent-state model, which is
-> exactly why it is recorded rather than dismissed. The honest statement is: the model says a power
-> cycle always wins, and in every reproducible case it did, but one credible operator reports a
-> state that survived one.
+> 一份一手描述说，一张 10 GB 卡卡死，三个 D 状态线程卡住，FLR、SBR、PCI 分离再重新挂载，**甚至一次完整的 PSU 断电冷启动**都无法清除："当我重启时，寄存器仍然写着，D 线程也还在……卡以预先卡死状态启动"。最终恢复需要按住电源开关并关掉插线板，再物理拔卡几个小时。该观察在频道里被质疑，至今无法解释。它与原本证据充分的"无持久状态"模型相矛盾，而这正是它被记录而非忽略的原因。诚实的话是：模型说断电循环总是赢，在每个可复现案例里它也的确赢了，但一位可信的操作者报告了一个挺过一次的状态。
 
-### 2.2 By specific physical actions: yes, permanently
+### 2.2 由具体物理动作造成：是的，永久性
 
 > [!CAUTION]
-> **Actions that will destroy hardware**
+> **会毁掉硬件的动作**
 >
-> **Forcing a PCIe 8-pin cable into the card's EPS socket.** The two are keyed differently and
-> only go together if forced. The 12 V and ground lines are swapped on some pins between the two
-> connector types, so forcing it **will damage the card**. The socket is a single 8-pin
-> CPU-style (EPS) connector carrying two logical 12 V rails (12V_EXT1 and 12V_EXT2); cards ship
-> with a dual 8-pin-PCIe to 8-pin-EPS Y adapter for exactly this reason.
+> **把 PCIe 8-pin 电源线强塞进卡的 EPS 插座。** 两者键位不同，只有硬塞才进得去。两种接口在部分引脚上 12 V 和地线是调换的，硬塞**必然损坏卡片**。这个插座是一个 8-pin 的 CPU 式（EPS）接口，携带两条逻辑 12 V 轨（12V_EXT1 和 12V_EXT2）；卡出厂就带一条双 8-pin-PCIe 到 8-pin-EPS 的 Y 转接线，正是为此。
 >
-> **Reusing a modular PSU cable across PSU brands.** Modular-side pinouts are vendor-specific with
-> no standard. This destroys hardware in the general case, not just on this card.
+> **跨 PSU 品牌复用模组线。** 模组侧引脚定义是厂商专用的，没有标准。这在一般情况下都会毁硬件，不只这块卡。
 >
-> **Running the card with no airflow.** See section 3. This is the single most likely way to kill
-> a 170HX.
+> **在无气流的情况下运行卡。** 见第 3 节。这是杀掉 170HX 最可能的一种方式。
 >
-> **Preheating the whole board in an oven, or over-preheating with an IR stove plus hot air,
-> during the capacitor mod.** The dominant beginner failure mode: it bends the PCB, breaks internal
-> traces and cooks ICs, and those defects are extremely hard to diagnose afterwards. The oven idea
-> was proposed in-channel and immediately rejected.
+> **电容改装时把整块板放进烤箱预热，或用 IR 炉加风枪过度预热。** 新手失败的主导模式：它会弯 PCB、断内部走线、烤熟 IC，而这些缺陷事后极难诊断。烤箱主意在频道里被提出并立即否决。
 >
-> **Flashing a VBIOS that is not for this device.** TechPowerUp entry 283106 is an
-> A100 / DRIVE-PG199-PROD image (device `0x20BB`, subsystem `10DE 14A1`) that has circulated as a
-> 170HX reference and must never be flashed to a 170HX. Recovery from a bad flash needs an external
-> programmer; GPU EEPROMs are 1.8 V, so a CH341A needs a 1.8 V adapter. Note that the unlocker
-> itself never touches the VBIOS, so flashing is an entirely separate decision with its own risk.
+> **刷一个不适配本设备的 VBIOS。** TechPowerUp 条目 283106 是一个 A100 / DRIVE-PG199-PROD 映像（设备 `0x20BB`，子系统 `10DE 14A1`），它作为 170HX 参考流传，绝不能刷到 170HX 上。从刷坏的 flash 恢复需要外部编程器；GPU EEPROM 是 1.8 V，所以 CH341A 需要一个 1.8 V 转接器。注意解锁器本身从不碰 VBIOS，所以刷写是完全独立的决定，自带风险。
 >
-> **Writing the VRM duty-cycle registers `0x20340` / `0x20344`.** Re-executing devinit through the
-> PMU at runtime with a wrong value could push the VRM past **1.3 V**, because the devinit region
-> containing memory timing also covers clocks, PLLs and VID-PWM. This has never been tested, these
-> addresses appear nowhere in the unlocker or any of its twelve branches, and there is no reason to
-> go near them.
+> **写 VRM 占空比寄存器 `0x20340` / `0x20344`。** 通过 PMU 在运行时用错误值重放 devinit，可能把 VRM 推到超过 **1.3 V**，因为含显存时序的 devinit 区域也覆盖时钟、PLL 和 VID-PWM。这从未被测试过，这些地址在解锁器或它的十二个分支中任何地方都不出现，也没有任何理由靠近它们。
 
 ---
 
-## 3. Thermal risk: the most likely way to destroy a card
+## 3. 热风险：最可能毁掉卡的方式
 
-This is a **250 W card with a fully passive heatsink and no fan of its own**. `nvidia-smi` reports
-`Fan Speed : N/A` on every capture ever taken. It was designed for the forced air of a high-RPM
-server chassis. In a desktop case with ambient airflow it will cook.
+这是一张 **250 W 的卡，带全被动散热片，自己没有风扇**。`nvidia-smi` 在每一次捕获上都报告 `Fan Speed : N/A`。它是为高转速服务器机箱的强制风设计的。放在有环境气流的桌面机箱里会烤熟。
 
 > [!CAUTION]
-> **Never power the card without arranged airflow**
+> **永远不要在没安排好气流时给卡供电**
 >
-> The GA100 die exhibits genuine leakage-driven thermal runaway. Higher junction temperature raises
-> CMOS leakage current, which produces more heat, which raises leakage further. Observed first-hand
-> while dry-running a card with a waterblock fitted but no coolant: idle draw started around
-> **40 W**, climbed to **60 W at 80 °C**, and was still rising when the card was powered off.
+> GA100 晶片表现出真实的泄漏驱动热失控。更高的结温提高 CMOS 泄漏电流，产生更多热量，又进一步提高泄漏。一手观察到的场景：给一块装好水冷头但没有冷却液的卡干跑，空转功耗从大约 **40 W** 起步，在 **80 °C 时爬到 60 W**，断电时还在上升。
 >
-> **If you dry-run the card without coolant, power off within 5 minutes.**
+> **如果干跑卡却没有冷却液，5 分钟内断电。**
 >
-> If cooling fails outright under load, the card does not settle at its throttle point: it climbs.
-> The hands-on description is "it'll thermally throttle, but to a temperature above 100 degrees,
-> that then consumes more power, thus increased temperature... and you end up with a volcano."
+> 如果负载下散热彻底失效，卡不会稳定在它的节流点：它会一路攀升。实操描述是"它会热节流，但到一个超过 100 度的温度，于是消耗更多功率，温度随之更高……最后变成一座火山。"
 
-The driver-reported limits, read from an unlocked 10 GB card on driver 610.43.02:
+驱动报告的限制值，从驱动 610.43.02 上一张解锁的 10 GB 卡读得：
 
-| Limit | Value |
+| 限制 | 值 |
 |---|---|
 | GPU Shutdown Temp | 98 °C |
 | GPU Slowdown Temp | 95 °C |
 | GPU Max Operating Temp | 85 °C |
 | Memory Max Operating Temp | 95 °C |
 
-Practical throttle onset is reported as around **80 °C**. That figure came from a participant who
-asked whether 90 °C was acceptable, then said they had found throttling starting at 80 °C, and
-was told it was not acceptable; no telemetry was posted, so treat it as a reading rather than a
-measurement. Community design targets converged on **70 °C core and 75 to 76 °C memory hotspot**
-under load. Ninety degrees hotspot is treated as
-unacceptable. GA100 memory is unusually conservative compared with GDDR6X parts that run to ~105 °C.
+实际节流起始被报告为大约 **80 °C**。这个数字来自一位参与者，他先问 90 °C 是否可接受，然后说他发现节流在 80 °C 开始，接着被告知不可接受；没有贴出遥测，所以把它当作一个读数而非一次测量。社区设计目标收敛到负载下 **核心 70 °C、显存热点 75 至 76 °C**。九十度热点被视为不可接受。GA100 显存与跑到约 105 °C 的 GDDR6X 部件相比异常保守。
 
-*(Confidence: medium on the exact throttle layering. Nobody has captured a log correlating clock
-reduction against temperature through 75 to 95 °C, so the "soft VBIOS reduction at 80, driver
-ceiling at 85, hardware slowdown at 95" picture is inferred.)*
+*（置信度：关于精确节流分层为中等。没人捕获到一份把时钟降低与 75 至 95 °C 的温度相关联的日志，所以"80 处 VBIOS 软降、85 处驱动封顶、95 处硬件减速"的画面是推断出来的。）*
 
-Two traps specific to this card:
+这块卡特有的两个陷阱：
 
-1. **A single 40 mm fan is not enough, whatever its RPM.** One Arctic S4028-15K gives a 90 °C
-   hotspot; two on the same bracket never exceed 70 °C GPU and 76 °C hotspot. The commonly sold
-   3.24 W snail-fan "A100 cooling" printed adapter advertises 300 W and removes **150 to 180 W
-   maximum** at full duty from a direct PSU feed.
-2. **Do not validate cooling with a conventional FP32 burn-in.** The card is hard to load: `gpu_burn`
-   FP32 and FP64 draw only about **60 W**, tensor-core `gpu_burn` about **75 W**. Hashcat (pure
-   integer) and a STREAM-like memory benchmark both pull **160+ W**; real llama.cpp inference holds
-   **230 to 240 W**. A cooler that passes an FP32 burn-in has proved almost nothing.
+1. **单颗 40 mm 风扇不够，无论转速多高。** 一颗 Arctic S4028-15K 给出 90 °C 热点；同一支架上的两颗从不超过 GPU 70 °C、热点 76 °C。市面上常见的 3.24 W 蜗牛风扇 "A100 cooling" 打印转接座宣称 300 W，实际从直接 PSU 供电在满占空比下最多带走 **150 至 180 W**。
+2. **不要用常规 FP32 老化测试来验证散热。** 这块卡很难加负载：`gpu_burn` FP32 和 FP64 只抽约 **60 W**，张量核 `gpu_burn` 约 **75 W**。Hashcat（纯整数）和类似 STREAM 的显存基准测试都拉 **160+ W**；真正的 llama.cpp 推理维持在 **230 至 240 W**。一块通过 FP32 老化测试的散热器几乎证明不了什么。
 
-Chronic under-cooling is the one thermal failure that is permanent: HBM degrades fast past its safe
-temperature. In the burn-in record, the card accumulating memory errors ran at 85 °C with a memory
-overclock, while error-free cards stayed below 73 °C. *(Confidence: medium; no failure-rate data
-exists.)*
+长期欠冷是唯一永久性的热失效：HBM 超过安全温度会迅速退化。在老化测试记录中，积累显存错误的那张卡在 85 °C 带显存超频运行，而无错误的卡保持在 73 °C 以下。*（置信度：中等；不存在失效率数据。）*
 
-See [Cooling](../operations/cooling.md) for the full measured comparison of blowers, axial fans,
-shrouds and waterblocks, and [Thermals](../hardware/thermals.md) for the limits in detail.
+完整的风扇、轴流、导流罩和水冷头的实测对比见[散热](../operations/cooling.md)，限制值的细节见[热设计](../hardware/thermals.md)。
 
 ---
 
-## 4. Power and PSU risk
+## 4. 供电与 PSU 风险
 
-The card takes a **single 8-pin EPS (CPU-style) connector**, not PCIe 8-pin. `lspci` reports
-`SlotPowerLimit 75 W` in DevCap, so everything above 75 W arrives through that connector.
+卡采用**单个 8-pin EPS（CPU 式）接口**，不是 PCIe 8-pin。`lspci` 在 DevCap 里报告 `SlotPowerLimit 75 W`，所以超过 75 W 的一切都通过那个接口到达。
 
-* An **8-pin EPS connector is rated 300 W; an 8-pin PCIe connector is rated 150 W**, and the 12 V and
-  ground lines are swapped on some pins. Use the supplied Y adapter: one leg at 150 W, both legs at
-  300 W, or source proper cables.
-* Check what your PSU actually has. One real build failed on an EVGA unit with **1× PCIe 6+2 and
-  1× 6-pin** rather than two 6+2 connectors, which breaks the two-PCIe feed the adapter expects.
-* PSU sizing: roughly **600 W on the 12 V rail** is the stated minimum for a two-card build. Five
-  cards at 250 W each (about 1250 W of GPU load) wants a 1600 to 2000 W supply. Twenty cards idling
-  at ~30 W each is 600 to 700 W just to sit there.
-* The card exposes only performance state **P0** and has no idle P-state. Idle draw is 27 to 46 W
-  and cannot be reduced by `nvidia-pstated`, which returns `NVAPI_ERROR` on single-P0 cards. Budget
-  for it.
+* **8-pin EPS 接口额定 300 W；8-pin PCIe 接口额定 150 W**，而且部分引脚上 12 V 和地线是调换的。使用附带的 Y 转接线：一条腿 150 W，两条腿 300 W，或者买合适的线。
+* 检查你的 PSU 到底有什么。一次真实构建就败在 EVGA 电源上——它只有 **1× PCIe 6+2 和 1× 6-pin**，而不是两条 6+2，这破坏了转接座所期望的双 PCIe 供电。
+* PSU 尺寸：**12 V 轨约 600 W** 是双卡构建的宣称最小值。五张卡各 250 W（约 1250 W GPU 负载）需要 1600 到 2000 W 电源。二十张卡空转各约 30 W，只是放着就要 600 至 700 W。
+* 卡只暴露性能状态 **P0**，没有空转 P 状态。空转功耗 27 至 46 W，`nvidia-pstated` 无法降低——它在单 P0 卡上返回 `NVAPI_ERROR`。为此做好预算。
 
-The stock power envelope is 250 W default, 250 W maximum, 100 W floor. `nvidia-smi -pl` works fine
-and can only *lower* the card unless it carries the 300 W OC mining VBIOS. Raising the limit to
-300 W buys about **+2.8 %** on BF16 in a direct A/B, so there is little reason to.
+出厂功耗包络是默认 250 W、最大 250 W、下限 100 W。`nvidia-smi -pl` 工作正常，除非卡带 300 W OC mining VBIOS，否则只能*降低*功耗。把上限提到 300 W 在一次直接 A/B 中给 BF16 换来约 **+2.8 %**，所以没什么理由去提。
 
-See [Power and PSU](../operations/power-and-psu.md) and
-[Power delivery](../hardware/power-delivery.md).
+参见[供电与 PSU](../operations/power-and-psu.md) 和[板载供电](../hardware/power-delivery.md)。
 
 ---
 
-## 5. The capacitor mod: the one genuinely irreversible step
+## 5. 电容改装：真正不可逆的那一步
 
-The x4-to-x16 link-width mod means hand-soldering **24 × 0402 capacitors** (220 nF, X7R, ≥ 6.3 V,
-designators roughly C1100 to C1350) onto pads immediately adjacent to the PCIe gold fingers of an
-8 to 12 layer board. There is no software involved and no undo.
+x4 到 x16 的链路位宽改装意味着在紧挨一块 8 到 12 层板 PCIe 金手指的焊盘上手工焊接 **24 × 0402 电容**（220 nF、X7R、≥ 6.3 V，位号大致 C1100 到 C1350）。不涉及任何软件，也没有撤销。
 
 > [!CAUTION]
-> **Soldering risk, not firmware risk**
+> **焊接风险，不是固件风险**
 >
-> Rework datum for this board: **hot air at 420 °C for two minutes** before any chip can be
-> removed. That is the thermal mass you are working against, a few millimetres from the edge
-> connector.
+> 这块板的返工基准：任何芯片能拆下前，**热风 420 °C 吹两分钟**。这就是你要对抗的热质量，而且离边缘连接器只有几毫米。
 >
-> The dominant beginner failure is over-preheating with an IR stove plus hot air, which bends the
-> PCB, breaks internal traces and cooks ICs. Those defects are extremely hard to diagnose
-> afterwards, and a warning raised in-channel is blunt: inexperienced buyers attempting this
-> themselves are likely to brick cards by improperly soldering the decoupling caps.
+> 新手失败的主导模式是 IR 炉加风枪过度预热，它会弯 PCB、断内部走线、烤熟 IC。这些缺陷事后极难诊断，而且频道里提的一句警告很直白：没有经验的买家自己尝试，很可能会因去耦电容焊接不当而把卡变砖。
 
-Honest counterweight: several experienced modders rate the job beginner-to-hobbyist level, called it
-"probably the easiest card to do PCIE mod", and one completed a card by hand in about 20 minutes.
-The area is not cramped. The adjudicated technique is leaded 60/40 solder and gel flux, wick away
-all the factory lead-free solder first, a fine-point iron at about 380 °C with no preheating,
-Kapton tape around the area, and practise on a scrap board.
+诚实的反方观点：几位有经验的改装者把这项工作评为新手到爱好者级别，称它是"可能是做 PCIe 改装最容易的卡"，还有人用手工约 20 分钟完成一张卡。这个区域不拥挤。被裁决的技术是用铅 60/40 焊锡和凝胶助焊剂，先把所有原厂无铅焊锡吸掉，用约 380 °C 的尖头烙铁不预热，区域周围贴 Kapton 胶带，并在报废板上练习。
 
-Partial or bridged work negotiates down to the next legal width rather than failing outright, so
-reported lane count is a direct diagnostic of solder quality: 12 of 24 populated gives x8, and one
-modder's progression across three cards was x4 → x8 → x16 as technique improved.
+部分或桥接的焊接会协商降到下一个合法位宽，而不是彻底失败，所以报告的通道数直接反映焊锡质量：24 颗装 12 颗得到 x8，一位改装者三张卡的进展是 x4 → x8 → x16，随着技术提高。
 
-**The capacitor mod changes lane count only. It never changes PCIe generation.** Gen1 to Gen2 is a
-separate, software-only achievement that lives on unreleased branches. Do not conflate them. See
-[Physical mods](../operations/physical-mods.md) and [PCIe Gen2](../unlock/pcie-gen2.md).
+**电容改装只改变通道数。它从不改变 PCIe 代数。** Gen1 到 Gen2 是另一个纯软件的成果，住在未发布分支上。不要混为一谈。参见[物理改装](../operations/physical-mods.md) 和 [PCIe Gen2](../unlock/pcie-gen2.md)。
 
 ---
 
-## 6. Data loss and system stability
+## 6. 数据丢失与系统稳定性
 
-The unlock does not corrupt data at rest. What it does is change the size of the window CUDA is
-allowed to allocate in, and workloads that run past the genuinely usable edge die.
+解锁不会破坏静止状态的数据。它做的是改变 CUDA 被允许分配的窗口大小，而跑到真正可用边缘之外的工作负载会死。
 
-* **Xid 31, MMU fault, region violation.** Allocating past the usable top of the unlocked window
-  faults the card and makes it unusable in CUDA until a full reboot. One capture shows the faulting
-  physical address at `0xf_f7400000`, which is 63.86 GiB, right at the top of the 64 GB window. Fix:
-  offload one fewer layer to that GPU.
-* **Keep vLLM at `gpu-memory-utilization` 0.90 or below.** The unlocked geometry exposes 65052 MB
-  with only 64733 MB actually available, so 0.95 is thin enough to crash a card.
-* **Do not `kill -9` live multi-GPU jobs.** Repeatedly doing so leaves roughly 32 zombie CUDA
-  processes and wedges the host CUDA runtime, so `cuInit` returns 999 for every framework while
-  `nvidia-smi` still reports healthy. This is not fixable inside a container; it needs a host reboot.
-  SIGKILL on a live verification kernel can wedge the card with Xid 45. In one full 8-card session
-  with hundreds of 60-second health samples there were **zero** hard faults when the workload was
-  driven properly, so this is an operator-induced class of failure, not a hardware one.
+* **Xid 31，MMU 故障，区域违规。** 分配越过解锁窗口可用上限会使卡报故障，并使其在完全重启前无法在 CUDA 中使用。一份捕获显示故障物理地址在 `0xf_f7400000`，即 63.86 GiB，正好在 64 GB 窗口顶端。修复：给那块 GPU 少卸载一层。
+* **让 vLLM 保持在 `gpu-memory-utilization` 0.90 或以下。** 解锁的几何布局暴露 65052 MB，但实际可用只有 64733 MB，所以 0.95 薄到足以崩卡。
+* **不要 `kill -9` 活着的多卡任务。** 反复这样做会留下约 32 个僵尸 CUDA 进程并卡死主机 CUDA 运行时，于是每个框架的 `cuInit` 都返回 999，而 `nvidia-smi` 仍报告健康。这在容器内无法修复；需要主机重启。对活着的验证内核 SIGKILL 可能以 Xid 45 把卡卡死。在一次完整的 8 卡会话里，数百个 60 秒健康样本中，只要工作负载被正确驱动就有**零**硬故障，所以这是操作者诱发的一类失败，而非硬件问题。
 
 > [!CAUTION]
-> **The over-provisioned 80 GB geometry destroys workloads**
+> **过度配置的 80 GB 几何布局会毁掉工作负载**
 >
-> The 8 GB card at 64 GB is stable and in production. The 10 GB card at 40 GB is stable. The 10 GB
-> card pushed to **80 GB reports the capacity but is unusable above roughly 40 GB**: hangs,
-> Xid 154, and memory errors under stress (one gpu-burn run at 80 GB logged **2,796 errors**
-> while the same card ran cleanly at 40 GB). It is power-limit independent. This wrecks jobs
-> rather than cards, but it wrecks them reliably. See [80 GB](../frontier/80gb.md).
+> 8 GB 卡在 64 GB 稳定且投入生产。10 GB 卡在 40 GB 稳定。10 GB 卡被推到 **80 GB 会报告容量，但超过约 40 GB 就不可用**：挂起、Xid 154，以及压力下的显存错误（一次 80 GB 的 gpu-burn 运行记录了 **2,796 个错误**，而同一张卡在 40 GB 下干净运行）。它与功耗上限无关。它毁的是任务而不是卡，但毁得很可靠。参见[80 GB](../frontier/80gb.md)。
 
-Host-level risk is real but ordinary. Driver-patch iteration on bare metal is destructive enough
-that one developer reported reinstalling the OS after each botched `nvidia.ko` deploy. Prefer a
-headless or non-NVIDIA-display host: the `nvidia` module frequently refuses to unload because `drm`
-is held by seven users including `i915`, and unlock work needs the module out of the way.
+主机级风险是真实但普通的。在裸机上迭代驱动补丁破坏性足够大，以至于一位开发者报告每次搞砸 `nvidia.ko` 部署后就重装操作系统。优先选择无头或非 NVIDIA 显示的主机：`nvidia` 模块经常因 `drm` 被包括 `i915` 在内的七个用户持有而拒绝卸载，而解锁工作需要让模块让路。
 
 ---
 
-## 7. Secure Boot and unsigned modules
+## 7. 安全启动与未签名模块
 
-`install.sh` **hard-fails if Secure Boot is enabled**, because the patched modules are unsigned:
+`install.sh` 在安全启动开启时**硬性失败**，因为补丁模块未签名：
 
 ```text
 Secure Boot is enabled. Disable it before installing unsigned patched modules.
 ```
 
-Three consequences worth weighing before you start:
+开始前值得权衡的三个后果：
 
-1. **Disabling Secure Boot is a host-wide security posture change**, not a per-card one. It affects
-   everything the machine boots, forever, until you turn it back on.
-2. **The check is conditional.** It only runs if `/sys/firmware/efi` exists **and** `mokutil` is on
-   `PATH`. On a non-EFI machine, or one without `mokutil` installed, the check is silently skipped
-   and you can still end up with modules the kernel refuses to load. The symptom in `dmesg` is
-   `nvidia: module verification failed: signature and/or required key missing - tainting kernel`.
-3. **Kernel modules cannot be sandboxed.** They run in ring 0 with full access to the machine. This
-   was noted explicitly in-channel when someone proposed having an LLM scan a circulated binary blob
-   for safety: that is not a safety guarantee. The mitigation is to build from source. `build.sh`
-   fetches NVIDIA's own tag tarball and applies six patches you can read; nothing prebuilt is
-   redistributed. Note, though, that `build.sh` performs **no checksum or signature verification** on
-   the downloaded tarball, so on an untrusted network verify the cached file yourself.
+1. **禁用安全启动是主机级安全姿态的变更**，不是单卡级的。它影响机器启动的一切，永远如此，直到你重新打开它。
+2. **检查是有条件的。** 只有在 `/sys/firmware/efi` 存在**并且** `mokutil` 在 `PATH` 上时才运行。在非 EFI 机器上，或没装 `mokutil` 的机器上，检查被静默跳过，你仍可能以内核拒绝加载的模块告终。`dmesg` 里的症状是 `nvidia: module verification failed: signature and/or required key missing - tainting kernel`。
+3. **内核模块无法沙箱化。** 它们在 ring 0 运行，对机器有完全访问权。当有人提议让 LLM 扫描一个流传的二进制 blob 以检查安全性时，频道里明确指出了这一点：那不是安全保证。缓解办法是从源码构建。`build.sh` 抓取 NVIDIA 自己的 tag tarball 并应用你可以阅读的六个补丁；不重新分发任何预编译内容。但注意，`build.sh` 对下载的 tarball **不做任何校验和或签名验证**，所以在不可信网络上要自己验证缓存的文件。
 
-Signing the modules yourself with your own Machine Owner Key is the standard way to keep Secure Boot
-on. Nobody in the record has documented doing it for this patch set.
+用你自己的 Machine Owner Key 给自己模块签名，是保持安全启动开启的标准方式。记录中没有任何人记载过为这套补丁集这样做过。
 
 ---
 
-## 8. This is unsupported experimental software
+## 8. 这是不受支持的实验性软件
 
-There is no vendor, no warranty on the software, and no service-level commitment of any kind.
+没有厂商，软件没有质保，没有任何形式的服务级别承诺。
 
-* **Exactly two driver versions are supported:** nvidia-open `610.43.03` (default) and `610.43.02`,
-  matched as exact strings. The build hard-fails on anything else. Ports to 595, 590 and 580 exist
-  only on an unreleased branch, are source-verified, and **have never been boot-tested by anyone**.
-* **Branch churn, not silicon, is what breaks installs.** Twelve unreleased branches exist alongside
-  shipping `master`, several of them carrying documentation that disagrees with their own code. The
-  `docs` branch alone references an `uninstall.sh` that does not exist, states SS0 and SS1 values
-  that the code does not write, and over-generalises the PLM readback rule.
-* **PCIe Gen2 does not ship on `master`.** Patches `0007` and `0008` exist only on experimental
-  branches, and one of the two competing `RMPcieLinkSpeed` values is wrong with no A/B test to say
-  which.
-* **Support is one person.** The first documented Gen2 ticket waited about **10.5 hours** for a
-  first reply. Attach `sudo dmesg | grep SEC2_DEBUG` and your newest install log or expect to wait
-  longer.
+* **恰好只支持两个驱动版本：** nvidia-open `610.43.03`（默认）和 `610.43.02`，按精确字符串匹配。构建在其它任何版本上硬性失败。595、590 和 580 的移植只存在于一个未发布分支上，源码已核对，**从没被任何人启动测试过**。
+* **破坏安装的是分支变动，不是硅片。** 十二个未发布分支与当前发布 `master` 并存，其中几个带着与自身代码冲突的文档。仅 `docs` 分支就引用了一个不存在的 `uninstall.sh`、陈述代码并不会写的 SS0 和 SS1 数值、并把 PLM 回读规则过度泛化。
+* **PCIe Gen2 不随 `master` 发布。** 补丁 `0007` 和 `0008` 只存在于实验分支上，两个竞争的 `RMPcieLinkSpeed` 值有一个是错的，却没有 A/B 测试说明是哪个。
+* **支持是一个人。** 第一张记录的 Gen2 工单等了约 **10.5 小时**才收到首次回复。附上 `sudo dmesg | grep SEC2_DEBUG` 和你最新的安装日志，否则就做好等更久的准备。
 
-Which of these matter depends on you. If your response to "my card came back reporting 8192 MiB
-after a cold boot" is to read `dmesg` and work the triage list, this is a comfortable project. If
-you need the card working on Tuesday, it is not.
+这些哪些要紧取决于你。如果你对"我的卡冷启动后回来报告 8192 MiB"的反应是去读 `dmesg` 并按分诊清单处理，这是个舒服的项目。如果你需要卡在周二之前能用，那它不是。
 
 ---
 
-## 9. Legal and warranty considerations
+## 9. 法律与质保考虑
 
-Stated neutrally, and briefly. **None of this is legal advice, and the applicable law varies by
-jurisdiction.**
+中性、简短地陈述。**这些都不是法律建议，适用法律因司法辖区而异。**
 
-* **NVIDIA issued a DMCA takedown against at least one `cmpunlocker` fork on 2026-07-17**, taking
-  that repository offline. The recipient stated the notice came from NVIDIA directly and stopped
-  public work. Whether that was human or automated filter-triggered enforcement was never
-  established, and no takedown document exists in the source set. *(Confidence: medium; first-hand
-  report from the repository owner, with the repository observably down.)*
-* The unlock is a patch against **NVIDIA's own open-source kernel modules**, published by NVIDIA and
-  fetched from NVIDIA at build time. No NVIDIA code is redistributed by the tool. The decryption keys
-  involved are ones already published on NVIDIA's public website. The provenance question of whether
-  the work derives from the 2022 LAPSUS$ breach has been examined at length and answered in the
-  negative; see [Clean room and provenance](../history/clean-room-and-provenance.md).
-* The driver's end-user licence terms, and any local rules on circumventing technological protection
-  measures, are yours to read and evaluate.
-* On warranty: these are ex-mining cards bought second-hand, so in practice there is rarely a
-  manufacturer warranty to void. Where a seller warranty exists, modifying the card physically, and
-  quite possibly running unsigned patched drivers on it, would be expected to end it. Whether a
-  seller honours anything after an unlock attempt is a matter between you and the seller.
+* **NVIDIA 于 2026-07-17 对至少一个 `cmpunlocker` 分支发出了 DMCA 删除通知**，把那个仓库带下线。接收方说通知直接来自 NVIDIA，并停止了公开工作。那是人工还是自动化过滤器触发的执法从未被确定，来源集中也没有删除文件。*（置信度：中等；来自仓库所有者的一手报告，且仓库可观察到已下线。）*
+* 解锁是一个针对 **NVIDIA 自己的开源内核模块**的补丁，由 NVIDIA 发布、构建时从 NVIDIA 抓取。工具不重新分发任何 NVIDIA 代码。涉及的解密密钥是 NVIDIA 自己公开网站上已经发布过的。这项工作是源于 2022 年 LAPSUS$ 泄露的来源溯源问题已被详细审视并以否定作答；参见[净室与来源溯源](../history/clean-room-and-provenance.md)。
+* 驱动的最终用户许可条款，以及任何关于规避技术保护措施的本地规则，由你自己阅读和评估。
+* 关于质保：这些是二手买来的退役矿卡，所以实践中很少有没有厂商质保可作废。凡存在卖家质保的地方，物理改装卡片，以及很可能是用未签名的补丁驱动运行它，都会被预期终结质保。解锁尝试后卖家是否兑现任何承诺，是你和卖家之间的事。
 
 ---
 
-## 10. A practical safety posture
+## 10. 一个实用的安全姿态
 
-* **Arrange cooling before you power the card once.** This is the only item on this list that can
-  destroy a card in minutes.
-* Confirm the card enumerates and runs on an **unpatched stock driver** first. It does: stock
-  `nvidia-driver-570` plus CUDA 12.8 on Ubuntu 24.04 works out of the box. Knowing that gives you a
-  baseline to return to.
-* Use the supplied EPS adapter. Never put a PCIe 8-pin cable into the EPS socket.
-* Prefer a headless or non-NVIDIA-display host so the module can actually unload.
-* Do the unlock on a machine you can afford to reinstall.
-* Do not `kill -9` live jobs, and keep vLLM at 0.90 or below.
-* Do not run the over-provisioned 80 GB geometry on hardware or workloads you care about.
-* Pin the driver at 610 as a long-term precaution against a future NVIDIA release closing the hole,
-  the same way P100 and V100 users pin around 580. *(Confidence: medium; reasoned advice, not yet
-  needed, since no blocking driver exists.)*
-* Before asking for help, capture `sudo dmesg | grep SEC2_DEBUG` and the newest
-  `logs/install_*.log`.
+* **在给卡通电之前先安排好散热。** 这是本清单里唯一能在几分钟内毁掉卡的一项。
+* 先确认卡能在**未打补丁的出厂驱动**上枚举并运行。可以：Ubuntu 24.04 上出厂 `nvidia-driver-570` 加 CUDA 12.8 开箱即用。知道这一点给了你一个可回退的基线。
+* 使用附带的 EPS 转接线。绝不把 PCIe 8-pin 线插进 EPS 插座。
+* 优先选择无头或非 NVIDIA 显示的主机，这样模块才真正能卸载。
+* 在你承受得起重装的机器上做解锁。
+* 不要 `kill -9` 活着的任务，让 vLLM 保持在 0.90 或以下。
+* 不要在你关心的硬件或工作负载上运行过度配置的 80 GB 几何布局。
+* 把驱动固定到 610，作为应对未来 NVIDIA 版本堵上这个洞的长期预防，就像 P100 和 V100 用户固定到 580 附近那样。*（置信度：中等；理性建议，目前还不需要，因为没有阻断性的驱动存在。）*
+* 求助前，捕获 `sudo dmesg | grep SEC2_DEBUG` 和最新的 `logs/install_*.log`。
 
 ---
 
-## Related pages
+## 相关页面
 
-* [Identify your card](identify-your-card.md): which SKU you have and which profile applies
-* [Quick start](quick-start.md) and [What is this card](what-is-this-card.md)
-* [Recovery](../procedures/recovery.md): the reset ladder and the full state-persistence table
-* [Troubleshooting](../procedures/troubleshooting.md): symptom to cause to fix
-* [Install](../procedures/install.md): prerequisites and the supported procedure
-* [Cooling](../operations/cooling.md) and [Thermals](../hardware/thermals.md)
-* [Power and PSU](../operations/power-and-psu.md) and
-  [Power delivery](../hardware/power-delivery.md)
-* [Physical mods](../operations/physical-mods.md): the capacitor mod in full
-* [80 GB](../frontier/80gb.md): why the over-provisioned geometry is not usable
-* [Glossary](glossary.md) for any term above that is unfamiliar
+* [识别你的卡](identify-your-card.md)：你拥有哪个 SKU、哪个档位适用
+* [快速上手](quick-start.md) 和[这是什么卡](what-is-this-card.md)
+* [恢复](../procedures/recovery.md)：复位阶梯和完整的状态持久性表
+* [排障](../procedures/troubleshooting.md)：从症状到原因到修复
+* [安装](../procedures/install.md)：前置条件和受支持流程
+* [散热](../operations/cooling.md) 和[热设计](../hardware/thermals.md)
+* [供电与 PSU](../operations/power-and-psu.md) 和[板载供电](../hardware/power-delivery.md)
+* [物理改装](../operations/physical-mods.md)：电容改装全文
+* [80 GB](../frontier/80gb.md)：为什么过度配置的几何布局不可用
+* [术语表](glossary.md)，用于上文任何不熟悉的术语

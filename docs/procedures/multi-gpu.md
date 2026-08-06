@@ -1,71 +1,48 @@
-# Running several cards
+# 运行多张卡
 
-**What this page covers.** What happens when a host has more than one CMP 170HX: why shipping
-`master` works on multi-card rigs despite being a single-card installer, what the unreleased
-`multiple-cards` branch adds (per-BDF classification, the `gpu_inventory` file, the `mixed`
-profile and `SKIP_GEOMETRY_REWRITE`), and the failure modes that only appear once there are two or
-more GPUs in the box.
+**本页覆盖内容。** 当一台主机有不止一张 CMP 170HX 时会发生什么：为什么出货 `master` 在多卡机架上有效、尽管它是一个单卡安装器、未发布的 `multiple-cards` 分支添加了什么（按-BDF 分类、`gpu_inventory` 文件、`mixed` 档位和 `SKIP_GEOMETRY_REWRITE`）、以及只在盒子里有至少两张 GPU 时才出现的失败模式。
 
-The key result up front: **the unlock itself is already per-GPU.** Since commit `7fe49b6` the
-patched `nvidia.ko` carries both geometries and selects one at GSP boot from
-`pGpu->idInfo.PCIDeviceID >> 16`, so every card in the machine is unlocked independently with the
-right size, whatever the installer thought. What is single-card on `master` is only the
-*installer's* bookkeeping: it takes the first matching `lspci` line, guesses one profile from one
-`nvidia-smi` reading, and writes one set of metadata files. The `multiple-cards` and `Gen2`
-branches replace that bookkeeping with a real per-device inventory.
+提前给的关键结果：**解锁本身已经是按-GPU 的。** 自提交 `7fe49b6` 起、打过补丁的 `nvidia.ko` 携带两种几何布局、并在 GSP 引导时从 `pGpu->idInfo.PCIDeviceID >> 16` 选择一个，所以机器里的每张卡都以正确的大小独立解锁、不管安装器怎么想。`master` 上是单卡的只有*安装器的*记账：它取第一行匹配的 `lspci`、从一次 `nvidia-smi` 读猜测一个档位、并写一组元数据文件。`multiple-cards` 和 `Gen2` 分支用一个真实的按-设备清单取代那段记账。
 
-Multi-GPU operation is confirmed working in practice: one operator passed through eight 8 GB
-CMP 170 cards under Proxmox and all of them unlocked. Earlier advice for a six-card rig was to try
-`master` first, and a multi-GPU user later confirmed master worked well.
+多卡操作在实践中确认可用：一位操作者在 Proxmox 下直通了八张 8 GB CMP 170 卡、全部解锁。对一个六卡机架的更早建议是先试 `master`，而一位多 GPU 用户后来确认 master 工作得很好。
 
 ---
 
-## What `master` does on a multi-card host
+## `master` 在多卡主机上做什么
 
 ```bash
 lspci -nn | grep -iE '10de:20b0|10de:20c2|10de:2082' | head -1
 ```
 
-That `head -1` is the whole story. `install.sh` records one BDF and one device ID, then calls
-`detect_card_profile()`, which reads
-`nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1`, again taking the
-first entry, this time in *nvidia-smi* order rather than *lspci* order. The two orderings are not
-guaranteed to agree.
+那个 `head -1` 就是全部故事。`install.sh` 记录一个 BDF 和一个设备 ID，然后调用 `detect_card_profile()`，它读 `nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1`、再次取第一项、这次是 *nvidia-smi* 顺序而非 *lspci* 顺序。两种排序不保证一致。
 
-The consequences on current `master`:
+在当前 `master` 上的后果：
 
-| Scenario | Outcome |
+| 场景 | 结果 |
 |---|---|
-| 4x 8 GB cards | Works. All four unlock to 65536 MiB. Profile metadata says `8gb`, which happens to be right |
-| 4x 10 GB cards | Works. All four unlock to 40960 MiB |
-| Mixed 8 GB + 10 GB | **The geometry is still correct per card**, because it is chosen by device ID at GSP boot. Only `card_profile` / `unlock_geometry` are wrong for whichever type lost the coin toss |
-| CMP cards plus an unrelated NVIDIA GPU | The profile may be detected from the *other* card. Still only a metadata error, unless the other card's size falls outside all four detection windows, in which case the install **dies** |
-| A `10de:20b0` card is present | Warned about only if it is the *first* matching `lspci` line; sitting behind a `20c2` or `2082` card the `head -1` hides it entirely and no warning is printed. Either way it is never unlocked, because the in-driver gate accepts only `0x20C2` and `0x2082` |
+| 4x 8 GB 卡 | 有效。全部四张解锁到 65536 MiB。档位元数据说 `8gb`、碰巧是对的 |
+| 4x 10 GB 卡 | 有效。全部四张解锁到 40960 MiB |
+| 混合 8 GB + 10 GB | **每张卡的几何布局仍正确**，因为它在 GSP 引导时按设备 ID 选择。只有 `card_profile` / `unlock_geometry` 对输掉抛硬币的类型是错的 |
+| CMP 卡加一张无关的 NVIDIA GPU | 档位可能从*另一张*卡检测到。仍只是一个元数据错误，除非另一张卡的大小落在全部四个检测窗口之外，那种情况下安装**死掉** |
+| 存在一张 `10de:20b0` 卡 | 只有当它是*第一*行匹配的 `lspci` 时才被警告；坐在一张 `20c2` 或 `2082` 卡后面时 `head -1` 完全隐藏它、不打任何警告。无论哪种方式它都不被解锁，因为驱动内门只接受 `0x20C2` 和 `0x2082` |
 
 > [!WARNING]
-> **Always pass `--profile` on a mixed-GPU host**
+> **在混合-GPU 主机上始终传 `--profile`**
 >
-> A host with an RTX 3080 10 GB alongside an 8 GB CMP 170HX was reproduced by at least two
-> people detecting "10GB" from the 3080 and selecting the 10 GB profile. A separate report has
-> another CMP SKU (a 50HX) misdetected as a 10 GB 170HX. On current `master` this only
-> mislabels the metadata files, but the habit of passing `--profile=8gb` or `--profile=10gb`
-> explicitly costs nothing and removes a whole class of confusing output.
+> 一张 RTX 3080 10 GB 与一张 8 GB CMP 170HX 并存的主机，被至少两人复现为从 3080 检测出 "10GB" 并选 10 GB 档位。另一份报告有另一个 CMP SKU（一张 50HX）被误检为 10 GB 170HX。在当前 `master` 上这只会给元数据文件贴错标签，但显式传 `--profile=8gb` 或 `--profile=10gb` 的习惯零成本、还移除整整一类令人困惑的输出。
 
 ---
 
-## The `multiple-cards` branch
+## `multiple-cards` 分支
 
 > [!WARNING]
-> **Experimental: unreleased branch**
+> **实验性：未发布分支**
 >
-> `multiple-cards` (tip `b1cb6d8` "Added support for multiple cards", committed 2026-07-18,
-> announced 2026-07-19) has **not** merged into `master` as of tip `cc872cb` (2026-07-23). The
-> same installer also exists folded into the `Gen2` lineage via commit `2f27474`
-> "Gen2 + multiple-card support". Everything in this section is branch code.
+> `multiple-cards`（tip `b1cb6d8` "Added support for multiple cards"，提交于 2026-07-18、宣布于 2026-07-19）截至 tip `cc872cb`（2026-07-23）**没有**合并进 `master`。同一个安装器也经提交 `2f27474` "Gen2 + multiple-card support" 折进 `Gen2` 谱系。本节一切都是分支代码。
 
-### Per-BDF classification
+### 按-BDF 分类
 
-`detect_card_profile()` is replaced by `profile_from_devid()`:
+`detect_card_profile()` 被 `profile_from_devid()` 取代：
 
 ```bash
 profile_from_devid() {
@@ -85,23 +62,13 @@ expected_mib_for_profile() {
 }
 ```
 
-The installer then walks **every** line of
-`lspci -nn | grep -iE '10de:20b0|10de:20c2|10de:2082'` (via `mapfile`, not `head -1`) and builds
-five parallel arrays: BDF, device ID, profile, expected MiB, current MiB. Current MiB comes from a
-single cached `nvidia-smi --query-gpu=pci.bus_id,memory.total --format=csv,noheader,nounits`
-lookup, matched by bus ID rather than by index.
+然后安装器走 `lspci -nn | grep -iE '10de:20b0|10de:20c2|10de:2082'` 的**每一**行（经 `mapfile`、不用 `head -1`）并构建五个平行数组：BDF、设备 ID、档位、预期 MiB、当前 MiB。当前 MiB 来自一次缓存的 `nvidia-smi --query-gpu=pci.bus_id,memory.total --format=csv,noheader,nounits` 查找、按总线 ID 而非索引匹配。
 
-Bus IDs are compared through a shared `normalize_bus_id()` that lowercases and expands a short
-`BB:DD.F` into `0000:BB:DD.F`, so the `lspci` and `nvidia-smi` spellings compare equal. The same
-function exists verbatim in `verify.sh`.
+总线 ID 通过一个共享的 `normalize_bus_id()` 比较，它转小写并把一个短的 `BB:DD.F` 展开成 `0000:BB:DD.F`，所以 `lspci` 和 `nvidia-smi` 拼写比较相等。同一个函数逐字存在于 `verify.sh` 里。
 
-A `20b0` card is classified `unsupported` and **skipped** here, with
-`GPU <bdf> (10de:20b0), unlock path not gated for this ID; skipping`, which is a behavioural
-difference from master (which warns and continues with that card selected). If every detected card
-is unsupported, the branch installer dies with
-`No unlockable CMP 170HX GPUs found (need 10de:20c2 and/or 10de:2082)`.
+一张 `20b0` 卡在这里被分类为 `unsupported` 并**跳过**、带 `GPU <bdf> (10de:20b0), unlock path not gated for this ID; skipping`，这是对 master（它警告并继续、选那张卡）的一个行为差异。如果每张检测到的卡都不受支持，分支安装器以 `No unlockable CMP 170HX GPUs found (need 10de:20c2 and/or 10de:2082)` 死掉。
 
-Typical step 2 output:
+典型的第 2 步输出：
 
 ```text
 ✓ GPU 0000:0b:00.0 (10de:20c2) → 8gb (current 8192 MiB, expect ~65536 MiB unlocked)
@@ -110,24 +77,20 @@ Typical step 2 output:
 ==> Inventory: 3 unlockable (2× 8gb, 1× 10gb)
 ```
 
-### The `mixed` profile
+### `mixed` 档位
 
-When both `COUNT_8GB > 0` and `COUNT_10GB > 0`, `CARD_PROFILE` becomes a third value, `mixed`:
+当 `COUNT_8GB > 0` 和 `COUNT_10GB > 0` 都成立时，`CARD_PROFILE` 变成一个第三个值、`mixed`：
 
 ```text
 ✓ Mixed variants detected → profile mixed (runtime geometry by PCI ID)
 ==> Unlock geometry: 64GB for 20c2 / 40GB for 2082 (chosen at GSP boot per GPU)
 ```
 
-A `--profile=` override is **explicitly discarded** on a mixed inventory, with
-`--profile=8gb ignored for mixed inventory; card_profile stays mixed (each card unlocks by PCI
-ID)`. On a homogeneous inventory the override is honoured but warns that it is metadata only.
-The branch's help text makes the demotion explicit:
-`Force 8GB metadata label (geometry is still chosen per PCI ID)`.
+一个 `--profile=` 覆盖在混合清单上被**显式丢弃**、带 `--profile=8gb ignored for mixed inventory; card_profile stays mixed (each card unlocks by PCI ID)`。在同类清单上覆盖被尊重、但警告它只是元数据。分支的帮助文本让这个降级显式化：`Force 8GB metadata label (geometry is still chosen per PCI ID)`。
 
 ### `SKIP_GEOMETRY_REWRITE`
 
-`driver/build.sh` on the branch gains a third case and a guard flag:
+分支上的 `driver/build.sh` 获得第三个 case 和一个守卫标志：
 
 ```bash
 SKIP_GEOMETRY_REWRITE=0
@@ -150,26 +113,16 @@ else
 fi
 ```
 
-Two things are worth noticing in that snippet:
+那段代码片段里有两件值得注意：
 
-1. In `mixed` mode the `CFG1` / `LMR` / `FB_BYTES` variables are still assigned the **8 GB**
-   values, and are simply never used. They are the values a mixed host would try to bake for
-   every card if the flag were dropped *and* the rewrite were reachable; point 2 explains why it
-   is not.
-2. `SKIP_GEOMETRY_REWRITE` is belt-and-braces on top of an existing safety net. The inline Python
-   step it skips already begins with a six-marker check for both baked geometries and exits with
-   `runtime device-id geometry (profile metadata=<label>)` without editing anything. On any tree
-   descended from `7fe49b6` the rewrite is a no-op regardless. The flag matters only if someone
-   re-introduces a single-SKU patch.
+1. 在 `mixed` 模式里 `CFG1` / `LMR` / `FB_BYTES` 变量仍被赋成**8 GB** 值、却从未被使用。它们是混合主机如果丢掉标志*并且*重写可达时、会试图为每张卡烘焙的值；第 2 点解释为什么它不可达。
+2. `SKIP_GEOMETRY_REWRITE` 是叠加在一个已有安全网之上的双保险。它跳过的内联 Python 步骤已经以一个六标记检查开头、检查两种烘焙几何布局、并以 `runtime device-id geometry (profile metadata=<label>)` 退出、不编辑任何东西。在任何源自 `7fe49b6` 的树上，重写无论如何都是空操作。只有某人重新引入一个单-SKU 补丁时该标志才要紧。
 
-`unlock_geometry` is written as the literal string `mixed` in that mode, and `card_profile` as
-`mixed`.
+`unlock_geometry` 在那个模式下以字面量字符串 `mixed` 被写、`card_profile` 也写成 `mixed`。
 
-### The `gpu_inventory` file
+### `gpu_inventory` 文件
 
-`install.sh` exports `CMPUNLOCKER_GPU_INVENTORY` and `build.sh` persists it to
-`/lib/modules/$(uname -r)/updates/cmpunlocker/gpu_inventory`, one whitespace-separated line per
-unlockable GPU:
+`install.sh` 导出 `CMPUNLOCKER_GPU_INVENTORY`、`build.sh` 把它持久化到 `/lib/modules/$(uname -r)/updates/cmpunlocker/gpu_inventory`、每张可解锁 GPU 一行、空白分隔：
 
 ```text
 BDF              devid  profile  expected_mib
@@ -178,45 +131,33 @@ BDF              devid  profile  expected_mib
 0000:0d:00.0     2082   10gb     40960
 ```
 
-The real file has no header row; the columns above are labelled for readability. If the variable
-is empty, `build.sh` truncates the file to zero bytes rather than leaving a stale one.
+真实文件没有表头行；上面的列是为可读性加标的。如果变量为空，`build.sh` 把文件截断到零字节、而非留下一个陈旧的。
 
-Like the other three metadata files, **nothing in the kernel modules reads it.** Its only consumer
-is `verify.sh`, which prefers it over live `lspci` enumeration so that a card which has fallen off
-the bus is reported as `MISSING` rather than silently vanishing from the check.
+像其它三个元数据文件一样，**内核模块里没有任何东西读它。** 它唯一的消费者是 `verify.sh`，它偏好它而非活 `lspci` 枚举，这样一张已掉下总线的卡被报告为 `MISSING`、而非静默从检查中消失。
 
-### `verify.sh` on a multi-card rig
+### `verify.sh` 在多卡机架上
 
 ```bash
 sudo ./verify.sh
 ```
 
-Enumerates from `gpu_inventory` if it is readable and non-empty, otherwise falls back to
-`lspci -nn | grep -iE '10de:20c2|10de:2082'`. Per GPU it prints `OK`, `STOCK`, `MISSING` or
-`UNEXPECTED` against the windows `>= 60000` MiB (8gb) and `35000`-`59999` MiB (10gb), then
-summarises:
+从 `gpu_inventory` 枚举（如果可读且非空），否则回退到 `lspci -nn | grep -iE '10de:20c2|10de:2082'`。每张 GPU 它针对窗口 `>= 60000` MiB（8gb）和 `35000`-`59999` MiB（10gb）打印 `OK`、`STOCK`、`MISSING` 或 `UNEXPECTED`，然后总结：
 
 ```text
 ✓ All 3 unlockable GPU(s) report unlocked memory
 ```
 
-or fails with `<n> GPU(s) failed unlock verification. Cold reboot if modules were just installed.`
-Full details, including the two things it does not check, are in [Verify](verify.md#verifysh).
+或以 `<n> GPU(s) failed unlock verification. Cold reboot if modules were just installed.` 失败。完整细节、包括它不检查的两件事，见[验证](verify.md#verifysh)。
 
 ---
 
-## Known multi-card failure modes
+## 已知的多卡失败模式
 
-### 1. depmod silently picks one `nvidia.ko`
+### 1. depmod 静默挑一个 `nvidia.ko`
 
-The highest-value item on this page. A patched and a stock `nvidia.ko` can both end up under the
-single `updates` depmod search entry, in which case **depmod picks one arbitrarily and silently
-drops the other**. One tester root-caused a multi-GPU failure to exactly this, kept only the
-cmpunlocker variant in the updates search path, rebooted, and then confirmed multi-GPU operation
-working.
+本页最有价值的一项。一个打过补丁的和一个出厂的 `nvidia.ko` 可能都落在单一的 `updates` depmod 搜索项下，那种情况下 **depmod 任意挑一个、静默丢掉另一个**。一位测试者把一个多卡失败精确根因到这一点、只在 updates 搜索路径里保留 cmpunlocker 变体、重启、然后确认多卡操作工作。
 
-This is the same failure class as the `srcversion` mismatch that `build.sh` warns about: the
-running module is not the patched one, so no card unlocks. Diagnose it with:
+这是与 `build.sh` 警告的 `srcversion` 不匹配相同的失败类：运行中的模块不是打过补丁的那个，所以没有卡解锁。用它诊断：
 
 ```bash
 modprobe -n -v nvidia | awk '/insmod/ {print $2; exit}'
@@ -225,132 +166,90 @@ cat /sys/module/nvidia/srcversion
 modinfo -F srcversion /lib/modules/$(uname -r)/updates/cmpunlocker/nvidia.ko
 ```
 
-Anything not under `updates/cmpunlocker/` in the first command, or more than one `nvidia.ko` in
-the second, is the bug.
+第一条命令里任何不在 `updates/cmpunlocker/` 下的、或第二条里多于一个 `nvidia.ko` 的，就是 bug。
 
-### 2. A stale initramfs beats depmod entirely
+### 2. 一个陈旧的 initramfs 彻底胜过 depmod
 
-Unchanged from the single-card case but worse in a rig, because a partial result looks like a
-per-card problem rather than a module-loading problem. `build.sh` rebuilds the initramfs itself
-and warns `No initramfs tool found, rebuild manually before rebooting` when it cannot. If some
-cards unlock and others do not on the *same* boot, this is not the cause; if *none* do, it very
-likely is.
+与单卡情形相同、却在机架上更糟，因为一个部分结果看起来像一个按卡的问题、而非一个模块加载问题。`build.sh` 自己重建 initramfs、无法时警告 `No initramfs tool found, rebuild manually before rebooting`。如果某些卡在*同一次*引导里解锁、另一些不，这不是原因；如果*没有*卡解锁，它很可能就是。
 
-### 3. Profile misdetection from the wrong GPU
+### 3. 从错误的 GPU 误检测档位
 
-Covered above. On `master` it is a metadata-only error, except when it makes the install die.
+上文已覆盖。在 `master` 上是纯元数据错误，除了当它让安装死掉时。
 
-### 4. `verify.sh`'s lspci fallback drops `0x20B0`
+### 4. `verify.sh` 的 lspci 回退丢掉 `0x20B0`
 
-`install.sh` greps `10de:20b0|10de:20c2|10de:2082` and then warns or skips `20b0`, but
-`verify.sh`'s fallback path greps only `10de:20c2|10de:2082`. A rig containing a `20b0` card will
-show a different device count in the installer and in the verifier. Harmless, but confusing.
+`install.sh` grep `10de:20b0|10de:20c2|10de:2082` 然后警告或跳过 `20b0`，但 `verify.sh` 的回退路径只 grep `10de:20c2|10de:2082`。一个含 `20b0` 卡的机架会在安装器和验证器里显示不同的设备数。无害、却令人困惑。
 
-### 5. Virtualisation constraints
+### 5. 虚拟化约束
 
-- **Proxmox passthrough works** for memory and compute: eight 8 GB cards passed through and all
-  unlocked.
-- **Use SeaBIOS, not UEFI/OVMF.** UEFI produces RM init and adapter failures that mimic the
-  exploit simply not working. This was root-caused first-hand and immediately corroborated by a
-  second person whose non-reproductions turned out to have the same cause.
-- **PCIe Gen2 link training does not work in a VM** as of 2026-07-24, acknowledged by the
-  maintainer as an open debugging item.
+- **Proxmox 直通对显存和算力有效**：八张 8 GB 卡直通、全部解锁。
+- **用 SeaBIOS、不要用 UEFI/OVMF。** UEFI 产生看起来恰好像利用根本不工作的 RM init 和适配器失败。这被一手根因定位、并立即被一个其无法复现恰好同因的第二人佐证。
+- **截至 2026-07-24 PCIe Gen2 链路训练在 VM 里不工作**，被维护者承认是一个开放的调试项。
 
-### 6. Host-level wedges in multi-tenant use
+### 6. 多租户使用中的主机级卡死
 
-One operator's renter killed an underperforming `llama.cpp` run (about 121 t/s) and left ghost
-processes that wrecked the driver state. Recovery required a host reboot by the operator, because
-the cards could not be restarted from inside the Docker container. Plan for out-of-band reboot
-access on any rented rig. See [Recovery](recovery.md).
+一位操作者的租户杀掉了一个表现不佳的 `llama.cpp` 运行（约 121 t/s）、留下毁掉驱动状态的幽灵进程。恢复需要操作者做的一次主机重启，因为卡无法从 Docker 容器内重启。在任何租赁机架上规划带外重启访问。见[恢复](recovery.md)。
 
-### 7. Interconnect, not installer
+### 7. 互连，不是安装器
 
-Several "multi-card is slow" reports are link-bandwidth problems, not unlock problems:
+几份 "多卡很慢" 的报告是链路带宽问题、不是解锁问题：
 
-- Every card is Gen1 x4 by default. Going to Gen2 is a software change on unreleased branches;
-  going beyond x4 width requires soldering AC-coupling capacitors. These are two entirely separate
-  achievements. See [PCIe subsystem](../hardware/pcie-subsystem.md) and
-  [PCIe Gen2](../unlock/pcie-gen2.md).
-- **NVLink is fused off** and P2P is absent on this card. `llama-server --split-mode row` was
-  circulated alongside the layer-split command but annotated "benchmark-only on these links",
-  consistent with tensor-parallel-style splits not being viable at Gen1 x4.
-- A frequently quoted rule of thumb ("x4 gives 10-30% speedup, x8 or better is ideal" for
-  multi-GPU LLM serving) was offered as a rule of thumb and **was not measured on a 170HX**. Treat
-  it as low confidence. See [LLM inference](../operations/llm-inference.md).
+- 每张卡默认都是 Gen1 x4。到 Gen2 是未发布分支上的一个软件改动；超过 x4 位宽需要焊接交流耦合电容。这两个是各自独立的成果。见[PCIe 子系统](../hardware/pcie-subsystem.md) 和 [PCIe Gen2](../unlock/pcie-gen2.md)。
+- **NVLink 熔断关闭**、这张卡上 P2P 缺失。`llama-server --split-mode row` 与层拆分命令一起被传开、却被标注 "benchmark-only on these links"（仅在这些链路上做基准），与张量并行式拆分在 Gen1 x4 下不可行一致。
+- 一条被频繁引用的经验法则（"x4 给 10-30% 加速、x8 或更好是理想"、对多 GPU LLM 服务而言）是作为经验法则提供的、**没在 170HX 上测过**。把它当中等置信度。见[LLM 推理](../operations/llm-inference.md)。
 
-### 8. P2P layering
+### 8. P2P 分层
 
-The `aikitoria` P2P patch can be layered on top of cmpunlocker by dropping its diff into
-`driver/patches/` as `0007-unlock-p2p.patch`, because `build.sh` applies every `*.patch` in glob
-order. Whether it does anything useful on a 170HX-only system is unresolved: one tester reported
-"It doesn't seem to take effect on the 170HX... It only has an effect on them if there are other
-models of GPUs on the same machine", while another reported P2P plus cmpunlocker working on the
-same day in a rig that also contained two RTX 3090s, which is precisely the mixed-model case the
-first report says is the only one that works. Both sides agree P2P is bandwidth-bound and of
-little benefit at Gen1 x4. See [P2P](../frontier/p2p.md).
+`aikitoria` P2P 补丁可以通过把它丢进 `driver/patches/` 作为 `0007-unlock-p2p.patch` 分层在 cmpunlocker 之上，因为 `build.sh` 按 glob 顺序应用每个 `*.patch`。它在一个纯-170HX 系统上是否有用未解决：一位测试者报告 "It doesn't seem to take effect on the 170HX... It only has an effect on them if there are other models of GPUs on the same machine"（它在 170HX 上似乎没生效……只有当机器上还有其它型号 GPU 时才对它们有效），而另一位在同一台还含两张 RTX 3090 的机架上报告 P2P 加 cmpunlocker 工作，那恰好是第一份报告说唯一能工作的混合型号情形。双方都同意 P2P 受带宽约束、在 Gen1 x4 下收益甚微。见[P2P](../frontier/p2p.md)。
 
 ---
 
-## Recommended procedure for a multi-card rig today
+## 今天对多卡机架的推荐流程
 
-1. Inventory the hardware before installing anything:
+1. 安装任何东西前盘点硬件：
 
    ```bash
    lspci -nn | grep -iE '10de:20b0|10de:20c2|10de:2082'
    nvidia-smi --query-gpu=pci.bus_id,name,memory.total --format=csv
    ```
 
-   Confirm the device ID of every card. See [Identify your card](../start/identify-your-card.md).
+   确认每张卡的设备 ID。见[识别你的卡](../start/identify-your-card.md)。
 
-2. Install from `master` with an explicit profile if all cards are the same type:
+2. 如果所有卡类型相同，从 `master` 安装、带一个显式档位：
 
    ```bash
-   sudo ./install.sh --profile=8gb     # or --profile=10gb
+   sudo ./install.sh --profile=8gb     # 或 --profile=10gb
    ```
 
-   For a genuinely mixed 8 GB + 10 GB rig, `master` still produces correct geometry per card; the
-   only thing you give up is accurate metadata and `verify.sh`. If you want those, use the
-   `multiple-cards` branch and accept that it is unreleased.
+   对一个真正混合的 8 GB + 10 GB 机架，`master` 仍产生每张卡的正确几何布局；你放弃的只有准确的元数据和 `verify.sh`。如果你想要那些，用 `multiple-cards` 分支并接受它未发布。
 
-3. Cold boot. `sudo shutdown -h now`, then power on.
+3. 冷启动。`sudo shutdown -h now`，然后上电。
 
-4. Verify **every** card individually, not just the first:
+4. 逐张验证**每张**卡、不只第一张：
 
    ```bash
    nvidia-smi --query-gpu=pci.bus_id,memory.total --format=csv
-   sudo dmesg | grep 'POST-WRITE'      # one line per unlocked GPU, with its devId
+   sudo dmesg | grep 'POST-WRITE'      # 每张解锁的 GPU 一行、带它的 devId
    ```
 
-   The `POST-WRITE` line carries `(devId=0x...)`, so a rig with mixed SKUs should show both
-   `CFG1=0x02779000 LMR=0x0000020b` and `CFG1=0x02669000 LMR=0x0000028a` lines.
+   `POST-WRITE` 行携带 `(devId=0x...)`，所以一个混合 SKU 机架应同时显示 `CFG1=0x02779000 LMR=0x0000020b` 和 `CFG1=0x02669000 LMR=0x0000028a` 行。
 
-5. If exactly one card is wrong, suspect that card (seating, power, riser). If all are wrong,
-   suspect module loading (failure modes 1 and 2).
+5. 如果恰好一张卡错了，怀疑那张卡（插装、供电、转接卡）。如果全部错了，怀疑模块加载（失败模式 1 和 2）。
 
 ---
 
-## Merge status
+## 合并状态
 
 > [!NOTE]
-> **Open problem: should multi-card, IOMMU and Gen2 merge to master, and in what order?**
+> **未解问题：多卡、IOMMU 和 Gen2 应该合并进 master 吗、以什么顺序？**
 >
-> Neither `multiple-cards` (`b1cb6d8`, standalone) nor the `Gen2` lineage (which folds it in)
-> has merged as of `cc872cb`. The obstacle is bundling: merging `Gen2` wholesale would drag the
-> experimental PCIe link retraining patches (`0007-pcie-gen2.patch`,
-> `0008-pcie-gen2-probe-retrain.patch`) and their unverified register writes into the stable
-> path. The multi-card installer changes are self-contained and could be cherry-picked alone,
-> and the `mixed` profile already works because master's patch 0001 bakes in both geometries.
-> Separately, `clanker/driver-port` (580/590/595/610 support) and the Gen2 lineage were
-> developed independently and never merged, so choosing one today means giving up the other.
-> See [Status board](../frontier/status-board.md) and
-> [Driver versions](driver-versions.md).
+> `multiple-cards`（`b1cb6d8`、独立）和 `Gen2` 谱系（折进它）都没有截至 `cc872cb` 合并。障碍是捆绑：整体合并 `Gen2` 会把实验性 PCIe 链路重训练补丁（`0007-pcie-gen2.patch`、`0008-pcie-gen2-probe-retrain.patch`）和它们未经验证的寄存器写拖进稳定路径。多卡安装器改动自包含、可以被单独 cherry-pick，而 `mixed` 档位已经工作、因为 master 的补丁 0001 烘焙了两种几何布局。分开地，`clanker/driver-port`（580/590/595/610 支持）和 Gen2 谱系独立开发、从未合并，所以今天选一个意味着放弃另一个。见[状态板](../frontier/status-board.md) 和[驱动版本](driver-versions.md)。
 
 ---
 
-## Related pages
+## 相关页面
 
-- [Install](install.md), [Verify](verify.md), [Uninstall](uninstall.md)
-- [Troubleshooting](troubleshooting.md) for symptom-first diagnosis
-- [Driver patches](../unlock/driver-patches.md) for the device-ID gate that makes per-card
-  geometry work
-- [PCIe subsystem](../hardware/pcie-subsystem.md) for what the links can actually carry
+- [安装](install.md)、[验证](verify.md)、[卸载](uninstall.md)
+- [排障](troubleshooting.md) 看按症状优先的诊断
+- [驱动补丁](../unlock/driver-patches.md) 看让按卡几何布局工作的设备-ID 门
+- [PCIe 子系统](../hardware/pcie-subsystem.md) 看链路实际能带什么

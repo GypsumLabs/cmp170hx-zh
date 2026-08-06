@@ -1,42 +1,30 @@
-# PCIe subsystem
+# PCIe 子系统
 
-**What this page covers**: the physical and firmware state of the CMP 170HX's PCIe interface as
-it ships. The two restrictions the card leaves the factory with, the fuse and DevInit evidence
-behind the speed cap, the depopulated AC-coupling capacitors behind the width cap, the exact
-register and `lspci` state of a stock card, and the platform-level confounds that get mistaken
-for either. The software defeat of the speed cap lives on [Gen2 unlock](../unlock/pcie-gen2.md);
-the soldering work that defeats the width cap lives on
-[physical mods](../operations/physical-mods.md).
+**本页内容：** CMP 170HX 的 PCIe 接口出厂时的物理和固件状态。卡离开工厂时带的两项限制、速度上限背后的熔丝和 DevInit 证据、位宽上限背后的缺件交流耦合电容、一张出厂卡精确的寄存器和 `lspci` 状态，以及会被误认为其中任一者的平台级干扰因素。速度上限的软件破解在[Gen2 解锁](../unlock/pcie-gen2.md)；破解位宽上限的焊接工作在[物理改装](../operations/physical-mods.md)。
 
-## The headline: two caps, two mechanisms, two fixes
+## 头条：两个上限、两种机制、两种修复
 
-A stock CMP 170HX trains at **PCIe Gen1 (2.5 GT/s) by x4**. Those are two entirely separate
-restrictions that happen to coexist on the same board, and defeating either one does nothing
-whatsoever for the other.
+一张出厂 CMP 170HX 以 **PCIe Gen1（2.5 GT/s）配 x4** 训练。那是两个完全独立的限制，恰好共存于同一块板上，破解其中任一对另一个毫无作用。
 
-| | Speed cap | Width cap |
+| | 速度上限 | 位宽上限 |
 |---|---|---|
-| Observed state | 2.5 GT/s (Gen1) | x4 trained, x16 advertised |
-| Mechanism | OTP fuses plus a signed DevInit table, enforced in firmware | 12 of 16 lanes ship with their AC-coupling capacitors depopulated |
-| Where it lives | Silicon and SPI flash | The PCB |
-| Defeated by | A driver patch on unreleased branches (Gen2 only) | Hand-soldering 24 × 0402 capacitors |
-| Status | Gen2 reached in software 2026-07-24, **not shipped**; Gen3 and Gen4 unreached | Reproduced by multiple independent modders since April 2026 |
-| Does it change the other? | No. A Gen2-patched unmodded card is Gen2 x4. | No. A fully modded unpatched card is Gen1 x16. |
+| 观察到的状态 | 2.5 GT/s（Gen1） | x4 训练，x16 宣告 |
+| 机制 | OTP 熔丝加一个签名的 DevInit 表，固件强制 | 16 条通道中的 12 条出厂时交流耦合电容缺件 |
+| 住在哪 | 硅片和 SPI 闪存 | PCB |
+| 被破解 | 未发布分支上的驱动补丁（仅 Gen2） | 手工焊接 24 × 0402 电容 |
+| 状态 | Gen2 于 2026-07-24 软件达到，**未出货**；Gen3 和 Gen4 未达到 | 自 2026 年 4 月起被多位独立改装者复现 |
+| 会改变另一个吗？ | 不会。一张 Gen2 补丁的未改装卡是 Gen2 x4。 | 不会。一张完全改装的无补丁卡是 Gen1 x16。 |
 
-The clearest single proof that the two are independent: a stock, never-soldered 8 GB card running
-the Gen2 code reports `LnkCap: Port #0, Speed 5GT/s, Width x16` while `LnkSta` reads
-`Speed 5GT/s, Width x4 (downgraded)`. The capability register says x16; the trained link says x4.
-Nothing in software can close that gap, because there is no electrical path on 12 of the lanes.
+两者独立的唯一最清晰证明：一张出厂、从未焊接的 8 GB 卡运行 Gen2 代码时报告 `LnkCap: Port #0, Speed 5GT/s, Width x16`，而 `LnkSta` 读 `Speed 5GT/s, Width x4 (downgraded)`。能力寄存器说 x16；训练好的链路说 x4。软件中没有任何东西能弥合那个差距，因为 12 条通道上没有电气路径。
 
 > [!WARNING]
-> **Experimental**
+> **实验性**
 >
-> Everything on this page about Gen2 describes unreleased branch code. Shipping `master`
-> contains no PCIe patch of any kind. See [Gen2 unlock](../unlock/pcie-gen2.md).
+> 本页所有关于 Gen2 的内容描述的都是未发布分支代码。出货 `master` 不含任何 PCIe 补丁。参见[Gen2 解锁](../unlock/pcie-gen2.md)。
 
-## Stock link state
+## 出厂链路状态
 
-### What `lspci` prints
+### `lspci` 打印什么
 
 ```console
 $ sudo lspci -s 0a:00.0 -vvv | grep -E 'LnkCap|LnkSta|LnkCtl'
@@ -49,380 +37,250 @@ LnkCtl2: Target Link Speed: 2.5GT/s, EnterCompliance- SpeedDis-
 LnkSta2: Current De-emphasis Level: -6dB, EqualizationComplete-, EqualizationPhase1-
 ```
 
-Two details are worth internalising. `LnkCap` advertises **Width x16**, so the card knows it has
-sixteen lanes; the `(downgraded)` marker on `LnkSta` means the link *negotiated* down, which is
-what happens when the receiver sees no signal on lanes 4 through 15. And `LnkCap2` lists only
-2.5 GT/s as supported, which per the PCIe specification clamps any target link speed you write to
-`LnkCtl2`: writing `0x2` there on a stock card reads back `0x1`.
+两个细节值得内化。`LnkCap` 宣告 **Width x16**，所以卡知道自己有十六条通道；`LnkSta` 上的 `(downgraded)` 标记意味着链路*协商*降级，这正是接收端在通道 4 到 15 上看不到信号时发生的事。而 `LnkCap2` 只列出 2.5 GT/s 受支持，按 PCIe 规范这会钳制你写给 `LnkCtl2` 的任何目标链路速度：在出厂卡上写 `0x2` 读回来是 `0x1`。
 
-The kernel says the same thing in its own words on every boot:
+内核每次启动都用它自己的话说明同一件事：
 
 ```text
 pci 0000:0a:00.0: 8.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s PCIe x4 link at
   0000:09:01.0 (capable of 32.000 Gb/s with 2.5 GT/s PCIe x16 link)
 ```
 
-Note what the kernel is comparing against: 32 Gb/s at **2.5 GT/s x16**. It is complaining about
-width, not speed.
+注意内核在对比什么：2.5 GT/s x16 下的 32 Gb/s。它抱怨的是位宽，不是速度。
 
-### Raw register values
+### 原始寄存器值
 
-All addresses below are BAR0 mirrors of XVE config space. The PCIe Express capability sits at
-config offset `0x78` (not `0x60`), and the XVE shadow base is `0x88000`, so config `cap+0x0C`
-maps to BAR0 `0x00088084`, and so on.
+下面所有地址都是 XVE 配置空间的 BAR0 镜像。PCIe Express 能力位于配置偏移量 `0x78`（不是 `0x60`），XVE 影子基址是 `0x88000`，所以配置 `cap+0x0C` 映射到 BAR0 `0x00088084`，依此类推。
 
-| Field | Config offset | BAR0 mirror | Stock, no unlock | With the unlocker |
+| 字段 | 配置偏移量 | BAR0 镜像 | 出厂，无解锁 | 带解锁器 |
 |---|---|---|---|---|
 | LnkCap | `CAP_EXP+0x0C` | `0x00088084` | `0x00456101` | `0x00456102` |
-| LnkCtl / LnkSta | `CAP_EXP+0x10` | `0x00088088` | LnkCtl `0x0140`, LnkSta `0x1041` | LnkCtl `0x0140`, LnkSta `0x1042` |
+| LnkCtl / LnkSta | `CAP_EXP+0x10` | `0x00088088` | LnkCtl `0x0140`，LnkSta `0x1041` | LnkCtl `0x0140`，LnkSta `0x1042` |
 | LnkCap2 | `CAP_EXP+0x2C` | `0x000880a4` | `0x00000002` | `0x00000006` |
-| LnkCtl2 / LnkSta2 | `CAP_EXP+0x30` | `0x000880a8` | `0x0000` / `0x0000` | `0x0002` / `0x0001` or `0x0000` |
+| LnkCtl2 / LnkSta2 | `CAP_EXP+0x30` | `0x000880a8` | `0x0000` / `0x0000` | `0x0002` / `0x0001` 或 `0x0000` |
 | DevCap2 | | | `0x00070803` | `0x00070813` |
-| DevCtl2 | | | `0x1400` | `0x0400` (one rig `0x7410`) |
+| DevCtl2 | | | `0x1400` | `0x0400`（一台机器 `0x7410`） |
 
-`nvidia-smi` reports `pcie.link.gen.current, pcie.link.gen.max, pcie.link.width.current` as
-**1, 1, 4** on a card with no unlock installed and **2, 2, 4** with the unlocker. Width never
-moves in either case.
+`nvidia-smi` 把 `pcie.link.gen.current, pcie.link.gen.max, pcie.link.width.current` 报告为：无解锁安装的卡上 **1, 1, 4**，带解锁器的卡上 **2, 2, 4**。两种情况下位宽都不动。
 
 > [!NOTE]
-> **Do not repeat one published address**
+> **不要复述一个已发布的地址**
 >
-> A widely circulated field manual lists the LnkCap2 BAR0 mirror as `0x8808C`. That is
-> internally inconsistent: with the XVE mirror based at `0x88000`, config `0xA4` maps to
-> `0x880A4`, and `0x8808C` maps to config `0x8C`. Both the branch patch
-> (`#define PCIE_GEN2_LINK_CAP2_ADDR 0x000880a4U`) and the community `pcielink.sh` diagnostic
-> use `0x880A4`. Use `0x880A4`.
+> 一份广泛流传的实地手册把 LnkCap2 的 BAR0 镜像列为 `0x8808C`。这内部自相矛盾：XVE 镜像基于 `0x88000`，配置 `0xA4` 映射到 `0x880A4`，而 `0x8808C` 映射到配置 `0x8C`。分支补丁（`#define PCIE_GEN2_LINK_CAP2_ADDR 0x000880a4U`）和社区 `pcielink.sh` 诊断都用 `0x880A4`。用 `0x880A4`。
 
-### Other stock config-space facts
+### 其它出厂配置空间事实
 
-| Item | Value |
+| 项 | 值 |
 |---|---|
-| Slot power limit (DevCap) | 75 W |
-| MaxPayload / MaxReadReq | 256 bytes / 512 bytes |
-| ASPM | Not supported (advertised in LnkCap) |
-| FLReset | Supported |
-| BAR0 | 16 MB at a 32-bit non-prefetchable region, aperture `0x1000000` |
-| BAR1 | 64 MB, 64-bit prefetchable |
-| BAR3 | 32 MB, 64-bit prefetchable |
-| Resizable BAR capability | Present at `[bb0 v1]`, but each BAR advertises exactly one supported size |
+| 插槽功耗上限（DevCap） | 75 W |
+| MaxPayload / MaxReadReq | 256 字节 / 512 字节 |
+| ASPM | 不支持（在 LnkCap 中宣告） |
+| FLReset | 支持 |
+| BAR0 | 32 位不可预取区域里的 16 MB，孔径 `0x1000000` |
+| BAR1 | 64 MB，64 位可预取 |
+| BAR3 | 32 MB，64 位可预取 |
+| Resizable BAR 能力 | 存在于 `[bb0 v1]`，但每个 BAR 恰好宣告一个受支持大小 |
 
-BAR1 stays at 64 MiB no matter what framebuffer size the card reports, so full-VRAM host mapping
-is unavailable even on a card reporting 81920 MiB. Resizable BAR is therefore advertised but
-functionally inert. The old objection that ReBAR "requires PCIe 3.0" is wrong (ReBAR is a
-config-space capability, in the specification since 2007, and independent of link generation),
-but nobody has demonstrated a working ReBAR on a Gen2-trained 170HX either.
+无论卡报告多大的帧缓冲，BAR1 都停在 64 MiB，所以即使一张报告 81920 MiB 的卡上，全 VRAM 主机映射也不可用。因此 Resizable BAR 被宣告但功能上惰性。ReBAR "requires PCIe 3.0" 的旧异议是错的（ReBAR 是一个配置空间能力，自 2007 年就在规格里，与链路代数无关），但也没人在一张 Gen2 训练的 170HX 上演示过可工作的 ReBAR。
 
-## The speed cap
+## 速度上限
 
-### Fuse evidence
+### 熔丝证据
 
-Three OTP fuse shadows form the fingerprint of the lock. The 170HX reads **1 / 1 / `0x16680000`**
-where every comparison Ampere part reads **0 / 0 / something without bit 25**.
+三个 OTP 熔丝影子形成这个锁的指纹。170HX 读 **1 / 1 / `0x16680000`**，而每一个对比的 Ampere 部件读 **0 / 0 / 无位 25 的东西**。
 
-| Register | Address | 170HX (both SKUs) | A100 (all three SKUs) and Drive A100 | Notes |
+| 寄存器 | 地址 | 170HX（两个 SKU） | A100（全部三个 SKU）和 Drive A100 | 备注 |
 |---|---|---|---|---|
-| `FUSE_PCIE_GEN23_DIS` (`OPT_PCIE_BOOT_GEN23_DISABLE`) | `0x0082057c` | `0x00000001` | `0x00000000` | Also 0 on A10, A5000, A6000, RTX 3080 / 3080 Ti / 3090 / 3090 Ti and a GA10x control card |
-| `FUSE_PCIE_GEN3_DIS` (`OPT_PCIE_BOOT_GEN3_DISABLE`) | `0x00820580` | `0x00000001` | `0x00000000` | Same cohort |
-| `FUSE_PCIE_MAGIC_D` | `0x00820520` | `0x16680000` (bit 25 set) | `0x00200000` | Bit 25 is documented `GEN4_SPEED_DISABLED`, referenced to NVIDIA bug 2220334. A10/A5000/A6000 read `0x01a00000`; RTX 30-series read `0x10a80000` |
+| `FUSE_PCIE_GEN23_DIS`（`OPT_PCIE_BOOT_GEN23_DISABLE`） | `0x0082057c` | `0x00000001` | `0x00000000` | 在 A10、A5000、A6000、RTX 3080 / 3080 Ti / 3090 / 3090 Ti 和一张 GA10x 对照卡上也是 0 |
+| `FUSE_PCIE_GEN3_DIS`（`OPT_PCIE_BOOT_GEN3_DISABLE`） | `0x00820580` | `0x00000001` | `0x00000000` | 同一队列 |
+| `FUSE_PCIE_MAGIC_D` | `0x00820520` | `0x16680000`（位 25 置位） | `0x00200000` | 位 25 被记录为 `GEN4_SPEED_DISABLED`，引用 NVIDIA bug 2220334。A10/A5000/A6000 读 `0x01a00000`；RTX 30 系读 `0x10a80000` |
 
-Both 170HX values were measured on two physical units, read twice per part, across a 15-card
-comparison cohort. The `0x20c2` reading came from a driver-side dump printing
-`OPT=00000001/00000001/16680000`; the `0x2082` reading came from an independent probe's
-`registers.json`.
+两个 170HX 值都在两块物理单元上测得，每个部件读两次，跨一个 15 卡对比队列。`0x20c2` 读数来自一份驱动侧转储，打印 `OPT=00000001/00000001/16680000`；`0x2082` 读数来自一次独立探测的 `registers.json`。
 
-Two related fuses close off the obvious workarounds. `FUSE_EN_SW_OVERRIDE` at `0x820040` reads 0
-and `FUSE_DIS_SW_OVR` at `0x820084` reads 1, so the software-override path is disabled in
-silicon. `0x820148` is an OTP spare bit that reads 0 and can never be set from software; DevInit
-writes the A100 value `0x00200000` to `MAGIC_D` only when `0x820148 & 1`, which is exactly why
-DevInit never writes it on the CMP.
+两个相关熔丝关死显而易见的变通方案。`0x820040` 的 `FUSE_EN_SW_OVERRIDE` 读 0、`0x820084` 的 `FUSE_DIS_SW_OVR` 读 1，所以软件覆盖路径在硅片中被禁用。`0x820148` 是一个读 0、软件永远无法置位的 OTP 备用位；DevInit 只在 `0x820148 & 1` 时把 A100 值 `0x00200000` 写给 `MAGIC_D`，这恰好就是 DevInit 在 CMP 上从不写它的原因。
 
-`OPT_GEN23` at `0x0082057c` has been attacked from every available privilege: plain host write,
-HS-privilege driver write, and the SEC2 Booter payload. Every attempt fails with the readback
-still `0x00000001`. It is a pure fuse-sense reflection with no write port. More on that in
-[fuses and OTP](fuses-and-otp.md) and [dead ends](../history/dead-ends.md).
+`0x0082057c` 的 `OPT_GEN23` 已从每一个可用的权限被攻击过：普通主机写、HS 特权驱动写、以及 SEC2 Booter 载荷。每次尝试都失败，回读仍是 `0x00000001`。它是一个没有写端口的纯熔丝感测反射。更多在[熔丝与 OTP](fuses-and-otp.md) 和[死路](../history/dead-ends.md)。
 
 > [!NOTE]
-> **The fuse is not the lever**
+> **熔丝不是杠杆**
 >
-> The Gen2 unlock works **while `OPT_GEN23` still reads `0x00000001`**. The shipped branch patch
-> still attempts the write, still fails, and Gen2 still trains. The working levers are the
-> CYA_0, LINK_CONFIG_0, XP3G and PRIV_MISC_1 overrides, not the fuse shadow.
+> Gen2 解锁**在 `OPT_GEN23` 仍读 `0x00000001` 时**工作。出货分支补丁仍尝试写入、仍失败，Gen2 仍训练。可用的杠杆是 CYA_0、LINK_CONFIG_0、XP3G 和 PRIV_MISC_1 覆盖，不是熔丝影子。
 
-### The DevInit layer
+### DevInit 层
 
-The fuse is only one of three layers. The second is a PCIe configuration table inside the
-**unencrypted** DevInit Falcon image in SPI flash, which is separate from the legacy x86 VBIOS.
+熔丝只是三层之一。第二层是 SPI 闪存里**未加密** DevInit Falcon 映像内的一张 PCIe 配置表，它与传统的 x86 VBIOS 分开。
 
-| Item | CMP 170HX | A100 |
+| 项 | CMP 170HX | A100 |
 |---|---|---|
-| PCIe config table, flash offset | `0x420ED` (mirror `0xA20ED`) | `0x408A0` (mirror `0xA08A0`) |
-| Runtime DMEM base | `0xF1D` | `0xE50` |
-| The five bytes, table offsets `+0xC7` to `+0xCB` | `00 00 08 00 06` at flash `0x421B4`-`0x421B8` | `00 00 14 00 06` at flash `0x40967`-`0x4096B` |
-| Suppress flag at table offset `+0x0F` | `0x01` | `0x00` |
-| DevInit image location | flash `0xDE00` (disassembly base `0x8000`), duplicated in bank 2 at `+0x60000` | |
+| PCIe 配置表，闪存偏移量 | `0x420ED`（镜像 `0xA20ED`） | `0x408A0`（镜像 `0xA08A0`） |
+| 运行时 DMEM 基址 | `0xF1D` | `0xE50` |
+| 那五个字节，表偏移量 `+0xC7` 到 `+0xCB` | `00 00 08 00 06` 在闪存 `0x421B4`-`0x421B8` | `00 00 14 00 06` 在闪存 `0x40967`-`0x4096B` |
+| 表偏移量 `+0x0F` 的抑制标志 | `0x01` | `0x00` |
+| DevInit 映像位置 | 闪存 `0xDE00`（反汇编基址 `0x8000`），在 bank 2 的 `+0x60000` 处复制 | |
 
-The suppress flag is the decisive one: on the CMP, `ld b8 r9, D[tab+0x0F]; bra ne` skips the
-entire Gen4 programming block (disassembly `0x31B3F`-`0x31B92`). When that block does run it
-computes `0x88CE4 = (old & ((b1<<8)|b0)) | ((b3<<8)|b2)`, which reduces to byte `[+0xC9]` because
-`b0 = b1 = b3 = 0`, and `0x88CE0 = (old & ~0x3F) | (b4 & 0x3F)` with `b4 = 0x06` on both parts.
-A wider symbolic analysis found **thirteen** DevInit bytes differing in total, of which eleven are
-attributable to non-PCIe SKU features (HBM, NVLink, ECC); the PCIe-relevant ones are `[0xC9]`
-(feeds `0x88CE4`), `[0x1C-0x1F]` (feeds `0x8C2C0`), and `[0x3F]` (feeds `0x8C040`). The CMP and
-A100 BIT tables are byte-identical.
+抑制标志是决定性的：在 CMP 上，`ld b8 r9, D[tab+0x0F]; bra ne` 跳过整个 Gen4 编程块（反汇编 `0x31B3F`-`0x31B92`）。当那个块确实运行时，它计算 `0x88CE4 = (old & ((b1<<8)|b0)) | ((b3<<8)|b2)`，因为 `b0 = b1 = b3 = 0` 而归结为字节 `[+0xC9]`，以及 `0x88CE0 = (old & ~0x3F) | (b4 & 0x3F)` 配 `b4 = 0x06`（两个部件都是）。一次更宽泛的符号分析发现总共有**十三个** DevInit 字节不同，其中十一个可归因于非 PCIe 的 SKU 功能（HBM、NVLink、ECC）；与 PCIe 相关的是 `[0xC9]`（喂 `0x88CE4`）、`[0x1C-0x1F]`（喂 `0x8C2C0`）和 `[0x3F]`（喂 `0x8C040`）。CMP 和 A100 的 BIT 表逐字节相同。
 
-Editing those bytes is a closed route. All five sit **100% inside** the Davies-Meyer `csecret(2)`
-MAC range `0x2200`-`0x43C00`, so a keyless forge is a 2^128 second-preimage, and reflashing an
-edited image fails the Ampere RSA signature check outright. See [VBIOS](vbios.md).
+编辑那些字节是一条关闭的路径。五个字节全部 **100% 在** Davies-Meyer `csecret(2)` MAC 范围 `0x2200`-`0x43C00` 内，所以无钥伪造是一个 2^128 次第二原像，而重刷一个编辑过的映像会直接失败于 Ampere RSA 签名检查。参见[VBIOS](vbios.md)。
 
 > [!CAUTION]
-> **Do not attempt a modified reflash**
+> **不要尝试修改过的重刷**
 >
-> An edited DevInit or VBIOS image is rejected by the signature check and the card will not
-> boot. Recovery requires an external programmer. Read [recovery](../procedures/recovery.md)
-> before touching flash.
+> 一个编辑过的 DevInit 或 VBIOS 映像被签名检查拒绝，卡不会启动。恢复需要一个外部编程器。碰闪存之前先读[恢复](../procedures/recovery.md)。
 
-The third layer is runtime: DevInit itself never reads `0x82057C` or `0x820580`. An exhaustive
-search of the CMP DevInit disassembly finds only `0x820C14`/`0x820D38` (FBIO/FBP floorsweep),
-`0x820684` (`FUSE_NVLINK_DIS`), `0x82380C`/`0x823814`, `0x820520`, `0x820148`, `0x8243xx`,
-`0x8202xx`, `0x8201xx`, `0x82033C`/`0x82030C`. GSP-RM is the consumer: a fuse-read jump table at
-`0x5D55834` in `470.42.01 gsp.bin` uses `li a2, 0x580` and `li a2, 0x57c`, and
-`580.105.08 gsp_tu10x.bin` does `jalr fuse_read` at `0x4DD9B00` with `li a2, 0x57c`. That is why
-the Gen3 route is currently described as needing a GSP patch.
+第三层是运行时：DevInit 本身从不读 `0x82057C` 或 `0x820580`。对 CMP DevInit 反汇编的一次穷举搜索只找到 `0x820C14`/`0x820D38`（FBIO/FBP 地板清扫）、`0x820684`（`FUSE_NVLINK_DIS`）、`0x82380C`/`0x823814`、`0x820520`、`0x820148`、`0x8243xx`、`0x8202xx`、`0x8201xx`、`0x82033C`/`0x82030C`。GSP-RM 是消费方：`470.42.01 gsp.bin` 里 `0x5D55834` 处的一张熔丝读跳转表用 `li a2, 0x580` 和 `li a2, 0x57c`，而 `580.105.08 gsp_tu10x.bin` 在 `0x4DD9B00` 用 `li a2, 0x57c` 做 `jalr fuse_read`。这就是为什么 Gen3 路径目前被描述为需要一个 GSP 补丁。
 
-### Boot ordering
+### 启动顺序
 
-FWSEC-DevInit programs and **latches** `SUPPORTED_LINK_SPEED` before the SEC2 Booter runs, and the
-SEC2 Booter is where the unlock's timing-hole gadget lives. The latched capability is therefore
-already fixed by the time any exploit window opens. The memory and compute unlocks land because
-`FEAT_OVR` (`0x82381C` / `0x823804`) and FBPA (`0x9A0204`) are ordinary registers inside the 16 MB
-BAR0 that become writable once their PLM is opened. A latched PHY capability is not. What the
-Gen2 result actually does is make the PHY reflections regenerate to Gen2 and then train the link
-before anything re-clamps it.
+FWSEC-DevInit 在 SEC2 Booter 运行前编程并**锁存** `SUPPORTED_LINK_SPEED`，而 SEC2 Booter 正是解锁的时序洞 gadget 所在。因此锁存的能力在任何一个漏洞窗口打开前就已经固定。显存和算力解锁落地，是因为 `FEAT_OVR`（`0x82381C` / `0x823804`）和 FBPA（`0x9A0204`）是 16 MB BAR0 内的普通寄存器，一旦它们的 PLM 被打开就可写。一个锁存的 PHY 能力不是。Gen2 结果实际做的是让 PHY 反射再生成为 Gen2，然后在任何东西重新钳制它之前训练链路。
 
-### Where the speed capability lives, register by register
+### 速度能力住在哪，逐寄存器
 
-| Register | Address | Access | Notes |
+| 寄存器 | 地址 | 访问 | 备注 |
 |---|---|---|---|
-| Supported-speed source | `0x00085080` | Read-only, `[23:20]` | Reads `0xBADF1100` (poison) from the host; zero writers found in 4.1 M lines of RM disassembly |
-| Allowed-Gen mask | `0x00085084` | Re-derived by GSP-RM on every retrain | Also reads poison |
-| `MAX_LINK_SPEED` | `0x00088084` `[3:0]` | PHY reflection, marked `R-XVF` | No write port |
-| `SUPPORTED_LINK_SPEED` | `0x0008808C` `[7:1]` | PHY reflection, marked `R-EVF` | No write port at any privilege |
-| `TARGET_LINK_SPEED` | `0x000880A8` `[3:0]` | RW, but clamped by SUPPORTED | |
-| `LINK_CONTROL_STATUS` | `0x00088088` | Live negotiated speed at `[19:16]` | |
-| `PRIV_MISC_1` | `0x0008841C` | RW under PLM | CYA Gen2/3 override bits 11-16, 30, 31 |
-| `VSEC_HIERARCHY` | `0x00088610` | RW under PLM | Bit 12 gates PRIV_MISC_1 reprogram; live value `0x00001001` |
-| LTSSM retrain trigger | `0x0008872C` | RW under PLM | Write `6` |
-| `PPCI_2.CONFIG_LINK` (`LINK_CONFIG_0`) | `0x0008C040` | RW under PLM | `[3:0]` LTSSM_DIRECTIVE, `[4]` LTSSM_STATUS, `[19:18]` SPEED (0 = max, 2 = 5.0 GT/s, 3 = 2.5 GT/s). CMP reads `0x800C4C00` (SPEED = 3); A100 reads `0x80004C00` (SPEED = 0) |
-| `CYA_0` | `0x0008C2C0` | RW under PLM | Bit 2 is the `DIS_G2` chicken bit. CMP `0x068731B7` vs A100 `0x060711B2` |
-| `PL_LINK_RATE` | `0x0008C1C0` | | A100 reads `0x00040036` |
-| `PPCI.UNK1C0` | `0x000881C0` | Host reads return `0xbadf5040` | rnndb: `[17:16]` LNK_CAP_SPEED, `[21:20]` SYSTEM_MAX_SPEED |
+| 受支持速度源 | `0x00085080` | 只读，`[23:20]` | 从主机读 `0xBADF1100`（毒值）；在 4.1 M 行 RM 反汇编中零写入者 |
+| 允许-Gen 掩码 | `0x00085084` | 每次重训练由 GSP-RM 重新推导 | 也读毒值 |
+| `MAX_LINK_SPEED` | `0x00088084` `[3:0]` | PHY 反射，标 `R-XVF` | 无写端口 |
+| `SUPPORTED_LINK_SPEED` | `0x0008808C` `[7:1]` | PHY 反射，标 `R-EVF` | 任何权限下都无写端口 |
+| `TARGET_LINK_SPEED` | `0x000880A8` `[3:0]` | RW，但被 SUPPORTED 钳制 | |
+| `LINK_CONTROL_STATUS` | `0x00088088` | `[19:16]` 处的活协商速度 | |
+| `PRIV_MISC_1` | `0x0008841C` | PLM 下 RW | CYA Gen2/3 覆盖位 11-16、30、31 |
+| `VSEC_HIERARCHY` | `0x00088610` | PLM 下 RW | 位 12 门控 PRIV_MISC_1 重新编程；活值 `0x00001001` |
+| LTSSM 重训练触发 | `0x0008872C` | PLM 下 RW | 写 `6` |
+| `PPCI_2.CONFIG_LINK`（`LINK_CONFIG_0`） | `0x0008C040` | PLM 下 RW | `[3:0]` LTSSM_DIRECTIVE，`[4]` LTSSM_STATUS，`[19:18]` SPEED（0 = 最大，2 = 5.0 GT/s，3 = 2.5 GT/s）。CMP 读 `0x800C4C00`（SPEED = 3）；A100 读 `0x80004C00`（SPEED = 0） |
+| `CYA_0` | `0x0008C2C0` | PLM 下 RW | 位 2 是 `DIS_G2` chicken 位。CMP `0x068731B7` 对 A100 `0x060711B2` |
+| `PL_LINK_RATE` | `0x0008C1C0` | | A100 读 `0x00040036` |
+| `PPCI.UNK1C0` | `0x000881C0` | 主机读返回 `0xbadf5040` | rnndb：`[17:16]` LNK_CAP_SPEED，`[21:20]` SYSTEM_MAX_SPEED |
 
-Speed-vector encodings used throughout: Gen1 = `0x1`, Gen1_2 = `0x3`, Gen1_2_3 = `0x7`,
-Gen1_2_3_4 = `0xF`.
+全篇使用的速度向量编码：Gen1 = `0x1`，Gen1_2 = `0x3`，Gen1_2_3 = `0x7`，Gen1_2_3_4 = `0xF`。
 
-Block layout follows envytools rnndb naming for GK104 and later: **PPCI** at `0x88000` (config
-shadow plus priv), **PPCI_HDA** at `0x8A000`, **PPCI_2** at `0x8C000` (the LTSSM and speed block,
-containing `CONFIG_LINK` at `0x8C040` and `WIDTH` at `0x8C080`, the latter reading `0x00001010` on
-an A100). The full list is in the [register index](../appendix/register-index.md).
+块布局遵循 envytools rnndb 对 GK104 及以后的命名：**PPCI** 在 `0x88000`（配置影子加特权）、**PPCI_HDA** 在 `0x8A000`、**PPCI_2** 在 `0x8C000`（LTSSM 和速度块，含 `0x8C040` 的 `CONFIG_LINK` 和 `0x8C080` 的 `WIDTH`，后者在 A100 上读 `0x00001010`）。完整清单在[寄存器索引](../appendix/register-index.md)。
 
-## The width cap
+## 位宽上限
 
-### It is missing parts, not fuses and not firmware
+### 是缺件，不是熔丝、不是固件
 
-Twelve of the sixteen PCIe data lanes on the 170HX ship with their AC-coupling capacitors
-physically omitted from the PCB. There are two capacitors per differential pair, so twelve lanes
-means **24 missing parts**. NVIDIA populated only the four lanes it intended the card to use.
-Lanes 0 through 3 are populated; lanes 4 through 15 are not.
+170HX 的十六条 PCIe 数据通道中有十二条出厂时交流耦合电容被物理省略出 PCB。每个差分对有 2 颗电容，所以十二条通道意味着 **24 颗缺失部件**。NVIDIA 只贴装了它打算让卡使用的四条通道。通道 0 到 3 贴装；通道 4 到 15 不贴。
 
-Three independent lines of evidence rule out every software explanation:
+三条独立证据线排除每一种软件解释：
 
-1. **No lane fuse is set.** `OPT_PCIE_LANE_DISABLE` at `0x00820394`, `CTRL_OPT_PCIE_LANE` at
-   `0x0082082C` and `STATUS_OPT_PCIE_LANE` at `0x00820C2C` all read `0x00000000` on every card in
-   the cohort, both 170HX units included. The x16 electrical width is intact in silicon.
-2. **No code touches width.** An exhaustive audit of every PCIe-related write in the Gen2 code
-   found writes only to `LINK_CTRL_2 [3:0]`, `LINK_CONFIG_0 [19:18]`, `CYA_0` bit 2, `PRIV_MISC_1`
-   bits 11-14, `PL_LINK_RATE`, `OPT_GEN23`, XP3G slots 0 and 3, VSEC device and hierarchy bits,
-   and `LNKCTL2` TLS in config space. `LINK_CAP` is read but only its low speed nibble is tested;
-   the Max Link Width field at `LINK_CAP[9:4]` is never read or written, and `LNKSTA` is masked
-   with `PCI_EXP_LNKSTA_CLS` and `PCI_EXP_LNKSTA_DLLLA` but never `PCI_EXP_LNKSTA_NLW`. A grep of
-   shipping master and all twelve unreleased branches for "capacitor", "AC coupling", "solder" or
-   any lane-width register returns nothing.
-3. **A known-good x16 host port still trains x4.** Measured on 2026-07-26 on two cards in one
-   host: sysfs reported the GPU at width `cur 4 / max 16` on both, and the second GPU's upstream
-   port was itself x16-capable (`cur 4 / max 16`) while the link still trained x4. The riser and
-   slot-bifurcation hypotheses are answered by the PCB analysis, not by anything in software.
+1. **没有通道熔丝被置位。** `0x00820394` 的 `OPT_PCIE_LANE_DISABLE`、`0x0082082C` 的 `CTRL_OPT_PCIE_LANE` 和 `0x00820C2C` 的 `STATUS_OPT_PCIE_LANE` 在队列中的每一张卡（包括两块 170HX 单元）上都读 `0x00000000`。x16 电气宽度在硅片中是完好的。
+2. **没有代码碰位宽。** 对 Gen2 代码里每一个与 PCIe 相关的写入的一次穷举审计，发现只写 `LINK_CTRL_2 [3:0]`、`LINK_CONFIG_0 [19:18]`、`CYA_0` 位 2、`PRIV_MISC_1` 位 11-14、`PL_LINK_RATE`、`OPT_GEN23`、XP3G 槽 0 和 3、VSEC 设备和层级位，以及配置空间的 `LNKCTL2` TLS。`LINK_CAP` 被读但只测试它的低速度半字节；`LINK_CAP[9:4]` 的 Max Link Width 字段从不被读也不被写，而 `LNKSTA` 被 `PCI_EXP_LNKSTA_CLS` 和 `PCI_EXP_LNKSTA_DLLLA` 掩码，但从不用 `PCI_EXP_LNKSTA_NLW`。对出货 master 和全部十二个未发布分支 grep "capacitor"、"AC coupling"、"solder" 或任何位宽寄存器一无所获。
+3. **一个已知良好的 x16 主机端口仍以 x4 训练。** 2026-07-26 在一台主机里的两张卡上实测：sysfs 报告两块 GPU 都是位宽 `cur 4 / max 16`，而第二块 GPU 的上游端口本身是 x16 能力的（`cur 4 / max 16`），链路仍以 x4 训练。转接卡和插槽分歧假设由 PCB 分析回答，不由软件中任何东西回答。
 
-### The parts
+### 部件
 
-| Property | Canonical value |
+| 属性 | 规范值 |
 |---|---|
-| Count | 24 (2 per differential pair × 12 depopulated lanes) |
-| Package | 0402 |
-| Capacitance | 220 nF (0.22 µF) |
-| Dielectric | **X7R** (frequently mistyped "XR7") |
-| Voltage rating | 6.3 V or higher. The x16 mod that is known to have worked used 6.3 V parts; PCIe bounds transmitter DC common mode to 3.6 V, so 6.3 V carries ample margin |
-| Reference designators | C1100 to C1350 range, for example C1120 / C1125 / C1130 / C1135 per pair |
-| Confirmed manufacturer part | Taiyo Yuden `MAASJ105SB7224KFCA01` (220 nF, 6.3 V, X7R, 0402). Samsung `CL05B224KO5NNNC` (16 V) is a reported-working substitute |
-| Distributor numbers seen | DigiKey `1276-1176-1-ND` and Digi-Key `3886834`. Both are plausibly the same manufacturer part in different packaging; treat them as unverified aliases and buy to the manufacturer part |
+| 数量 | 24（每差分对 2 颗 × 12 条缺件通道） |
+| 封装 | 0402 |
+| 电容 | 220 nF（0.22 µF） |
+| 介质 | **X7R**（常被误写 "XR7"） |
+| 额定电压 | 6.3 V 或更高。已知能工作的 x16 改装用了 6.3 V 部件；PCIe 把发射机 DC 共模限制到 3.6 V，所以 6.3 V 带充足余量 |
+| 参考设计编号 | C1100 到 C1350 范围，例如每对 C1120 / C1125 / C1130 / C1135 |
+| 已确认厂商料号 | Taiyo Yuden `MAASJ105SB7224KFCA01`（220 nF，6.3 V，X7R，0402）。Samsung `CL05B224KO5NNNC`（16 V）是一个报告可用的替代品 |
+| 见过的分销商编号 | DigiKey `1276-1176-1-ND` 和 Digi-Key `3886834`。两者都貌似同一厂商料号的不同包装；把它们当作未验证的别名，按厂商料号购买 |
 
-The value is not guesswork: it is read off the NVIDIA A100 GA100-883 reference schematic
-**P1001-B02 page 3, "IO: PCIe CONNECTOR"**, which the 170HX board closely follows. One tester
-reported 100 nF substitutes working.
+这个值不是猜测：它读自 NVIDIA A100 GA100-883 参考原理图 **P1001-B02 第 3 页、"IO: PCIe CONNECTOR"**，170HX 板密切跟随它。一位测试者报告 100 nF 替代品能用。
 
-### Measured result
+### 实测结果
 
 ```text
-before:  LnkSta: Speed 2.5GT/s, Width x4 (downgraded)
-after:   LnkSta: Speed 2.5GT/s, Width x16
+之前：  LnkSta: Speed 2.5GT/s, Width x4 (downgraded)
+之后：  LnkSta: Speed 2.5GT/s, Width x16
 ```
 
-Verify with `sudo lspci -s <bdf> -vvv | grep LnkSta`. The speed field does not move, and that is
-the expected outcome.
+用 `sudo lspci -s <bdf> -vvv | grep LnkSta` 验证。速度字段不动，那是预期结果。
 
-Partial work negotiates down rather than failing. PCIe width negotiation falls back through the
-legal widths 16, 8, 4, 1, so a card with between 12 and 23 of the 24 capacitors correctly
-populated trains at **x8**. One modder's progression across three cards was x4, then x8, then x16
-as technique improved; another card went x4, x8, x16 "after smaller readjustments". An x8 result
-after a mod means incomplete or bridged solder joints, not a distinct hardware limit. Reflow and
-inspect all 24 joints.
+部分工作会协商降级而非失败。PCIe 位宽协商经过合法位宽 16、8、4、1 回退，所以 24 颗电容中正确贴装 12 到 23 颗的卡以 **x8** 训练。一位改装者三张卡的进展是 x4、然后 x8、然后 x16，随技术提高；另一张卡 "after smaller readjustments"（经过小调整后）走 x4、x8、x16。改装后出现 x8 结果意味着焊接点不完整或桥接，而非一个不同的硬件限制。回流并检查全部 24 个焊点。
 
 > [!CAUTION]
-> **This is fine-pitch rework on a card you cannot replace**
+> **这是在你不替换的卡上的细间距返工**
 >
-> 0402 parts on a dense high-speed differential region. A bridged pair does not merely fail to
-> widen the link, it can corrupt signalling on a lane that previously worked. Leaded solder was
-> reported to make the job "extremely easy"; solder paste applied with a needle plus a heat gun
-> lets the parts self-align. Full procedure and photographs on
-> [physical mods](../operations/physical-mods.md).
+> 密集的高速差分区域里的 0402 部件。一个桥接对不仅无法加宽链路，还会破坏一条之前能工作的通道上的信令。含铅焊锡被报告让这活 "extremely easy"（极其容易）；用针头加风枪涂锡膏让部件自对准。完整流程和照片在[物理改装](../operations/physical-mods.md)。
 
-## Bandwidth by configuration
+## 各配置的带宽
 
-| Configuration | Measured | Method and conditions | Confidence |
+| 配置 | 实测 | 方法和条件 | 置信度 |
 |---|---|---|---|
-| Gen1 x4 | 0.85 GB/s write, 0.84 GB/s read | clpeak `enqueueWriteBuffer` / `enqueueReadBuffer`, published 2023 table | high |
-| Gen1 x4 | 0.80 GB/s send, 0.84 GB/s receive, 0.81 bidirectional | One OpenCL-Benchmark screenshot relayed from an outside hardware group, 10 GB-to-40 GB card; the tool labelled the link "Gen1 x16" | medium |
-| Gen1 x16 (cap mod, no Gen2) | 2.88 GB/s flat, error-free | Modded card; nominal ~4 GB/s, shortfall attributed to PCIe 1.1 signalling overhead | medium |
-| Gen2 x4 | 1.68 GB/s send, 1.71 GB/s receive | OpenCL-Benchmark, one archived screenshot, unmodded card; the setup script independently predicts "~0.85 to ~1.7 GB/s, exactly 2x" | medium |
-| Gen1 x8 → Gen2 x8 (A/B on one card) | 1.67 GB/s to 3.24 GB/s | OpenCL, on a cap-modded card that negotiated x8. This is a **width** result as much as a speed result; do not quote it as a Gen2 x4 figure | medium |
-| Gen2 x16 | 6.63 to 6.67 GB/s (`ocl_pcie_bw`); the same run's nvtop screenshot shows `PCIe GEN 2@16x` with TX 7.061 GiB/s. A second rig reported 5.97 GB/s on each of four cards | capacitor-modded cards with the unlocker installed | medium |
+| Gen1 x4 | 0.85 GB/s 写，0.84 GB/s 读 | clpeak `enqueueWriteBuffer` / `enqueueReadBuffer`，2023 发布表 | 高 |
+| Gen1 x4 | 0.80 GB/s 发送，0.84 GB/s 接收，0.81 双向 | 从一个外部硬件组转发的 OpenCL-Benchmark 截图，10 GB 到 40 GB 卡；工具把链路标为 "Gen1 x16" | 中等 |
+| Gen1 x16（电容改装，无 Gen2） | 2.88 GB/s 平坦，无错误 | 改装卡；标称约 4 GB/s，缺口归因于 PCIe 1.1 信令开销 | 中等 |
+| Gen2 x4 | 1.68 GB/s 发送，1.71 GB/s 接收 | OpenCL-Benchmark，一张归档截图，未改装卡；设置脚本独立预测 "约 0.85 到约 1.7 GB/s，恰好 2x" | 中等 |
+| Gen1 x8 → Gen2 x8（一张卡上 A/B） | 1.67 GB/s 到 3.24 GB/s | OpenCL，在一张协商 x8 的电容改装卡上。这既是**位宽**结果也是速度结果；不要把它引用为 Gen2 x4 数值 | 中等 |
+| Gen2 x16 | 6.63 到 6.67 GB/s（`ocl_pcie_bw`）；同一次运行的 nvtop 截图显示 `PCIe GEN 2@16x`、TX 7.061 GiB/s。另一台机器报告四张卡各 5.97 GB/s | 带解锁器安装的电容改装卡 | 中等 |
 
 > [!WARNING]
-> **Gen2 x16 rests on a single observation**
+> **Gen2 x16 依赖单一观测**
 >
-> Gen2 x16 has been observed **once**, on 2026-07-26, on one rig, in one screenshot, on a card
-> whose 24-capacitor mod was complete. There is no `lspci` capture bridging it to the earlier
-> survey in which every Gen2 result was x4, no burn-in, no AER counters over time, and no second
-> rig. Treat the 6.63-6.67 GB/s figure as medium confidence and treat Gen2 x16 **stability** as
-> unestablished.
+> Gen2 x16 只被观察到**一次**，2026-07-26，在一台机器上、一张截图里、一张 24 电容改装完成的卡上。没有把它桥接到更早调查（其中每个 Gen2 结果都是 x4）的 `lspci` 捕获，没有老化测试，没有随时间的 AER 计数器，也没有第二台机器。把 6.63-6.67 GB/s 数值当作中等置信度，把 Gen2 x16 **稳定性**当作未确立。
 
-A `0.71 GB/s` bidirectional figure circulated for a card described as Gen1 x16. It is far too low
-for that configuration (nominal ~4 GB/s) and the card's actual lane state was never established.
-Do not quote it as a Gen1 x16 measurement.
+一个被描述为 Gen1 x16 的卡的 `0.71 GB/s` 双向数值在流传。对那个配置它太低（标称约 4 GB/s），且该卡实际的通道状态从未确立。不要把它引用为 Gen1 x16 测量。
 
-For what these numbers mean in practice, see [performance](../operations/performance.md) and
-[LLM inference](../operations/llm-inference.md). The short version: at Gen1 x4 the link is the
-binding constraint for graphics (Unigine Superposition capped at 5 fps, 15-20 fps in 1080p games,
-a single 1080p60 remote-gaming stream saturating the link), while for pipeline-parallel LLM decode
-the link is nearly irrelevant (a 5120-hidden-dimension model moves 10,240 bytes per token per hop,
-so saturating a single PCIe 1.0 lane would need roughly 25,000 tokens per second). Tensor and
-expert parallelism are judged unworkable even at Gen2 x16.
+关于这些数字在实践中意味着什么，参见[性能](../operations/performance.md) 和[LLM 推理](../operations/llm-inference.md)。简版：在 Gen1 x4 下链路对图形是约束（Unigine Superposition 封顶 5 fps、1080p 游戏 15-20 fps、单个 1080p60 远程游戏流就饱和链路），而对流水线并行 LLM 解码链路几乎无关紧要（一个 5120 隐藏维模型每 token 每跳移动 10,240 字节，所以饱和单条 PCIe 1.0 通道需要约每秒 25,000 token）。张量和专家并行即使在 Gen2 x16 下也被判断为不可行。
 
-## Things that look like the cause but are not
+## 看起来像原因却不是的东西
 
-| Suspect | Why it looks plausible | Why it is not the cause |
+| 嫌疑 | 为什么它貌似合理 | 为什么它不是原因 |
 |---|---|---|
-| `NV_PTOP_FS4` `0x0002241c` | Documented bit names are literally `GEN2_PCIE` (bit 0) and `GEN2_PCIE_SPEED` (bit 7) | Reads `0x00000000` on the 8 GB (`0x20c2`) card and `0x00000081` on the 10 GB (`0x2082`) card. A GA10x control card that trains Gen4 reads the same `0x00000081`, and the 10 GB 170HX reads `0x00000081` while still capped at Gen1. Both observations cannot hold if these bits gate speed. `PTOP_FS_STATUS` at `0x00022470` reads `0x0000003f` |
-| Board straps | There are visible strap resistor pads near U808; Strap4 (R999/R1000) maps as `PCIE_CFG` | Copying the A100 strap configuration onto a 170HX resulted in the **card not being detected at boot**. The verdict from the researcher who tried it: "the straps don't do anything", "falcon is driving the rewrites" |
-| Device-ID spoofing | Present the card as an A100 and inherit its settings | `FUSE_DEVID_SW_OVR_DIS` at `0x00820584` reads `0x00000001` on every Ampere part probed; the IDs come from read-only fuses `0x008204D8` and `0x0082056C`. Writing the XVE config shadow dword0 changes only the host-visible ID while every lock stays in place |
-| Flashing a genuine A100 80GB VBIOS | Byte-identical BIT tables, near-identical PCB | Tested and failed; the Gen4 bit at minimum does not carry over |
-| A PCIe redriver | Cheap and available | A redriver only re-amplifies, so the endpoint still sources its own fuse-capped TX rate. Only a **retimer** (which terminates the link and can advertise a different rate to each side) could forge TS1/TS2 Rate-ID. Never attempted |
-| ASPM | Many platforms idle a link down to Gen1 | Genuine false-negative trap when testing, so run tests under load, but the 170HX advertises `ASPM not supported` in its own `LnkCap`, so it was not the cause in the case where it was raised |
+| `NV_PTOP_FS4` `0x0002241c` | 记录的位名字面上是 `GEN2_PCIE`（位 0）和 `GEN2_PCIE_SPEED`（位 7） | 在 8 GB（`0x20c2`）卡上读 `0x00000000`、10 GB（`0x2082`）卡上读 `0x00000081`。一张训练 Gen4 的 GA10x 对照卡读同样的 `0x00000081`，而 10 GB 170HX 在仍被 Gen1 封顶时读 `0x00000081`。如果这些位门控速度，两个观察不可能都成立。`0x00022470` 的 `PTOP_FS_STATUS` 读 `0x0000003f` |
+| 板卡跳线 | U808 附近有可见的跳线电阻焊盘；Strap4（R999/R1000）映射为 `PCIE_CFG` | 把 A100 跳线配置复制到 170HX 上导致**启动时卡不被检测到**。尝试者的裁决："the straps don't do anything"（跳线什么都不做）、"falcon is driving the rewrites"（falcon 在驱动重写） |
+| 设备 ID 欺骗 | 把卡呈现为 A100 并继承其设置 | `0x00820584` 的 `FUSE_DEVID_SW_OVR_DIS` 在每块被探测的 Ampere 部件上都读 `0x00000001`；ID 来自只读熔丝 `0x008204D8` 和 `0x0082056C`。写 XVE 配置影子 dword0 只改变主机可见的 ID，每个锁都保持原位 |
+| 刷入真 A100 80GB VBIOS | 逐字节相同的 BIT 表，近乎相同的 PCB | 测试并失败；至少 Gen4 位不迁移 |
+| 一个 PCIe redriver | 便宜且可得 | redriver 只重新放大，所以端点仍自己产生其熔丝封顶的 TX 速率。只有**重定时器**（终止链路并能向两侧宣告不同速率）能伪造 TS1/TS2 Rate-ID。从未尝试 |
+| ASPM | 许多平台把链路空降到 Gen1 | 测试时是真实的假阴性陷阱，所以要在负载下跑测试，但 170HX 在自己 `LnkCap` 里宣告 `ASPM not supported`，所以在它被提出的那个案例里它不是原因 |
 
-A curiosity worth recording: on **both** physical 10 GB cards, `FUSE_PCIE_DEVIDA` at `0x008204D8`
-reads `0x00002082` while `FUSE_PCIE_DEVIDB` at `0x0082056C` reads `0x000020c2`. A 10 GB card
-carries the 8 GB variant's device ID as its secondary fuse. Across 13 comparison cards, fuse B
-equals fuse A with bit 6 set (`+0x40`), for example A100 PCIe 80G `0x20b5`/`0x20f5`. Also measured:
-**`OPT_SKU_ID` at `0x00821060` = `0x00000068`** on these 10 GB units (`0x00000080` is the 8 GB /
-`0x20C2` value), `OPT_INTERNAL_SKU` at `0x008203f4` = 0.
+一个值得记录的奇事：在**两块**物理 10 GB 卡上，`0x008204D8` 的 `FUSE_PCIE_DEVIDA` 读 `0x00002082`，而 `0x0082056C` 的 `FUSE_PCIE_DEVIDB` 读 `0x000020c2`。一块 10 GB 卡把 8 GB 变体的设备 ID 作为次级熔丝携带。跨 13 张对比卡，熔丝 B 等于熔丝 A 带位 6 置位（`+0x40`），例如 A100 PCIe 80G `0x20b5`/`0x20f5`。也测到：**这些 10 GB 单元上 `0x00821060` 的 `OPT_SKU_ID` = `0x00000068`**（`0x00000080` 是 8 GB / `0x20C2` 的值）、`0x008203f4` 的 `OPT_INTERNAL_SKU` = 0。
 
-## Platform and interconnect
+## 平台与互连
 
-| Topology | Verdict |
+| 拓扑 | 裁决 |
 |---|---|
-| Bare metal PCIe slot | Supported and the reference configuration |
-| Oculink | Works. Essentially a direct PCIe riser, sometimes with a redriver for timing |
-| Thunderbolt 3 eGPU enclosure | **Breaks the unlock entirely**, not just PCIe. `nvidia-smi` returns "No devices were found" and dmesg shows the full GSP boot failure chain (`Booter failed with non-zero error code: 0x15`, `failed to execute Booter Load: 0xffff`, `Max GSP-RM boot attempts exceeded: 4/4`, `RmInitAdapter failed! (0x62:0xffff:2119)`) |
-| GPU passthrough into a VM | Gen2 capability is advertised but training does not happen. Acknowledged by the maintainers 2026-07-24, unfixed |
-| Passive SlimSAS / MCIO, 70 cm | Unreliable at Gen4 x8 (many errors), stable at Gen3 x8. Cable marking `HNW-SS-8654-AA75`. Most adapter boards carry an `ICS 9ZXL1950DKIL`, which is a **clock buffer, not a redriver**; the `NFHK N-W54B-P` variant was identified as carrying actual redrivers |
-| PCIe switch fan-out (for example PEX88096) | A switch does not create bandwidth, and because the 170HX has **no P2P**, cards behind one switch cannot bypass the uplink. Nobody in the observed window deployed 170HX cards behind one |
-| InfiniBand or fast fabric in a cluster | Zero benefit at Gen1 or Gen2. One multi-node operator could not even saturate 10 GbE |
+| 裸金属 PCIe 插槽 | 支持，且是参考配置 |
+| Oculink | 工作。本质上是一条直接 PCIe 转接卡，有时带一个用于时序的 redriver |
+| Thunderbolt 3 eGPU 坞 | **彻底破坏解锁**，不只是 PCIe。`nvidia-smi` 返回 "No devices were found"，dmesg 显示完整的 GSP 启动失败链（`Booter failed with non-zero error code: 0x15`、`failed to execute Booter Load: 0xffff`、`Max GSP-RM boot attempts exceeded: 4/4`、`RmInitAdapter failed! (0x62:0xffff:2119)`） |
+| GPU 直通进 VM | Gen2 能力被宣告但训练不发生。2026-07-24 被维护者承认，未修复 |
+| 无源 SlimSAS / MCIO，70 cm | 在 Gen4 x8 下不可靠（许多错误），Gen3 x8 下稳定。线缆标记 `HNW-SS-8654-AA75`。大多数转接板带一个 `ICS 9ZXL1950DKIL`，那是一个**时钟缓冲器，不是 redriver**；`NFHK N-W54B-P` 变体被识别为带真 redriver |
+| PCIe 交换机扇出（例如 PEX88096） | 交换机不创造带宽，而因为 170HX **没有 P2P**，一个交换机后面的卡无法绕过上行链路。在观察窗口内没人把 170HX 卡部署在一个交换机后面 |
+| 集群里的 InfiniBand 或高速织网 | 在 Gen1 或 Gen2 下零收益。一位多节点操作者连 10 GbE 都饱和不了 |
 
-Peer-to-peer is absent on this card and no branch contains any P2P enablement. See
-[P2P](../frontier/p2p.md).
+这块卡上 P2P 缺失，任何分支都不含任何 P2P 使能。参见[P2P](../frontier/p2p.md)。
 
-## Diagnostic rules
+## 诊断规则
 
-1. **Read `LnkSta`, never `LnkCap`.** `LnkCap` is the advertised capability and can read Gen2
-   while the link is still training at Gen1. That trap is the stated source of most "it works"
-   claims that do not survive scrutiny.
-2. **Do not trust sysfs `max_link_speed`.** On three cards across two rigs it reported
-   `cur 5.0 GT/s / max 2.5 GT/s`, a maximum lower than the current speed, while config-space
-   `LnkCap` correctly read `0x00456102`. Expect the mismatch; it is not a fault.
-3. **Do not read `nvidia-smi`'s `PCIe Generation Max` as evidence of anything.** A stock card has
-   reported `Max: 2` alongside `Device Current: 1` and `Device Max: 1` since 2023, while `LnkCap2`
-   lists only 2.5 GT/s. It is useful only as a fingerprint.
-4. The three honest fields are `lspci -vvs <bdf> | grep LnkSta`,
-   `/sys/bus/pci/devices/<bdf>/current_link_speed`, and
-   `nvidia-smi --query-gpu=pcie.link.gen.gpucurrent`.
+1. **读 `LnkSta`，绝不读 `LnkCap`。** `LnkCap` 是宣告的能力，在链路仍在以 Gen1 训练时可以读 Gen2。那个陷阱是大多数经不起推敲的 "it works"（能工作）声称的来源。
+2. **不要信 sysfs 的 `max_link_speed`。** 两台机器上三张卡它报告 `cur 5.0 GT/s / max 2.5 GT/s`，一个低于当前速度的最大值，而配置空间 `LnkCap` 正确读 `0x00456102`。预期这种不匹配；它不是故障。
+3. **不要把 `nvidia-smi` 的 `PCIe Generation Max` 当作任何东西的证据。** 一张出厂卡自 2023 年起就一直报告 `Max: 2` 配 `Device Current: 1` 和 `Device Max: 1`，而 `LnkCap2` 只列出 2.5 GT/s。它只作为指纹有用。
+4. 三个诚实的字段是 `lspci -vvs <bdf> | grep LnkSta`、`/sys/bus/pci/devices/<bdf>/current_link_speed` 和 `nvidia-smi --query-gpu=pcie.link.gen.gpucurrent`。
 
-The community's standard link report is a published `pcielink.sh` diagnostic that captures kernel,
-driver, SEC2_DEBUG line count, BDF, board and GPU part numbers, VBIOS, the full
-LnkCap/LnkCap2/LnkCtl2/LnkSta/LnkSta2/DevCap2/DevCtl2/LnkCtl set for **both** the GPU and the host
-bridge, sysfs speed and width, `nvidia-smi` figures and AER counters. Observed identities on
-confirmed cards: VBIOS `92.00.6D.00.0A` and `92.00.67.00.01`, BoardPN `900-11001-0108-000`,
-GPUPN `20C2-105-A1`, subsystem `0x158510DE`.
+社区的准链路报告是一个已发布的 `pcielink.sh` 诊断，它捕获内核、驱动、SEC2_DEBUG 行数、BDF、板卡和 GPU 料号、VBIOS、**GPU 和**主机桥两者的完整 LnkCap/LnkCap2/LnkCtl2/LnkSta/LnkSta2/DevCap2/DevCtl2/LnkCtl 集、sysfs 速度和位宽、`nvidia-smi` 数值和 AER 计数器。确认卡上观察到的身份：VBIOS `92.00.6D.00.0A` 和 `92.00.67.00.01`、BoardPN `900-11001-0108-000`、GPUPN `20C2-105-A1`、子系统 `0x158510DE`。
 
-## Open problems
+## 未解问题
 
 > [!NOTE]
-> **Open problem: Gen3 and Gen4**
+> **未解问题：Gen3 和 Gen4**
 >
-> `FUSE_PCIE_GEN23_DIS` and `FUSE_PCIE_GEN3_DIS` both read `0x00000001`, and the supported-speeds
-> vector clips at `0x00000006` even after the PHY rate is forced to a Gen3-capable
-> `0x00340036`. Whether the "vector is contiguous so Gen2/3/4 are one problem" argument simply
-> failed on this silicon, or the Gen3 fuse is enforced independently downstream, is unresolved.
-> The cheapest untried experiment: write `0x00820580 = 0` through the same `xp3g` table that
-> already *attempts* `0x0082057c`, noting that that write fails, so expect
-> `booter FAILED to set` and `rd=0x00000001`. Then request TLS = 3. Cheap, but low prior. See
-> [Gen3 and Gen4](../frontier/pcie-gen3-gen4.md).
+> `FUSE_PCIE_GEN23_DIS` 和 `FUSE_PCIE_GEN3_DIS` 都读 `0x00000001`，而且即使在 PHY 速率被强制到一个 Gen3 能力的 `0x00340036` 之后，受支持速度向量也裁剪在 `0x00000006`。"向量是连续的所以 Gen2/3/4 是一个问题" 这个论证是简单失败在这颗硅片上，还是 Gen3 熔丝在下游被独立强制，未解决。最便宜的未尝试实验：通过那个已经*尝试* `0x0082057c` 的同一个 `xp3g` 表写 `0x00820580 = 0`，注意那次写入失败，所以预期 `booter FAILED to set` 和 `rd=0x00000001`。然后请求 TLS = 3。便宜，但先验低。参见[Gen3 和 Gen4](../frontier/pcie-gen3-gen4.md)。
 
 > [!NOTE]
-> **Open problem: is `FUSE_PCIE_MAGIC_D` writable?**
+> **未解问题：`FUSE_PCIE_MAGIC_D` 可写吗？**
 >
-> One analysis annotates `0x00820520` "(writable)"; one clean-room chain writes `0x00200000` to
-> it; the field manual lists it read-only; and the branch patch only ever reads it. Since Gen4 is
-> untestable without a Gen4 host, this has never been exercised. Read, write `0x00200000`, read
-> back, publish both values. Five minutes of work nobody has done.
+> 一份分析把 `0x00820520` 标注为 "(writable)"；一条净室链把 `0x00200000` 写给它；实地手册把它列为只读；而分支补丁只读它。因为 Gen4 在没有 Gen4 主机时不可测试，这从未被操练过。读、写 `0x00200000`、回读，发布两个值。五分钟的活，没人做过。
 
 > [!NOTE]
-> **Open problem: is x16 stable?**
+> **未解问题：x16 稳定吗？**
 >
-> One 2026-07-26 capture is the entire evidence base for Gen2 x16. No burn-in, no AER counters
-> over time, no second rig.
+> 2026-07-26 的一次捕获是 Gen2 x16 的整个证据基础。没有老化测试、没有随时间的 AER 计数器、没有第二台机器。
 
 > [!NOTE]
-> **Open problem: Resizable BAR on a Gen2 card**
+> **未解问题：Gen2 卡上的 Resizable BAR**
 >
-> The capability structure exists and has been captured (`Capabilities: [bb0 v1] Physical
-> Resizable BAR`, BAR0 16 MB, BAR1 64 MB, BAR3 32 MB, one supported size each). What is open is
-> whether ReBAR can be made *usable*: BAR1 stays pinned at 64 MiB even when the card reports
-> 81920 MiB, and nobody has retested it on a Gen2-trained card.
+> 能力结构存在且已被捕获（`Capabilities: [bb0 v1] Physical Resizable BAR`，BAR0 16 MB、BAR1 64 MB、BAR3 32 MB，各一个受支持大小）。开放的是 ReBAR 能否被做成*可用*：即使卡报告 81920 MiB，BAR1 也钉在 64 MiB，而且没人在一张 Gen2 训练的卡上重测过它。
 
-## See also
+## 相关页面
 
-- [Gen2 software unlock](../unlock/pcie-gen2.md) for the register mechanism and the branch code
-- [Physical mods](../operations/physical-mods.md) for the capacitor rework procedure
-- [Fuses and OTP](fuses-and-otp.md) for the full fuse map
-- [Gen3 and Gen4](../frontier/pcie-gen3-gen4.md) for the unsolved half
-- [Register index](../appendix/register-index.md)
-- [Glossary](../start/glossary.md)
+- [Gen2 软件解锁](../unlock/pcie-gen2.md)，寄存器机制和分支代码
+- [物理改装](../operations/physical-mods.md)，电容返工流程
+- [熔丝与 OTP](fuses-and-otp.md)，完整熔丝图
+- [Gen3 和 Gen4](../frontier/pcie-gen3-gen4.md)，未解决的一半
+- [寄存器索引](../appendix/register-index.md)
+- [术语表](../start/glossary.md)

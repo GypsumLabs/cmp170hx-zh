@@ -1,603 +1,412 @@
-# The memory subsystem
+# 显存子系统
 
-**What this page covers.** The physical framebuffer of the CMP 170HX: the GA100 HBM stacks, the
-FBP/FBPA partition hierarchy, how many partitions exist and how many each SKU actually keeps, the
-per-partition capacity descriptors, bus width, bandwidth, floorsweeping, the difference between a
-*defective* and a *disabled* partition, and the stock locked register values. It explains in
-hardware terms **why the 8 GB card unlocks to 64 GB and the 10 GB card unlocks to 40 GB**. The
-register writes that perform that unlock live on
-[Memory geometry unlock](../unlock/memory-geometry.md).
+**本页内容。** CMP 170HX 的物理帧缓冲：GA100 HBM 堆叠、FBP/FBPA 分区层级、存在多少个分区、每个 SKU 实际保留多少个、每分区容量描述符、总线宽度、带宽、地板清扫、*有缺陷*分区和*禁用*分区之间的区别，以及出厂的锁定寄存器值。它从硬件术语解释**为什么 8 GB 卡解锁到 64 GB、10 GB 卡解锁到 40 GB**。执行那次解锁的寄存器写入在[显存几何布局解锁](../unlock/memory-geometry.md)。
 
-Two facts carry this entire page:
+两个事实支撑整页：
 
-1. **Reported framebuffer capacity on this die equals (live FBPA count) × (per-FBPA capacity
-   tier).** Both terms are readable from BAR0. The FBPA count is fuse-determined and cannot be
-   changed. The tier is set by one register and *can* be changed.
-2. **The two 170HX SKUs differ only in how many partitions survive floorsweeping.** The 8 GB card
-   keeps 16 of 24 memory partitions; the 10 GB card keeps 20 of 24. Both ship with the same
-   512 MiB-per-partition tier, which is what produces 8192 MiB and 10240 MiB respectively.
+1. **这颗晶片上的报告帧缓冲容量等于（活 FBPA 数）×（每-FBPA 容量档位）。** 两个项都从 BAR0 可读。FBPA 数由熔丝决定，无法改变。档位由一个寄存器设定，*可以*改变。
+2. **两个 170HX SKU 只在地板清扫后存活的区分数上不同。** 8 GB 卡保留 24 个显存分区中的 16 个；10 GB 卡保留 24 个中的 20 个。两者出厂都带相同的每分区 512 MiB 档位，这正是分别产生 8192 MiB 和 10240 MiB 的原因。
 
-The unlock raises the tier, not the partition count. Because the 8 GB card is given the top tier
-(4096 MiB per partition) and the 10 GB card is given the middle tier (2048 MiB per partition), the
-physically *smaller* card ends up with the *larger* framebuffer: **8 GB to 64 GB, 10 GB to 40 GB.**
+解锁提高档位，不提高分区数。因为 8 GB 卡被给到顶档位（每分区 4096 MiB）、10 GB 卡被给到中档位（每分区 2048 MiB），物理上 *更小* 的卡最终得到 *更大* 的帧缓冲：**8 GB 到 64 GB，10 GB 到 40 GB。**
 
 ---
 
-## Die topology
+## 晶片拓扑
 
-GA100 carries six HBM2/HBM2e stacks. Each stack is served by two Frame Buffer Partitions (FBPs),
-each FBP by two Frame Buffer Partition Accelerators (FBPAs), and each FBPA by one L2 slice (LTC).
-At full die that is 12 FBPs, 24 FBPAs and 24 LTCs. Each FBP presents a 512-bit channel, so a full
-die would be 6144-bit.
+GA100 携带六个 HBM2/HBM2e 堆叠。每个堆叠由两个帧缓冲分区（FBP）服务，每个 FBP 由两个帧缓冲分区加速器（FBPA）服务，每个 FBPA 由一个 L2 切片（LTC）服务。完整晶片上是 12 个 FBP、24 个 FBPA 和 24 个 LTC。每个 FBP 呈现一个 512-bit 通道，所以完整晶片会是 6144-bit。
 
-These scalars are read directly from the PTOP block and are identical on every 170HX:
+这些规模值直接从 PTOP 块读出，在每个 170HX 上都相同：
 
-| Register | Address | Value | Meaning |
+| 寄存器 | 地址 | 值 | 含义 |
 |---|---|---|---|
-| `PTOP_SCAL_NUM_FBPAS` | `0x0002243c` | 24 | FBPAs at full die |
-| `NUM_FBPS` | `0x00022438` | 12 | FBPs at full die |
-| `FBPA_PER_FBP` | `0x00022458` | 2 | FBPAs per FBP (mask `0x1f`) |
-| `NUM_LTCS` | `0x00022454` | 24 | L2 slices at full die |
-| `NUM_GPCS` | `0x00022430` | 8 | see [GA100 silicon](ga100-silicon.md) |
+| `PTOP_SCAL_NUM_FBPAS` | `0x0002243c` | 24 | 完整晶片的 FBPA |
+| `NUM_FBPS` | `0x00022438` | 12 | 完整晶片的 FBP |
+| `FBPA_PER_FBP` | `0x00022458` | 2 | 每 FBP 的 FBPA（掩码 `0x1f`） |
+| `NUM_LTCS` | `0x00022454` | 24 | 完整晶片的 L2 切片 |
+| `NUM_GPCS` | `0x00022430` | 8 | 参见[GA100 硅片](ga100-silicon.md) |
 | `TPC_PER_GPC` | `0x00022434` | 8 | |
-| `NUM_NVLINK` | `0x0002246c` | 12 | fused off, see [NVLink](nvlink-hardware.md) |
+| `NUM_NVLINK` | `0x0002246c` | 12 | 熔断关闭，参见[NVLink](nvlink-hardware.md) |
 
 > [!NOTE]
-> **Open problem: how many HBM stacks are actually bonded?**
+> **未解问题：实际邦定了多少个 HBM 堆叠？**
 >
-> A delidded 8 GB card visibly showed six stack sites; a separate die-shot source claims two of
-> the six are dummies. Both readings are compatible with the measured 4096-bit bus, so bus width
-> cannot discriminate. Only a package X-ray or a per-FBPA-to-stack channel-targeted access
-> pattern would settle it. The geometry arithmetic below does not depend on the answer.
+> 一块去盖的 8 GB 卡明显可见六个堆叠位点；一份独立的晶片照片来源声称六个中有两个是假的。两个读数都与实测的 4096-bit 总线相容，所以总线宽度无法判别。只有封装 X 光或一次每-FBPA 到堆叠的通道定向访问模式能定论它。下面的几何算术不依赖答案。
 
 ---
 
-## Per-SKU floorsweep
+## 按 SKU 的地板清扫
 
-Floorsweeping is done in fuses. Two independent bitmasks exist: **DEFECTIVE** marks partitions that
-failed at test, and **DISABLE** marks partitions that are switched off. DISABLE is a superset of
-DEFECTIVE: real failures are marked defective, and additional *good* partitions are then disabled
-on top to hit the product spec.
+地板清扫在熔丝中完成。存在两个独立的位掩码：**DEFECTIVE** 标记测试失败的分区，**DISABLE** 标记被关闭的分区。DISABLE 是 DEFECTIVE 的超集：真正的失败被标记为有缺陷，然后额外的*完好*分区在此基础上被禁用，以满足产品规格。
 
-### 8 GB SKU (`10de:20c2`)
+### 8 GB SKU（`10de:20c2`）
 
-| Register | Address | Value | Decode |
+| 寄存器 | 地址 | 值 | 解码 |
 |---|---|---|---|
-| `OPT_FBPA_DISABLE` | `0x00820368` | `0x00c0330c` | FBPAs 2, 3, 8, 9, 12, 13, 22, 23 off (8 dead, **16 live**) |
-| `OPT_FBIO_DISABLE` | `0x0082036c` | `0x00c0330c` | matches FBPA |
-| `STATUS_OPT_FBPA` | `0x00820c18` | `0x00c0330c` | effective mask |
-| `STATUS_OPT_FBIO` | `0x00820c14` | `0x00c0330c` | effective mask |
-| `OPT_FBP_DISABLE` | `0x00820364` | `0x00000852` | FBPs 1, 4, 6, 11 off (**8 of 12 live**) |
-| `FBP_DEFECTIVE` | `0x008205cc` | `0x00000840` | FBPs 6 and 11 only: *medium confidence, single community dump, card identity disputed* |
-| `FBPA_NUM_ACTIVE` | `0x009a0164` | `0x00000008` | counts **FBPs**, not FBPAs, despite the name |
-| `FBHUB_NUM_ACTIVE_LTCS` | `0x00100800` | `0x00000010` | 16 LTCs |
-| `MMU_NUM_ACTIVE_LTCS` | `0x00100ec0` | `0x04001410` | LTC count field `[4:0]` = 16 |
+| `OPT_FBPA_DISABLE` | `0x00820368` | `0x00c0330c` | FBPA 2、3、8、9、12、13、22、23 关闭（8 个死，**16 个活**） |
+| `OPT_FBIO_DISABLE` | `0x0082036c` | `0x00c0330c` | 匹配 FBPA |
+| `STATUS_OPT_FBPA` | `0x00820c18` | `0x00c0330c` | 有效掩码 |
+| `STATUS_OPT_FBIO` | `0x00820c14` | `0x00c0330c` | 有效掩码 |
+| `OPT_FBP_DISABLE` | `0x00820364` | `0x00000852` | FBP 1、4、6、11 关闭（**12 个中 8 个活**） |
+| `FBP_DEFECTIVE` | `0x008205cc` | `0x00000840` | 只有 FBP 6 和 11：*中等置信度，单一社区转储，卡身份有争议* |
+| `FBPA_NUM_ACTIVE` | `0x009a0164` | `0x00000008` | 尽管名字如此，数的是 **FBP** 而非 FBPA |
+| `FBHUB_NUM_ACTIVE_LTCS` | `0x00100800` | `0x00000010` | 16 个 LTC |
+| `MMU_NUM_ACTIVE_LTCS` | `0x00100ec0` | `0x04001410` | LTC 数字段 `[4:0]` = 16 |
 
-*If* the `0x840` pairing holds, the DISABLE/DEFECTIVE delta on this card is non-empty: `0x852`
-against `0x840` leaves FBPs 1 and 4 marked *disabled but not defective*. That is the whole basis of the "could we get to 80 GB on an
-8 GB card" hope, and no mechanism to act on it has ever been found.
+*如果* `0x840` 配对成立，这张卡上的 DISABLE/DEFECTIVE 差值非空：`0x852` 对 `0x840` 留下 FBP 1 和 4 被标记为*禁用但非有缺陷*。那是 "我们能不能在 8 GB 卡上到 80 GB" 这一希望的全部基础，而从未找到过能对它采取行动的机制。
 
-### 10 GB SKU (`10de:2082`)
+### 10 GB SKU（`10de:2082`）
 
-| Register | Address | Value | Decode |
+| 寄存器 | 地址 | 值 | 解码 |
 |---|---|---|---|
-| `OPT_FBPA_DISABLE` | `0x00820368` | `0x000000c3` | FBPAs 0, 1, 6, 7 off (4 dead, **20 live**) |
-| `OPT_FBIO_DISABLE` | `0x0082036c` | `0x000000c3` | matches FBPA |
-| `STATUS_OPT_FBPA` | `0x00820c18` | `0x000000c3` | effective mask |
-| `OPT_FBP_DISABLE` | `0x00820364` | `0x00000009` | FBPs 0 and 3 off (**10 of 12 live**) |
-| `FBP_DEFECTIVE` | `0x008205cc` | `0x00000840` on one card, `0x840` = `DISABLE` on another | see note |
-| `FBPA_NUM_ACTIVE` | `0x009a0164` | `0x0000000a` | 10 FBPs |
-| `FBHUB_NUM_ACTIVE_LTCS` | `0x00100800` | `0x00000014` | 20 LTCs |
-| `MMU_NUM_ACTIVE_LTCS` | `0x00100ec0` | `0x05001414` | LTC count field `[4:0]` = 20, byte-identical to all three A100 SKUs |
+| `OPT_FBPA_DISABLE` | `0x00820368` | `0x000000c3` | FBPA 0、1、6、7 关闭（4 个死，**20 个活**） |
+| `OPT_FBIO_DISABLE` | `0x0082036c` | `0x000000c3` | 匹配 FBPA |
+| `STATUS_OPT_FBPA` | `0x00820c18` | `0x000000c3` | 有效掩码 |
+| `OPT_FBP_DISABLE` | `0x00820364` | `0x00000009` | FBP 0 和 3 关闭（**12 个中 10 个活**） |
+| `FBP_DEFECTIVE` | `0x008205cc` | 一张卡上 `0x00000840`，另一张上 `0x840` = `DISABLE` | 见注 |
+| `FBPA_NUM_ACTIVE` | `0x009a0164` | `0x0000000a` | 10 个 FBP |
+| `FBHUB_NUM_ACTIVE_LTCS` | `0x00100800` | `0x00000014` | 20 个 LTC |
+| `MMU_NUM_ACTIVE_LTCS` | `0x00100ec0` | `0x05001414` | LTC 数字段 `[4:0]` = 20，与全部三个 A100 SKU 逐字节相同 |
 
-The swept set is per-die binning, not a per-SKU constant, so the table above is one card rather
-than the SKU. The two physically probed 10 GB units disagree: one reads `OPT_FBP_DISABLE` =
-`STATUS_FBP` = `0x00000009` (FBPs 0 and 3) with `OPT_FBPA_DISABLE` = `STATUS_OPT_FBPA` =
-`0x000000c3` (FBPAs 00/01 and 06/07), the other reads `0x00000180` (FBPs 7 and 8) with
-`0x0003c000` (FBPAs 14 to 17). A third 10 GB card reads `0x840` (FBPs 6 and 11) with `0x00c03000`
-(FBPAs 12/13 and 22/23), which is also the A100 PCIe 40G/80G value. All three keep 20 FBPAs live,
-so the capacity arithmetic is unaffected.
+清扫集合是按晶片分级，不是按 SKU 常量，所以上面那张表是一张卡而非该 SKU。两块物理探测的 10 GB 单元不一致：一块读 `OPT_FBP_DISABLE` = `STATUS_FBP` = `0x00000009`（FBP 0 和 3）配 `OPT_FBPA_DISABLE` = `STATUS_OPT_FBPA` = `0x000000c3`（FBPA 00/01 和 06/07），另一块读 `0x00000180`（FBP 7 和 8）配 `0x0003c000`（FBPA 14 到 17）。第三块 10 GB 卡读 `0x840`（FBP 6 和 11）配 `0x00c03000`（FBPA 12/13 和 22/23），这也是 A100 PCIe 40G/80G 的值。三块都保留 20 个 FBPA 活，所以容量算术不受影响。
 
 > [!NOTE]
-> **A reconciliation, not a confirmed fact**
+> **一种调和，而非已确认事实**
 >
-> `MMU_NUM_ACTIVE_LTCS` was recorded once as `0x05001414` and once as `0x04001410` on parts both
-> described as 170HX, and one adjudicated document lists that as an unresolved contradiction. The
-> per-SKU split above resolves it arithmetically: the LTC-count field reads 16 on a 16-FBPA card
-> and 20 on a 20-FBPA card, exactly as it should. No paired same-boot capture stating the PCI
-> device ID alongside the register has been posted, so treat the split as strongly indicated
-> rather than proven.
+> `MMU_NUM_ACTIVE_LTCS` 曾被记录为 `0x05001414` 一次、`0x04001410` 一次，都在被描述为 170HX 的部件上，而一份裁决文档把它列为未解决矛盾。上面的按 SKU 划分从算术上解决了它：LTC 数字段在 16-FBPA 卡上读 16、在 20-FBPA 卡上读 20，正如它应该的。没有贴出过在寄存器旁声明 PCI 设备 ID 的配对我们启动捕获，所以把这种划分当作被强烈指示而非被证明。
 
-### Poison sentinels
+### 毒哨兵
 
-Floorswept partitions are trivially identifiable in MMIO because their registers return PRI error
-sentinels rather than data. Two patterns must be told apart:
+被地板清扫的分区在 MMIO 中容易识别，因为它们的寄存器返回 PRI 错误哨兵而非数据。两种模式必须区分开：
 
-| Sentinel | Meaning |
+| 哨兵 | 含义 |
 |---|---|
-| `0xbadf1100` | the target does not physically exist on this die (GA10x parts return this for FBPA indices 6 to 23, matching `PTOP_SCAL_NUM_FBPAS` = 6) |
-| `0xbadf20NN` | the target exists but is floorswept; the low byte encodes the disabled FBP index |
+| `0xbadf1100` | 目标在这颗晶片上物理上不存在（GA10x 部件对 FBPA 索引 6 到 23 返回这个，匹配 `PTOP_SCAL_NUM_FBPAS` = 6） |
+| `0xbadf20NN` | 目标存在但被地板清扫；低字节编码被禁用的 FBP 索引 |
 
-Observed values: `0xbadf2011` (FBPAs 02/03), `0xbadf2014` (08/09), `0xbadf2016` (12/13) and
-`0xbadf201b` (22/23) on an 8 GB card; `0xbadf2010` (00/01) and `0xbadf2013` (06/07) on a 10 GB card.
-A full 24-of-24 confirmation of anything is therefore never expected on a floorswept card. The
-index-encoding rule holds on all six probed cards with floorswept FBPAs but is a derivation, not a
-documented field.
+观察到的值：8 GB 卡上 `0xbadf2011`（FBPA 02/03）、`0xbadf2014`（08/09）、`0xbadf2016`（12/13）和 `0xbadf201b`（22/23）；10 GB 卡上 `0xbadf2010`（00/01）和 `0xbadf2013`（06/07）。因此在一块被地板清扫的卡上永远不应预期任何 24/24 的确认。索引编码规则在全部六块带被地板清扫 FBPA 的被探测卡上都成立，但它是推导，不是被记录的字段。
 
 ---
 
-## The per-FBPA register aperture
+## 每-FBPA 寄存器孔径
 
-Each FBPA has a 16 KiB register window. The layout is:
+每个 FBPA 有一个 16 KiB 的寄存器窗口。布局是：
 
 ```text
-per-instance:   0x00900000 + n * 0x4000        for n = 0 .. 23
+单实例：   0x00900000 + n * 0x4000        其中 n = 0 .. 23
   + 0x200       FBPA CFG0
   + 0x204       FBPA CFG1
   + 0x20C       FBPA CSTATUS_RAMAMOUNT
 
-broadcast:      0x009A0000 .. 0x009A3FFF        (one 0x4000-wide window)
-  0x009A0200    CFG0   broadcast
-  0x009A0204    CFG1   broadcast
-  0x009A020C    CSTATUS_RAMAMOUNT broadcast
+广播：      0x009A0000 .. 0x009A3FFF        （一个 0x4000 宽的窗口）
+  0x009A0200    CFG0   广播
+  0x009A0204    CFG1   广播
+  0x009A020C    CSTATUS_RAMAMOUNT 广播
 ```
 
-The stride is `0x4000`, matching the width of the broadcast window exactly. One adjudicated
-document records `0x400` in a single sentence; that is a dropped-zero typo contradicted by two
-other entries in the same document, by the probe tooling's own constants
-(`FBPA_BASE = 0x900000`, `FBPA_STRIDE = 0x4000`) and by the broadcast window size.
+步长是 `0x4000`，恰好匹配广播窗口的宽度。一份裁决文档在单句里记录了 `0x400`；那是一个被同一文档里另外两个条目、被探测工具自己的常量（`FBPA_BASE = 0x900000`、`FBPA_STRIDE = 0x4000`）以及广播窗口大小所反驳的掉零笔误。
 
-**CFG0** reads `0x07981800` on the broadcast register and on every live per-instance copy, on both
-170HX SKUs and on A100 SXM4 40 GB, A100 PCIe 40 GB and A100 PCIe 80 GB alike. A Drive A100 reads
-`0x06981800` and a GA10x control card `0x069f9803`. The memory-controller base configuration is
-therefore **not** restricted on the 170HX. Only CFG1 differs. Uniformity across instances is also
-what makes a single broadcast write safe.
+**CFG0** 在广播寄存器和每一个活单实例副本上读 `0x07981800`，在两个 170HX SKU 上、在 A100 SXM4 40 GB、A100 PCIe 40 GB 和 A100 PCIe 80 GB 上都一样。Drive A100 读 `0x06981800`，GA10x 对照卡读 `0x069f9803`。因此内存控制器基础配置在 170HX 上**没有**被限制。只有 CFG1 不同。实例间的一致性也让单次广播写入是安全的。
 
 ---
 
-## CSTATUS_RAMAMOUNT: the per-partition capacity descriptor
+## CSTATUS_RAMAMOUNT：每分区容量描述符
 
-`CSTATUS_RAMAMOUNT` at `0x0090020C + n*0x4000` reads the partition's capacity **directly in MiB**.
-It is derived hardware state that follows CFG1; no tool writes it. It is the cheapest and most
-trustworthy readback for confirming that a geometry change actually landed, far better than
-`nvidia-smi`.
+`0x0090020C + n*0x4000` 处的 `CSTATUS_RAMAMOUNT` **直接以 MiB** 读分区的容量。它是跟随 CFG1 的派生硬件状态；没有工具写它。它是确认几何改动真正落地的最便宜、最可信的回读，远胜 `nvidia-smi`。
 
-| Value | Capacity per FBPA | Where seen |
+| 值 | 每 FBPA 容量 | 出现在哪 |
 |---|---|---|
-| `0x200` | 512 MiB | stock, **both** 170HX SKUs |
-| `0x800` | 2048 MiB | 40 GB tier (10 GB card unlocked) |
-| `0x1000` | 4096 MiB | 64 GB tier (8 GB card unlocked) and the attempted 80 GB tier |
-| `0x7ff` | 2047 MiB | stock A100 SXM4 40 GB, A100 PCIe 40 GB, Drive A100 32 GB (PG199) |
-| `0xfff` | 4095 MiB | stock A100 PCIe 80 GB |
+| `0x200` | 512 MiB | 出厂，**两个** 170HX SKU |
+| `0x800` | 2048 MiB | 40 GB 档位（10 GB 卡解锁） |
+| `0x1000` | 4096 MiB | 64 GB 档位（8 GB 卡解锁）和被尝试的 80 GB 档位 |
+| `0x7ff` | 2047 MiB | 出厂 A100 SXM4 40 GB、A100 PCIe 40 GB、Drive A100 32 GB（PG199） |
+| `0xfff` | 4095 MiB | 出厂 A100 PCIe 80 GB |
 
-The 170HX values are round where the A100 values are one less. The explanation on record is ECC:
-on GA100, ECC is a within-stack reservation costing roughly 1/2048 of each partition's addressable
-range, and the 170HX has ECC fused off, so nothing is carved out. That reading is consistent but
-has never been proven from a field definition.
+170HX 的值是整数，而 A100 的值少一。记录在案的解释是 ECC：在 GA100 上，ECC 是堆叠内的预留，约占每个分区可寻址范围的 1/2048，而 170HX 的 ECC 被熔断关闭，所以没有划出任何东西。这个解读是一致的，但从未从字段定义被证明。
 
-### The arithmetic closes exactly
+### 算术恰好闭合
 
-| Card | Live FBPAs | Tier | Product | Reported |
+| 卡 | 活 FBPA | 档位 | 乘积 | 报告 |
 |---|---|---|---|---|
-| 8 GB, stock | 16 | 512 MiB | 8192 MiB | 8192 MiB |
-| 8 GB, **unlocked to 64 GB** | 16 | 4096 MiB | 65536 MiB | 65536 MiB |
-| 10 GB, stock | 20 | 512 MiB | 10240 MiB | 10240 MiB |
-| 10 GB, **unlocked to 40 GB** | 20 | 2048 MiB | 40960 MiB | 40960 MiB |
-| 10 GB, attempted 80 GB | 20 | 4096 MiB | 81920 MiB | 81920 MiB reported, unusable above ~40 GB |
+| 8 GB，出厂 | 16 | 512 MiB | 8192 MiB | 8192 MiB |
+| 8 GB，**解锁到 64 GB** | 16 | 4096 MiB | 65536 MiB | 65536 MiB |
+| 10 GB，出厂 | 20 | 512 MiB | 10240 MiB | 10240 MiB |
+| 10 GB，**解锁到 40 GB** | 20 | 2048 MiB | 40960 MiB | 40960 MiB |
+| 10 GB，被尝试的 80 GB | 20 | 4096 MiB | 81920 MiB | 报告 81920 MiB，超过约 40 GB 不可用 |
 | A100 PCIe 40 GB | 20 | 2047 MiB | 40 GB | 40 GB |
 | A100 PCIe 80 GB | 20 | 4095 MiB | 80 GB | 80 GB |
 | Drive A100 32 GB | 16 | 2047 MiB | 32 GB | 32 GB |
 
-**The per-card theoretical ceiling is (live FBPAs) × 4096 MiB**, because tier `0x77` (4 GiB per
-partition) is the largest tier in use. For the 8 GB card that is 16 × 4096 = 64 GB, exactly what
-ships. For the 10 GB card it is 20 × 4096 = 80 GB, exactly the number the unmerged `80` branch
-chased. 96 GB would need 24 live FBPAs, which neither SKU has. This single line retires the whole
-96 GB family of proposals.
+**每卡的理论上限是（活 FBPA）× 4096 MiB**，因为档位 `0x77`（每分区 4 GiB）是在用的最大档位。对 8 GB 卡那是 16 × 4096 = 64 GB，恰好是出货的。对 10 GB 卡那是 20 × 4096 = 80 GB，恰好是未合并的 `80` 分支所追的数字。96 GB 需要 24 个活 FBPA，两个 SKU 都没有。这一行就把整个 96 GB 提案族退休了。
 
-### CSTATUS reports measured capacity, not usable capacity
+### CSTATUS 报告的是测量容量，不是可用容量
 
-A partition can report 4096 MiB without the upper half of that range being usable under load. Every
-capacity claim must be backed by a write-everything-then-read-everything alias ("fold") test, not by
-a reported size. See [Verification](../procedures/verify.md).
+一个分区可以报告 4096 MiB，而该范围的上半部分在负载下并不可用。每一个容量主张都必须由一个写一切然后读一切的别名（"fold"）测试背书，而不能由报告的大小背书。参见[验证](../procedures/verify.md)。
 
 ---
 
-## Bus width and bandwidth
+## 总线宽度与带宽
 
-Bus width follows directly from live partition count: each FBP is a 512-bit channel, each FBPA
-256 bits.
+总线宽度直接从活分区数得出：每个 FBP 是一个 512-bit 通道，每个 FBPA 256 位。
 
-| Part | Live FBPAs / FBPs | Bus width |
+| 部件 | 活 FBPA / FBP | 总线宽度 |
 |---|---|---|
 | CMP 170HX 8 GB | 16 / 8 | **4096-bit** |
 | CMP 170HX 10 GB | 20 / 10 | **5120-bit** |
 | A100 40 GB | 20 / 10 | 5120-bit |
-| A100 96 GB class | 24 / 12 | 6144-bit |
+| A100 96 GB 类 | 24 / 12 | 6144-bit |
 | Drive A100 32 GB | 16 / 8 | 4096-bit |
 
-**The memory bus was never cut down by the unlock and is not cut down by it.** The unlock makes more
-of the already-attached HBM addressable. It adds no channels and connects no chips. This is
-completely separate from the PCIe link, which is limited by different means (see
-[PCIe subsystem](pcie-subsystem.md)) and must never be conflated with memory geometry.
+**显存总线从未被解锁削减，也不会被它削减。** 解锁让更多已连接的 HBM 可寻址。它不增加通道，也不连接芯片。这与 PCIe 链路完全分开，后者受不同手段限制（参见[PCIe 子系统](pcie-subsystem.md)），绝不可与显存几何布局混淆。
 
-Note the counter-intuitive consequence: the 8 GB card has the *narrower* bus but usually the
-*higher* delivered bandwidth, because its HBM runs faster.
+注意反直觉的结果：8 GB 卡有 *更窄* 的总线，但通常有 *更高* 的交付带宽，因为它的 HBM 跑得更快。
 
-### Theoretical peaks
+### 理论峰值
 
-| Card | Clock | Width | Theoretical peak |
+| 卡 | 时钟 | 宽度 | 理论峰值 |
 |---|---|---|---|
 | 10 GB SKU | 1215 MHz DDR | 5120-bit | **1555.2 GB/s = 1448.4 GiB/s** |
-| 8 GB SKU | 1728 MHz DDR | 4096-bit | 1769 GB/s (3.456 Gbps/pin) |
-| 8 GB SKU, published spec database | 1458 MHz | 4096-bit | 1492.99 GB/s |
+| 8 GB SKU | 1728 MHz DDR | 4096-bit | 1769 GB/s（3.456 Gbps/pin） |
+| 8 GB SKU，发布的规格数据库 | 1458 MHz | 4096-bit | 1492.99 GB/s |
 
-### Measured bandwidth
+### 实测带宽
 
 > [!WARNING]
-> **There is no single canonical measured bandwidth figure for this card**
+> **这张卡不存在单一规范的实测带宽数值**
 >
-> Across tools and access patterns the reported values span **1305.86 to 1600 GB/s**. Use the
-> range. Two directional read-stream measurements sit above it and are listed with their
-> conditions below; a point estimate quoted without a tool and an access pattern is not
-> meaningful on this hardware.
+> 跨工具和访问模式，报告的值跨越 **1305.86 到 1600 GB/s**。用这个范围。两次定向读流测量位于它之上，随条件列在下方；一个不带工具和访问模式引用的点估计，在这块硬件上没有意义。
 
 > [!NOTE]
-> **The memory geometry does not survive FLR or a power cycle; the compute unlock does**
+> **显存几何布局不能挺过 FLR 或断电；算力解锁可以**
 >
-> SS0, SS1 and `0x00823804` survive FLR; the CFG1/LMR geometry rewrite does not. This asymmetry
-> is why compute shipped before memory, and it is why "no FLR" appears as a stated condition on
-> the DtoD bandwidth row below.
+> SS0、SS1 和 `0x00823804` 挺过 FLR；CFG1/LMR 几何布局重写不能。这种不对称就是算力先于显存发布的原因，也是 "no FLR" 作为下文 DtoD 带宽行的既定条件出现的原因。
 
-| Measurement | Value | Conditions |
+| 测量 | 值 | 条件 |
 |---|---|---|
-| Device-to-device, 10 GB card at 40 GB | 1390 GB/s | clean 610.43.03, no FLR |
-| Read stream, 8 GB card unlocked | 1679.1 to 1699.3 GB/s | 24 GiB stream |
-| Read bandwidth at the perf profile | 1695 GB/s | 1728 MHz memory, patched module |
-| Read bandwidth at NDIV 60 | 1582 GB/s | 1620 MHz memory |
-| Read bandwidth at NDIV 52 | 1279 GB/s | 1404 MHz memory |
-| Read bandwidth at NDIV 60 (PLL diff run) | 1574.7 GB/s | controlled lower-rate boot |
-| `mem_burn` write, 80 GB-fired 10 GB card | 1354.6 GiB/s | 30 GiB, 0 mismatches |
-| clpeak, stock 8 GB card, 2023 | 1165.79 / 1269.69 / 1343.50 / 1355.40 / 1350.14 GB/s | float / float2 / float4 / float8 / float16 |
+| 设备到设备，10 GB 卡在 40 GB | 1390 GB/s | 干净 610.43.03，无 FLR |
+| 读流，8 GB 卡解锁 | 1679.1 到 1699.3 GB/s | 24 GiB 流 |
+| 性能档位下的读带宽 | 1695 GB/s | 1728 MHz 显存，补丁模块 |
+| NDIV 60 下的读带宽 | 1582 GB/s | 1620 MHz 显存 |
+| NDIV 52 下的读带宽 | 1279 GB/s | 1404 MHz 显存 |
+| NDIV 60 下（PLL diff 运行）的读带宽 | 1574.7 GB/s | 受控低速启动 |
+| `mem_burn` 写，80 GB 触发的 10 GB 卡 | 1354.6 GiB/s | 30 GiB，0 不匹配 |
+| clpeak，出厂 8 GB 卡，2023 | 1165.79 / 1269.69 / 1343.50 / 1355.40 / 1350.14 GB/s | float / float2 / float4 / float8 / float16 |
 
-Within an over-provisioned 80 GB configuration, an offset sweep found the originally trained
-0 to 4 GB region running at ~1416 GiB/s (98 % of peak) and the whole 8 to 76 GB span running at
-~1149 GiB/s (79 % of peak) **uniformly, with no dead zones**. At 32 GB chunk sizes both offsets
-reach 100 %. An earlier reading that showed a collapse to 32 GiB/s above 32 GB was an artefact of
-the sweep exhausting its single CUDA context and is retracted.
+在一个过度配置的 80 GB 配置内，一次偏移扫描发现原本训练的 0 到 4 GB 区域以约 1416 GiB/s（峰值的 98%）运行、整个 8 到 76 GB 跨度以约 1149 GiB/s（峰值的 79%）运行，**均匀地、没有死区**。在 32 GB 块大小下两个偏移都达到 100%。一个更早的、显示超过 32 GB 崩塌到 32 GiB/s 的读数，是扫描耗尽它单一 CUDA 上下文的假象，已被撤回。
 
 > [!NOTE]
-> **Open problem: the stock HBM clock on the 8 GB card**
+> **未解问题：8 GB 卡上的出厂 HBM 时钟**
 >
-> Three figures circulate: 1458 MHz (specification database and a 2023 `deviceQuery` reporting
-> 729 MHz, doubled by convention), 1592 MHz, and 1728 MHz (direct 2026 measurement). The
-> 1679 to 1699 GB/s delivered read bandwidth is decisive *against* 1458 MHz for that run because
-> it exceeds the ceiling that clock implies, but it does not choose between 1592 and 1728. What
-> would settle it: a raw FBPA PLL register read published with the divider chain. 1728 MHz is the
-> best-supported figure and is the one used above.
+> 三个数字在流传：1458 MHz（规格数据库和一次 2023 `deviceQuery` 报告 729 MHz、按约定加倍）、1592 MHz 和 1728 MHz（2026 直接测量）。1679 到 1699 GB/s 的交付读带宽对那次运行*反对* 1458 MHz 是决定性的，因为它超过那个时钟隐含的上限，但它不在 1592 和 1728 之间选择。什么能定论它：一次公布分频链的原始 FBPA PLL 寄存器读。1728 MHz 是最受支持的数值，也是上面用的那个。
 
-### Memory clocking is closed by measurement
+### 显存时钟被测量封死
 
-A non-production kernel-module patch (`driver/0009-hbm-mclk-overclock.patch`) that writes FBPA PLL
-coefficients established the following with a causal control:
+一个非生产的内核模块补丁（`driver/0009-hbm-mclk-overclock.patch`）写入 FBPA PLL 系数，用一个因果对照确立了以下几点：
 
-- **Underclocking is causal.** NDIV 65 (a 6.25 % clock reduction) delivered 6.8 % less bandwidth
-  with higher latency.
-- **Up-clocking delivers nothing.** NDIV 70 (coefficient `0x00014601`, a 4.9 % request) measured
-  bandwidth identical to stock, with zero memory errors and no soft roll-off, even though the
-  register accepted the coefficient and the PLL lock bit set. Zero gain with no errors and no
-  roll-off is the signature of a hard clamp at the trained rate.
+- **降频是因果的。** NDIV 65（6.25% 时钟降低）交付 6.8% 更少的带宽、更高延迟。
+- **升频什么也不给。** NDIV 70（系数 `0x00014601`，4.9% 请求）测得与出厂完全相同的带宽，零显存错误、无软滚降，尽管寄存器接受了系数、PLL 锁定位也置了。零增益、零错误、零滚降是硬钳制在训练速率上的签名。
 
-Two supporting facts explain it: **no Memory Clock Table exists in any of eight ROM dumps** (the
-1728 MHz rate comes from FWSEC devinit at POST), and the part already runs 3.456 Gbps/pin against
-an HBM2e nominal of about 3.2, so there was never factory headroom. The source carries an explicit
-instruction not to re-run the PLL sweep.
+两个支持事实解释它：**八份 ROM 转储中任何一份都不存在 Memory Clock Table**（1728 MHz 速率来自 POST 时的 FWSEC devinit），而且该部件已经以 3.456 Gbps/pin 运行、对 HBM2e 约 3.2 的标称，所以从来没有出厂余量。源码携带一条明确指示：不要重跑 PLL 扫描。
 
-Memory *underclocking* is a real efficiency lever on compute-bound work and is covered in
-[Tuning](../operations/tuning.md).
+显存*降频*在算力受限工作上是真实有效的杠杆，见[调优](../operations/tuning.md)。
 
 > [!WARNING]
-> **Experimental**
+> **实验性**
 >
-> An unreleased third-party fork carries a memory overclock with a stock multiplier of 64 and a
-> shipped default of 70 (lowered from 72 after one tester's 8 GB-to-64 GB card produced
-> `gpu_burn` errors within about two minutes at roughly 1944 MHz effective and 85 C). One author
-> reports all of their own cards stable at 73. This is not the shipping tool and the values are
-> per-card.
+> 一个未发布的第三方 fork 带一个显存超频，出厂倍数为 64、发货默认为 70（在一位测试者的 8 GB 到 64 GB 卡在约 1944 MHz 有效频率和 85 C 下约两分钟内产生 `gpu_burn` 错误后，从 72 降下来）。一位作者报告他们自己所有的卡在 73 稳定。这不是出货工具，数值是按卡而异的。
 
 ---
 
-## HBM identity and mode registers
+## HBM 身份与模式寄存器
 
-The HBM stacks are **not** being told they are smaller than they are. `FBPA_MRS_8` (MR8 Density) at
-`0x009A0320` reads `0x00200000` on all 15 cards in the probe cohort, including a 10 GB CMP, a 40 GB
-A100 and an 80 GB A100. Density is not the capacity restriction.
+HBM 堆叠**并没有**被告知它们比实际小。`FBPA_MRS_8`（MR8 Density）在 `0x009A0320` 上，对探测队列里全部 15 张卡（包括一张 10 GB CMP、一张 40 GB A100 和一张 80 GB A100）都读 `0x00200000`。密度不是容量限制。
 
-| Register | Address | 8 GB 170HX | 10 GB 170HX | Reference |
+| 寄存器 | 地址 | 8 GB 170HX | 10 GB 170HX | 参考 |
 |---|---|---|---|---|
-| `FBPA_MRS_0` | `0x009a0300` | `0x00000003` | `0x00000003` | `0x00000003` on A100/Drive; `0x00000025` on A10/A5000/A6000 |
-| `FBPA_MRS_1` | `0x009a0304` | `0x00100000` | `0x00100000` | `0x00100000` everywhere |
-| `FBPA_MRS_2` | `0x009a0334` | `0x00200019` | `0x002000cf` | `0x00200029` A100 80G; `0x00200031` Drive |
+| `FBPA_MRS_0` | `0x009a0300` | `0x00000003` | `0x00000003` | A100/Drive 上 `0x00000003`；A10/A5000/A6000 上 `0x00000025` |
+| `FBPA_MRS_1` | `0x009a0304` | `0x00100000` | `0x00100000` | 到处 `0x00100000` |
+| `FBPA_MRS_2` | `0x009a0334` | `0x00200019` | `0x002000cf` | `0x00200029` A100 80G；`0x00200031` Drive |
 | `FBPA_MRS_WL_RL` | `0x009a0338` | `0x003000eb` | `0x003000ea` | `0x003000ef` A100 80G / Drive |
-| `FBPA_MRS_8` (density) | `0x009a0320` | `0x00200000` | `0x00200000` | `0x00200000` on all 15 cards |
-| `FBPA_HBM_CFG0` | `0x009a038c` | `0x000000a7` | `0x000000a7` | `0x000000a7` on all three A100 SKUs; `0x000000a6` on Drive A100; `0x000003fe` on GDDR6 parts |
-| `FBPA_TRAINING_STATUS` | `0x009a0974` | `0x00000000` | `0x00000000` | FINISHED on both sub-partitions on all 15 cards, **including an unlocked 64 GB card** |
-| `FBPA_VEND_ID_C0` / `_C1` | `0x009a0838` / `0x009a083c` | `0x00000000` | `0x00000000` | zero on all 15 cards: no vendor info available this way |
+| `FBPA_MRS_8`（密度） | `0x009a0320` | `0x00200000` | `0x00200000` | 全部 15 张卡上 `0x00200000` |
+| `FBPA_HBM_CFG0` | `0x009a038c` | `0x000000a7` | `0x000000a7` | 全部三个 A100 SKU 上 `0x000000a7`；Drive A100 上 `0x000000a6`；GDDR6 部件上 `0x000003fe` |
+| `FBPA_TRAINING_STATUS` | `0x009a0974` | `0x00000000` | `0x00000000` | 全部 15 张卡两个子分区上 FINISHED，**包括一张解锁的 64 GB 卡** |
+| `FBPA_VEND_ID_C0` / `_C1` | `0x009a0838` / `0x009a083c` | `0x00000000` | `0x00000000` | 全部 15 张卡上零：这样得不到厂商信息 |
 
-`FBPA_HBM_CFG0` decodes as `dual_rank[0]`, `dual_rank_bank[1]`, `SID_VAL[11]`. The 170HX matching
-the A100 exactly means the memory controller sees the same stack organisation.
+`FBPA_HBM_CFG0` 解码为 `dual_rank[0]`、`dual_rank_bank[1]`、`SID_VAL[11]`。170HX 恰好匹配 A100，意味着内存控制器看到相同的堆叠组织。
 
-The **IEEE 1500 HBM debug bridge** is live on the 170HX at `0x009a3cb4` to `0x009a3cc8` and is the
-only working route to real stack identity. Values differ per die: `I1500_DATA` reads `0xde79ffc1`
-on one 170HX and `0xc631ffc1` on another, `I1500_SHADOW_WDR` reads `0xbcf3ff83` and `0x8c63ff83`
-respectively, sharing low 16 bits (`0xffc1` / `0xff83`) with per-unit upper halves. A100 parts read
-a much tidier `0xNN000000` / `0xNN00f000` family. GA10x parts return `0xbadf5040` for the whole
-block, so the aperture is GA100-specific.
+**IEEE 1500 HBM 调试桥** 在 170HX 上 `0x009a3cb4` 到 `0x009a3cc8` 处是活的，是到达真实堆叠身份的唯一工作路径。值按晶片而异：`I1500_DATA` 在一张 170HX 上读 `0xde79ffc1`、另一张上读 `0xc631ffc1`，`I1500_SHADOW_WDR` 分别读 `0xbcf3ff83` 和 `0x8c63ff83`，共享低 16 位（`0xffc1` / `0xff83`）配每单元的上半部分。A100 部件读一个更整洁的 `0xNN000000` / `0xNN00f000` 族。GA10x 部件对整块返回 `0xbadf5040`，所以这个孔径是 GA100 专属的。
 
 > [!NOTE]
-> **Open problem: nobody has decoded `I1500_SHADOW_WDR`**
+> **未解问题：没人解码过 `I1500_SHADOW_WDR`**
 >
-> The next step is to shift in the standard IEEE 1500 `DEVICE_ID` WIR opcode rather than reading
-> whatever instruction was left latched (`I1500_INSTR` = `0x0000000f`, `I1500_MODE` = `0x00000008`
-> at the time of the reads). That would give HBM vendor and per-stack density from the DRAM
-> itself and would settle several long-running arguments at once.
+> 下一步是移入标准的 IEEE 1500 `DEVICE_ID` WIR 操作码，而不是读读取时被锁存的那个任意指令（`I1500_INSTR` = `0x0000000f`、`I1500_MODE` = `0x00000008`）。那会直接从 DRAM 给出 HBM 厂商和每堆密度，并一次性解决几个长期争论。
 
-### Which vendor, and HBM2 or HBM2e?
+### 哪个厂商，HBM2 还是 HBM2e？
 
-The strong working assumption is **SK hynix HBM2e on the 8 GB SKU (~1590 MHz) and Samsung HBM2 on
-the 10 GB SKU (~1200 MHz)**, which is consistent with the measured clock and stability gap and with
-the community verdict that 8 GB owners got the better part. It has never been verified by package
-markings, X-ray or a vendor-ID readout. It also matters less than it appears: one participant
-established that Samsung HBM2's row/column/bank structure is the same as the HBM2e structure the
-CFG1 profiles encode, so the same CFG1 values apply either way.
+强烈的工作假设是 **8 GB SKU 上是 SK hynix HBM2e（约 1590 MHz）、10 GB SKU 上是 Samsung HBM2（约 1200 MHz）**，它与实测的时钟和稳定性差距、以及与"8 GB 拥有者得到了更好的部件"的社区裁决一致。它从未被封装标记、X 光或厂商 ID 读出验证。它也比看起来要紧得少：一位参与者确立了 Samsung HBM2 的行/列/库结构与 CFG1 档位编码的 HBM2e 结构相同，所以无论哪种方式，同样的 CFG1 值都适用。
 
 ---
 
-## HBM timing
+## HBM 时序
 
-`CONFIG0.USE_TIMING_REGS` (bit 31 of `0x9A0290`) is **0** on this part (CONFIG0 reads `0x1255B93C`).
-The controller therefore runs on internally generated timings held in the read-only `TIMING*_GEN`
-shadow registers, and **writing the raw `TIMING0` to `TIMING20` registers has no effect at all.**
-This is the single most important constraint on any HBM tuning attempt on this card. Read that bit
-before doing anything else.
+`CONFIG0.USE_TIMING_REGS`（`0x9A0290` 的位 31）在这个部件上是 **0**（CONFIG0 读 `0x1255B93C`）。因此控制器运行在只读 `TIMING*_GEN` 影子寄存器中持有的内部生成时序上，**直接写 `TIMING0` 到 `TIMING20` 寄存器毫无效果。** 这是这块卡上任何 HBM 调优尝试最重要的约束。做任何事之前先读那个位。
 
-Live timings decoded from register reads: CL 27, CWL/WL 8, tRCD(read) 18, tRCD(write) 13, tRC 60,
-tRFC 441, tRAS 42, tRP 18, tWR 19, tRRD 6, tFAW 21, tCCD_L 4, tCCD_S 2, tCKE 10. The generated
-shadows agree with the CONFIG copies except on bus turnaround, where `TIMING1_GEN` (`0x9A02B4`)
-gives R2W 29, W2R 20 and W2P 28 against 18, 13 and 18 in the writable copies. The `_GEN` values are
-the ones in force.
+从寄存器读解码的活时序：CL 27、CWL/WL 8、tRCD（读）18、tRCD（写）13、tRC 60、tRFC 441、tRAS 42、tRP 18、tWR 19、tRRD 6、tFAW 21、tCCD_L 4、tCCD_S 2、tCKE 10。生成的影子与 CONFIG 副本一致，除了总线周转：`TIMING1_GEN`（`0x9A02B4`）给出 R2W 29、W2R 20 和 W2P 28，而可写副本里是 18、13 和 18。`_GEN` 值是生效的。
 
-Register map highlights (reconstructed against NVIDIA's own `dev_fbpa.h` from the driver pack):
+寄存器图亮点（对照驱动包里 NVIDIA 自己的 `dev_fbpa.h` 重建）：
 
-| Register | Address | Value | Notes |
+| 寄存器 | 地址 | 值 | 备注 |
 |---|---|---|---|
-| `CONFIG0` | `0x9A0290` | `0x1255B93C` | bit 31 `USE_TIMING_REGS` = 0 |
-| `CONFIG1` | `0x9A0294` | `0x38D4841B` | CL[6:0] 27, WL[13:7] 8, RD_RCD[19:14] 18, WR_RCD[25:20] 13 |
-| `CONFIG2` | `0x9A0298` | `0x88130B11` | tWR 19, W2R_BUS 8, R2W_BUS 8, CDLR 11 |
-| `CONFIG3` | `0x9A029C` | `0x24002B4A` | FAW 21, CCDL 4, CCDS 2 |
-| `CONFIG4` | `0x9A02A0` | `0xC4030033` | tREFI in bits [14:0], field value 51 |
+| `CONFIG0` | `0x9A0290` | `0x1255B93C` | 位 31 `USE_TIMING_REGS` = 0 |
+| `CONFIG1` | `0x9A0294` | `0x38D4841B` | CL[6:0] 27，WL[13:7] 8，RD_RCD[19:14] 18，WR_RCD[25:20] 13 |
+| `CONFIG2` | `0x9A0298` | `0x88130B11` | tWR 19，W2R_BUS 8，R2W_BUS 8，CDLR 11 |
+| `CONFIG3` | `0x9A029C` | `0x24002B4A` | FAW 21，CCDL 4，CCDS 2 |
+| `CONFIG4` | `0x9A02A0` | `0xC4030033` | tREFI 在位 [14:0]，字段值 51 |
 | `CONFIG7` | `0x9A02AC` | `0x00C35000` | ZQCS_INTERVAL 12,800,000 |
-| `TIMING12` | `0x9A0250` | `0x0BB800A1` | CKE 10, LOCKPLL 3000 |
-| `TIMING*` writable | `0x9A0220`-`0x9A028C` | inert | ignored while `USE_TIMING_REGS` = 0 |
-| `TIMING*_GEN` shadows | `0x9A02B0`-`0x9A02F0`, plus `0x9A0288` | live | read-only |
+| `TIMING12` | `0x9A0250` | `0x0BB800A1` | CKE 10，LOCKPLL 3000 |
+| `TIMING*` 可写 | `0x9A0220`-`0x9A028C` | 惰性 | `USE_TIMING_REGS` = 0 时被忽略 |
+| `TIMING*_GEN` 影子 | `0x9A02B0`-`0x9A02F0`，加 `0x9A0288` | 活的 | 只读 |
 
-### The refresh experiment
+### 刷新实验
 
-`CONFIG4` does not scale with capacity: `0xc4030033` is identical on the 10 GB CMP, the 8 GB CMP and
-an A100, at both 40 GB and 80 GB. An 80 GB fire doubles the reachable row count while leaving the
-refresh interval at the 2 GiB-per-channel rate, so the physically motivated fix was to double
-refresh with `CONFIG4 = 0xC403001A` (field 26). It landed cleanly on all 20 live FBPAs through the
-HS ROP `run()` path.
+`CONFIG4` 不随容量缩放：`0xc4030033` 在 10 GB CMP、8 GB CMP 和 A100 上、在 40 GB 和 80 GB 下都相同。一次 80 GB 触发把可达行数翻倍，同时把刷新间隔留在每通道 2 GiB 的速率，所以物理上动机明确的修复是加倍刷新 `CONFIG4 = 0xC403001A`（字段 26）。它通过 HS ROP `run()` 路径干净地落在全部 20 个活 FBPA 上。
 
-**It did not work.** Instability persisted, and bandwidth collapsed from 1416 to 1422 GiB/s (98 %)
-down to 848 to 888 GiB/s (59 to 61 %) at low offsets, and from 1147 to 1151 GiB/s down to roughly
-782 to 823 GiB/s at high offsets. A separate completed tREFI sweep found stock (51) both stable and
-fastest. Refresh tuning is recorded in-channel as "using a strait-jacket as a bandage".
+**它不工作。** 不稳定性持续，带宽在低偏移处从 1416 到 1422 GiB/s（98%）崩塌到 848 到 888 GiB/s（59 到 61%），在高偏移处从 1147 到 1151 GiB/s 崩塌到约 782 到 823 GiB/s。一次独立的完成 tREFI 扫描发现出厂值（51）既稳定又最快。刷新调优在频道内被记录为 "using a strait-jacket as a bandage"（拿紧身衣当绷带）。
 
-An override of the visible CONFIG/TIMING registers was mapped out (set `USE_TIMING_REGS`, then
-write CONFIG0-CONFIG4 and TIMING0-TIMING20 through the HS ROP because they are PLM-gated) but
-failed because the CONFIG registers carry no per-channel DQ/VREF offsets. Where those offsets
-actually live is unknown; the `_GEN` shadow family is the obvious next place to look.
+对可见 CONFIG/TIMING 寄存器的一次覆盖被规划出来（设 `USE_TIMING_REGS`，然后因为 CONFIG 寄存器是 PLM 门控的、通过 HS ROP 写 CONFIG0-CONFIG4 和 TIMING0-TIMING20），但失败了，因为 CONFIG 寄存器不带每通道的 DQ/VREF 偏移。那些偏移实际住在哪未知；`_GEN` 影子族是显然的下一个寻找处。
 
 ---
 
-## Fuses: what does and does not cap capacity
+## 熔丝：什么封顶容量、什么不封顶
 
-### Does not
+### 不封顶
 
-Every plausible topology or half-capacity fuse reads zero on both 170HX SKUs and on an A100-class
-reference, so nothing was ever running at half capacity and there is nothing to clear:
+每一个貌似合理的拓扑或半容量熔丝在两个 170HX SKU 上和一块 A100 级参考上都读零，所以没有任何东西曾以半容量运行，也没有任何东西要清除：
 
-| Fuse | Address | Value |
+| 熔丝 | 地址 | 值 |
 |---|---|---|
 | `OPT_HALF_FBPA_ENABLE` | `0x0082049c` | `0x00000000` |
 | `CTRL_OPT_HALF_FBPA` | `0x00820800` | `0x00000000` |
 | `STATUS_HALF_FBPA` | `0x00820c00` | `0x00000000` |
-| `OPT_FB_CONFIG` (4-bit topology selector, PLM `0x008200fc`) | `0x00820328` | `0x00000000` |
+| `OPT_FB_CONFIG`（4 位拓扑选择器，PLM `0x008200fc`） | `0x00820328` | `0x00000000` |
 | `CTRL_OPT_FB_CONFIG` | `0x00820834` | `0x00000000` |
 | `STATUS_OPT_FB_CONFIG` | `0x00820c34` | `0x00000000` |
-| `OPT_SPARE_FS` / status | `0x00820398` / `0x00820c30` | `0x00000000` |
+| `OPT_SPARE_FS` / 状态 | `0x00820398` / `0x00820c30` | `0x00000000` |
 | `CTRL_OPT_FBPA` | `0x00820818` | `0x00000000` |
 
-### Does gate the write path
+### 确实门控写路径
 
-| Fuse | Address | Value | Consequence |
+| 熔丝 | 地址 | 值 | 后果 |
 |---|---|---|---|
-| `OPT_MEMORY_LOCKED_ENABLED` | `0x00820340` | `0x00000001` | "memory config cannot be changed at runtime". It gates the *privilege level* of the write, not the hardware's willingness to accept a new geometry: with the FBPA PLM open, CFG1 writes land and CSTATUS moves. |
-| `OPT_SECURE_FBPA_MEM_WR_SECURE` | `0x00820618` | `0x00000001` | FBPA memory-config writes are restricted to privileged code, on all 15 Ampere parts measured. This is exactly why PLM `0x009a0148` must be opened first. |
-| `OPT_FB_FALCON_PRI_ACCESS_DISABLE` | `0x00820670` | `0x00000000` | a Falcon retains PRI access to FB registers. The whole SEC2 ROP route depends on this. |
-| `OPT_FEATURE_FUSES_OVERRIDE_DISABLE` | `0x008203f0` | `0x00000000` | the master kill fuse is **unblown**. |
-| `EN_SW_OVERRIDE` | `0x00820040` | `0x00000000` | writable and persistent, but see below. |
-| `DISABLE_SW_OVERRIDE_STATUS` | `0x00820084` | `0x00000001` | software fuse override is permanently blocked. |
+| `OPT_MEMORY_LOCKED_ENABLED` | `0x00820340` | `0x00000001` | "memory config cannot be changed at runtime"（显存配置不能在运行时改变）。它门控写入的*权限级别*，而非硬件接受新几何布局的意愿：FBPA PLM 打开后，CFG1 写入落地、CSTATUS 移动。 |
+| `OPT_SECURE_FBPA_MEM_WR_SECURE` | `0x00820618` | `0x00000001` | FBPA 显存配置写入被限制到特权代码，在所有 15 块被测量的 Ampere 部件上。这正是为什么 PLM `0x009a0148` 必须先被打开。 |
+| `OPT_FB_FALCON_PRI_ACCESS_DISABLE` | `0x00820670` | `0x00000000` | 一个 Falcon 保留对 FB 寄存器的 PRI 访问。整个 SEC2 ROP 路径依赖它。 |
+| `OPT_FEATURE_FUSES_OVERRIDE_DISABLE` | `0x008203f0` | `0x00000000` | 主清除熔丝**未烧断**。 |
+| `EN_SW_OVERRIDE` | `0x00820040` | `0x00000000` | 可写且持久，但见下。 |
+| `DISABLE_SW_OVERRIDE_STATUS` | `0x00820084` | `0x00000001` | 软件熔丝覆盖被永久阻止。 |
 
-Together those force the PLM-plus-MMIO route and rule out the fuse-override route entirely.
+一起，这些强制走 PLM-加-MMIO 路径，并彻底排除熔丝覆盖路径。
 
-Also relevant: on both physical 10 GB units, `DEVIDA` (`0x008204d8`) = `0x00002082` and `DEVIDB`
-(`0x0082056c`) = `0x000020c2`, consistent with the `DEVIDB = DEVIDA + 0x40` rule that holds on all
-11 parts with data (A100 SXM4 40G and A100 PCIe 40G read `0x20b1`/`0x20f1`; A100 PCIe 80G reads
-`0x20b5`/`0x20f5`). A 2026-07-19 probe of a `0x20c2` card reported **both** fuses at `0x20c2`; that
-reading is disputed; see the open problem in [board and variants](board-and-variants.md). The rule
-predicts an 8 GB card should read `DEVIDA` = `0x20c2`, `DEVIDB` = `0x2102`.
-See [Fuses and OTP](fuses-and-otp.md).
+也相关：在两块物理 10 GB 单元上，`DEVIDA`（`0x008204d8`）= `0x00002082`、`DEVIDB`（`0x0082056c`）= `0x000020c2`，与在有数据的全部 11 个部件上都成立的 `DEVIDB = DEVIDA + 0x40` 规则一致（A100 SXM4 40G 和 A100 PCIe 40G 读 `0x20b1`/`0x20f1`；A100 PCIe 80G 读 `0x20b5`/`0x20f5`）。2026-07-19 对一张 `0x20c2` 卡的探测报告**两个**熔丝都在 `0x20c2`；那个读数有争议；参见[板卡与变体](board-and-variants.md) 里的未解问题。规则预测一张 8 GB 卡应读 `DEVIDA` = `0x20c2`、`DEVIDB` = `0x2102`。参见[熔丝与 OTP](fuses-and-otp.md)。
 
 ---
 
 ## ECC
 
-**ECC is fused off on the CMP 170HX and no lever has been found.**
+**CMP 170HX 上 ECC 被熔断关闭，且没有找到任何杠杆。**
 
-| Register | Address | 170HX | Reference |
+| 寄存器 | 地址 | 170HX | 参考 |
 |---|---|---|---|
-| `FUSE_ECC_EN` / `OPT_ECC_EN` | `0x00820228` | `0x00000000` | `0x00000001` on A100 SXM4 40G, A100 PCIe 40G/80G, A10, A5000, A6000, Drive A100 |
-| `FBPA_ECC_CTRL` | `0x009a0470` | `0x00000000`, `MASTER_EN` bit 0 read-only | `0x00000041` on A100/Drive; `0x20000020` on GA10x |
+| `FUSE_ECC_EN` / `OPT_ECC_EN` | `0x00820228` | `0x00000000` | A100 SXM4 40G、A100 PCIe 40G/80G、A10、A5000、A6000、Drive A100 上 `0x00000001` |
+| `FBPA_ECC_CTRL` | `0x009a0470` | `0x00000000`，`MASTER_EN` 位 0 只读 | A100/Drive 上 `0x00000041`；GA10x 上 `0x20000020` |
 | `FEAT_OVR_ECC` | `0x0082380c` | `0x00888888` | SM_LRF/L1/LTC/DRAM/CBU |
 | `FEAT_OVR_ECC_1` | `0x00823810` | `0x002aaaaa` | icache/FECS/GPCCS/PMU/HUBMMU |
-| `FEAT_OVR_ECC_2` | `0x0082382c` | `0x0000000a` | LTC_CBC, SM_URF |
-| `FEAT_OVR_ECC_PLM` | `0x00823800` | `0xffffff8f` | distinct register from `0x00823804` |
-| `FEAT_READOUT_0` | `0x00823814` | `0x00000233` | POR/fuse-latched |
-| `FEAT_OVR_ROW_REMAP` | `0x00823824` | `0x00000000` | row remapper inactive |
-| `FEAT_READOUT_2` | `0x00823828` | `0x00000000` | row remapper inactive |
+| `FEAT_OVR_ECC_2` | `0x0082382c` | `0x0000000a` | LTC_CBC，SM_URF |
+| `FEAT_OVR_ECC_PLM` | `0x00823800` | `0xffffff8f` | 与 `0x00823804` 不同的寄存器 |
+| `FEAT_READOUT_0` | `0x00823814` | `0x00000233` | POR/熔丝锁存 |
+| `FEAT_OVR_ROW_REMAP` | `0x00823824` | `0x00000000` | 行重映射器惰性 |
+| `FEAT_READOUT_2` | `0x00823828` | `0x00000000` | 行重映射器惰性 |
 
-The feature-override shadows exist and are populated, and the HS ROP genuinely can open their PLM,
-but the ECC-enable readout at `0x00823814` is POR/fuse-latched and does not respond to live
-override writes, and `FEAT_OVR_ECC` is not always-on so it reverts on FLR anyway. `nvidia-smi -q`
-reports every ECC field as `N/A`, `Remapped Rows: N/A`.
+特性覆盖影子存在且被填充，HS ROP 真的能打开它们的 PLM，但 `0x00823814` 的 ECC 使能回读是 POR/熔丝锁存的、对活的覆盖写入无响应，而且 `FEAT_OVR_ECC` 不是常开、所以无论如何 FLR 后就恢复了。`nvidia-smi -q` 把每个 ECC 字段报告为 `N/A`、`Remapped Rows: N/A`。
 
-**Practical consequence: an unlocked 170HX has no ECC telemetry, so silent corruption above the real
-capacity ceiling never surfaces as a counter.** This is why the fold test exists.
+**实际后果：一块解锁的 170HX 没有 ECC 遥测，所以真实容量上限之上的静默损坏永远不会作为计数器浮出水面。** 这就是 fold 测试存在的原因。
 
 ---
 
-## The stock, locked state
+## 出厂、锁定状态
 
-This is what an untouched CMP 170HX reads. These are the values the unlock overwrites.
+这是一块未触碰的 CMP 170HX 读到的。这些是解锁覆盖的值。
 
-| Quantity | 8 GB SKU (`10de:20c2`) | 10 GB SKU (`10de:2082`) |
+| 量 | 8 GB SKU（`10de:20c2`） | 10 GB SKU（`10de:2082`） |
 |---|---|---|
-| Reported capacity | 8192 MiB | 10240 MiB |
-| FBPA CFG1 `0x009a0204` | `0x02449000` | `0x02449000` (**identical**) |
+| 报告容量 | 8192 MiB | 10240 MiB |
+| FBPA CFG1 `0x009a0204` | `0x02449000` | `0x02449000`（**相同**） |
 | MMU LMR `0x00100ce0` | `0x00000208` | `0x00000288` |
-| Per-FBPA `CSTATUS_RAMAMOUNT` | `0x200` (512 MiB) | `0x200` (512 MiB) |
-| Per-FBPA CFG0 | `0x07981800` | `0x07981800` |
-| Live FBPAs / FBPs / LTCs | 16 / 8 / 16 | 20 / 10 / 20 |
-| Bus width | 4096-bit | 5120-bit |
-| FB-geometry PLMs (`0x00100b10`, `0x00100b38`, `0x009a0148`, `0x009a014c`, `0x009a0008`, `0x009a000c`) | `0xffffff8f` (read all levels, write L3 only) | same |
-| WPR PLMs `0x001fa7c4` / `0x001fa7cc` | `0x0004cb8f` | same |
+| 每-FBPA `CSTATUS_RAMAMOUNT` | `0x200`（512 MiB） | `0x200`（512 MiB） |
+| 每-FBPA CFG0 | `0x07981800` | `0x07981800` |
+| 活 FBPA / FBP / LTC | 16 / 8 / 16 | 20 / 10 / 20 |
+| 总线宽度 | 4096-bit | 5120-bit |
+| FB 几何 PLM（`0x00100b10`、`0x00100b38`、`0x009a0148`、`0x009a014c`、`0x009a0008`、`0x009a000c`） | `0xffffff8f`（读所有级别，写仅 L3） | 相同 |
+| WPR PLM `0x001fa7c4` / `0x001fa7cc` | `0x0004cb8f` | 相同 |
 
-Both SKUs share the same stock CFG1 word `0x02449000`. Only the LMR differs, and it differs only in
-the magnitude field, which encodes the partition count.
+两个 SKU 共享相同的出厂 CFG1 字 `0x02449000`。只有 LMR 不同，而且只在编码分区数的幅值字段上不同。
 
-Baseline runtime numbers from an independent 2023 review of a stock, locked 8 GB card: CUDA
-`Total global mem: 7961 MB`, `Memory bus width: 4096 bits`, `ECC enabled: No`,
-`Memory bandwidth: 1492.99 GB/sec`, `deviceQuery` memory clock 729 MHz; `gpu_burn` saw
-`7961 MB of memory (7660 MB available, using 6894 MB of it)`.
+来自一位独立研究者在 2023 年对一张出厂、锁定的 8 GB 卡的回顾的基线运行时数值：CUDA `Total global mem: 7961 MB`、`Memory bus width: 4096 bits`、`ECC enabled: No`、`Memory bandwidth: 1492.99 GB/sec`、`deviceQuery` 显存时钟 729 MHz；`gpu_burn` 看到 `7961 MB of memory (7660 MB available, using 6894 MB of it)`。
 
 > [!NOTE]
-> **No uncontaminated stock CFG1 exists in any capture taken through the patched driver**
+> **通过补丁驱动捕获的任何捕获里都不存在无污染的出厂 CFG1**
 >
-> Patch `0001` writes CFG1 before anything can read it, so every "stock" value above comes from
-> pre-write pipeline logs or driverless reads. There is also **no known way to read back which
-> VBIOS strap is currently selected**; the only indirect indication is the value at `0x009a0204`,
-> which the unlock overwrites. That blocks distinguishing "the card was strapped down" from "the
-> card was fused down".
+> 补丁 `0001` 在任何东西能读到 CFG1 之前就写它，所以上面每个 "出厂" 值都来自写前流水线日志或免驱动读取。也**没有已知方式回读当前选择的是哪个 VBIOS 跳线**；唯一的间接指示是 `0x009a0204` 处的值，而它被解锁覆盖。这阻止了区分"卡被跳线压下来"和"卡被熔丝压下来"。
 
 ---
 
-## Why the two SKUs differ, in one paragraph
+## 两个 SKU 为何不同，一句话
 
-Both cards are the same GA100 die with the same six HBM sites, the same 24-partition register map,
-the same CFG0, the same mode registers and the same stock CFG1 word. The 8 GB part had four more
-FBPs swept off (8 of 12 live rather than 10 of 12), which is why it reports 8192 MiB against
-10240 MiB and 4096-bit against 5120-bit. That is the whole physical difference. The unlock then
-assigns each SKU a different per-partition tier: the 8 GB card gets tier `0x77` (4096 MiB per
-partition, 16 × 4096 = **65536 MiB**) and the 10 GB card gets tier `0x66` (2048 MiB per partition,
-20 × 2048 = **40960 MiB**). The 8 GB card can carry the top tier because its stacks are the better
-part; the 10 GB card at the top tier reaches 81920 MiB of *geometry* but is not usable above roughly
-40 GB. **8 GB to 64 GB, 10 GB to 40 GB.**
+两张卡是同一颗 GA100 晶片，有同样的六个 HBM 位点、同样的 24 分区寄存器图、同样的 CFG0、同样的模式寄存器和同样的出厂 CFG1 字。8 GB 部件被额外扫掉四个 FBP（12 个中 8 个活，而非 12 个中 10 个），这就是它报告 8192 MiB 对 10240 MiB、4096-bit 对 5120-bit 的原因。那是全部物理差异。然后解锁给每个 SKU 分配不同的每分区档位：8 GB 卡得到档位 `0x77`（每分区 4096 MiB，16 × 4096 = **65536 MiB**），10 GB 卡得到档位 `0x66`（每分区 2048 MiB，20 × 2048 = **40960 MiB**）。8 GB 卡能带顶档位，因为它的堆叠是更好的部件；10 GB 卡在顶档位达到 81920 MiB 的*几何布局*，但超过约 40 GB 就不可用。**8 GB 到 64 GB，10 GB 到 40 GB。**
 
-The physical explanation offered by a member of the original proof-of-concept team, medium
-confidence and not independently verified: NVIDIA never produced A100s with 80 GB of Samsung memory,
-and Samsung most likely sold NVIDIA partly-defective 16 GB HBM2e stacks binned as 8 GB stacks. The
-exploit lets the 10 GB card address all 80 GB, but the upper 40 GB does not perform to standard.
+原概念验证团队一位成员提供的物理解释，中等置信度、未被独立验证：NVIDIA 从未生产过带 80 GB Samsung 显存的 A100，而且 Samsung 最可能把部分有缺陷的 16 GB HBM2e 堆叠作为 8 GB 堆叠分级卖给了 NVIDIA。这个漏洞让 10 GB 卡能寻址全部 80 GB，但上半 40 GB 不达标。
 
 > [!CAUTION]
-> **Do not target 80 GB on a 10 GB card**
+> **不要在 10 GB 卡上瞄准 80 GB**
 >
-> The 80 GB configuration reports ~81920 MiB (85,545,582,592 bytes to CUDA) and `cudaMalloc` of
-> 77 GiB succeeds, but kernels touching more than roughly 40 GB cause fatal GPU loss, independent
-> of power limit. Reported Xid codes include Xid 31 (described as harmless) and Xid 154 after
-> CUDA memory tests; the dominant reported symptom is hangs. Xid 31 alone was suggested by a
-> bystander and was not corroborated as *the* signature by the operator with the failing card.
-> See [The 80 GB question](../frontier/80gb.md).
+> 80 GB 配置报告约 81920 MiB（对 CUDA 是 85,545,582,592 字节），`cudaMalloc` 77 GiB 成功，但触碰超过约 40 GB 的内核造成致命 GPU 丢失，与功耗上限无关。报告的 Xid 码包括 Xid 31（被描述为无害）和 CUDA 内存测试后的 Xid 154；主导报告症状是挂起。Xid 31 单独是一个旁观者提出的，并未被带故障卡的操作者佐证为*那个*签名。参见[80 GB 问题](../frontier/80gb.md)。
 
 ---
 
-## Open problems on the physical side
+## 物理侧的开放问题
 
 > [!NOTE]
-> **Open problem: can disabled-but-not-defective FBPs be re-enabled?**
+> **未解问题：禁用但非有缺陷的 FBP 能被重新启用吗？**
 >
-> `OPT_FBP_DISABLE` = `0x00000852` on the 8 GB SKU is high confidence, but the paired
-> `FBP_DEFECTIVE` = `0x840` comes from a single medium-confidence community reference dump whose
-> card identity is disputed: `0x840` is also the A100 PCIe 40G/80G `FUSE_FBP_DISABLE` value. If
-> the pairing holds, two FBPs are disabled purely for binning and re-enabling both would move the
-> card from 64 GB to 80 GB, but the inference is unproven. The
-> software-override path is closed (see above), and re-enabling fuse-disabled partitions at
-> register level was reported to produce `0xbadf` poison on read. Devinit is the only untested
-> escape hatch, and nobody has made devinit run at runtime.
+> 8 GB SKU 上的 `OPT_FBP_DISABLE` = `0x00000852` 是高置信度，但配对的 `FBP_DEFECTIVE` = `0x840` 来自一个卡身份有争议的单一中等置信度社区参考转储：`0x840` 也是 A100 PCIe 40G/80G 的 `FUSE_FBP_DISABLE` 值。如果配对成立，两个 FBP 纯粹为分级被禁用，重新启用两者会把卡从 64 GB 移到 80 GB，但该推断未被证明。软件覆盖路径被关闭（见上），而寄存器级重新启用熔丝禁用的分区被报告在读时产生 `0xbadf` 毒值。devinit 是唯一未测试的逃生门，而没人让 devinit 在运行时运行。
 
 > [!NOTE]
-> **Open problem: does the physical DRAM above the shipping tier work, or only exist?**
+> **未解问题：出货档位之上的物理 DRAM 是能用，还是只存在？**
 >
-> PRAMIN sweeps on a 10 GB card proved 80 of 80 distinct GiB are physically present, a dense
-> 77 GiB fill and verify at 64 KiB granularity returned zero errors twice, and the largest
-> verified no-fold run was 72 GiB at stock boot timings. Against that: crashes above roughly
-> 40 GB, one CUDA context per fire before Xid 154, and 79 % of peak bandwidth in the extended
-> region. The current synthesis, not a resolution: the cells are addressable and hold data briefly
-> under a single context, and addressable is different from working.
+> 一张 10 GB 卡上的 PRAMIN 扫描证明 80/80 个不同 GiB 物理存在，一次以 64 KiB 粒度做的稠密 77 GiB 填充和校验零错误返回两次，最大的已验证无 fold 运行是出厂启动时序下的 72 GiB。反方：超过约 40 GB 崩溃、Xid 154 前每次触发一个 CUDA 上下文、以及扩展区域只有峰值的 79% 带宽。当前的综合（而非解决）：这些单元可寻址并在单上下文下短暂持有数据，而可寻址不同于能工作。
 
 > [!NOTE]
-> **Open problem: retention failure or address-decode failure?**
+> **未解问题：驻留失败还是地址解码失败？**
 >
-> A retention failure should scatter errors by time and address across the whole upper region. A
-> decode fold should produce exact aliasing at a power-of-two boundary, and the observed fold sits
-> at exactly 40 GiB, which is suspiciously exact for a retention problem. That fold was seen under
-> the `80` branch's incoherent LMR `0x0000028A`, and it disappears when the coherent `0x0000028B`
-> is fired instead, which reads as a decode story. But the crashes do not disappear with it.
-> Doubling refresh (`FBPA_CONFIG4 = 0xc403001a`) landed
-> on all 20 live FBPAs and did **not** fix the instability while costing about 40 % of bandwidth,
-> which is evidence against the retention story too. Neither mechanism is established.
+> 驻留失败应该把错误按时间和地址散布在整个上区域。解码 fold 应该在 2 的幂边界产生精确别名，而观察到的 fold 恰好在 40 GiB 处，这对驻留问题来说精确得可疑。那个 fold 在 `80` 分支的不连贯 LMR `0x0000028A` 下被看到，当改发连贯的 `0x0000028B` 时它消失，这读起来像一个解码故事。但崩溃不随之消失。加倍刷新（`FBPA_CONFIG4 = 0xc403001a`）落在全部 20 个活 FBPA 上，**没有**修复不稳定性、同时花掉约 40% 的带宽，这也反对驻留故事。两种机制都没有确立。
 
 > [!NOTE]
-> **Open problem: is the upper region 'untrained'?**
+> **未解问题：上区域是"未训练"的吗？**
 >
-> `FBPA_TRAINING_STATUS` (`0x009a0974`) reads FINISHED on every card probed, including an unlocked
-> card already carrying the 64 GB CFG1 value, and a controlled A/B established that row/bank/column
-> addressing is combinational and needs no training, so capacity is not gated on retraining. Yet
-> "untrained" remains the most-repeated explanation for the instability. The reconciliation on
-> offer is that the status bit reflects only the stock-geometry pass, or that the internally
-> generated timings are simply wrong for the widened geometry (a timings problem, not a training
-> problem). Nobody has correlated `TRAINING_STATUS` with an actual crash trace.
+> `FBPA_TRAINING_STATUS`（`0x009a0974`）在每一块被探测的卡上都读 FINISHED，包括一块已经携带 64 GB CFG1 值的解锁卡，而一次受控 A/B 确立了行/库/列寻址是组合逻辑、不需要训练，所以容量不门控在重新训练上。然而 "untrained"（未训练）仍是不稳定性被重复最多的解释。摆在桌面的调和是：状态位只反映出厂几何布局那一趟，或者内部生成的时序对加宽的几何布局根本就是错的（一个时序问题，不是训练问题）。没人把 `TRAINING_STATUS` 与一个实际的崩溃迹线关联过。
 
 > [!NOTE]
-> **Open problem: is MIG usable on an unlocked card?**
+> **未解问题：MIG 在解锁卡上可用吗？**
 >
-> The MIG-relevant descriptors are populated and readable (`FBHUB_MEM_PART_BOT` `0x00100b88`,
-> `MID` `0x00100b8c`, `BOUNDARY_CFG0` `0x00100b90` = `0x00000603`,
-> `SYSMEM_HSHUB_CONNECTION_CFG` `0x00100b98` = `0x00000003`), and the fuse survey shows MIG is not
-> fused off, merely unprogrammed. MIG does enable, but it cannot partition: `-lgip` exposes only
-> one profile (`1g.64gb`, 63.00 GiB, 70 SMs, P2P No), `-cgi 0` was run and produced a single
-> instance at `1 MiB / 65053 MiB`, and a standard A100 profile (`-cgi 9,3g.20gb -C`) is rejected
-> with `Invalid Argument`. What is open is whether the boundary descriptors can be reprogrammed to
-> expose more than one profile.
+> MIG 相关描述符被填充且可读（`FBHUB_MEM_PART_BOT` `0x00100b88`、`MID` `0x00100b8c`、`BOUNDARY_CFG0` `0x00100b90` = `0x00000603`、`SYSMEM_HSHUB_CONNECTION_CFG` `0x00100b98` = `0x00000003`），熔丝调查显示 MIG 没有被熔断关闭，只是未编程。MIG 确实能启用，但它不能分区：`-lgip` 只暴露一个档位（`1g.64gb`，63.00 GiB，70 个 SM，P2P No），`-cgi 0` 跑过并产生一个 `1 MiB / 65053 MiB` 的实例，而一个标准 A100 档位（`-cgi 9,3g.20gb -C`）被以 `Invalid Argument` 拒绝。开放的是边界描述符能否被重新编程以暴露多于一个档位。
 
 ---
 
-## See also
+## 相关页面
 
-- [Memory geometry unlock](../unlock/memory-geometry.md), the CFG1 and LMR mechanism
-- [Register reference](../unlock/register-reference.md) and the [register index](../appendix/register-index.md)
-- [Fuses and OTP](fuses-and-otp.md)
-- [VBIOS and the strap table](vbios.md)
-- [The 80 GB question](../frontier/80gb.md)
-- [Verification methodology](../procedures/verify.md)
-- [Glossary](../start/glossary.md) for FBP, FBPA, LTC, PLM, floorsweep
+- [显存几何布局解锁](../unlock/memory-geometry.md)，CFG1 和 LMR 机制
+- [寄存器参考](../unlock/register-reference.md) 和[寄存器索引](../appendix/register-index.md)
+- [熔丝与 OTP](fuses-and-otp.md)
+- [VBIOS 与跳线表](vbios.md)
+- [80 GB 问题](../frontier/80gb.md)
+- [验证方法论](../procedures/verify.md)
+- [术语表](../start/glossary.md)，了解 FBP、FBPA、LTC、PLM、floorsweep

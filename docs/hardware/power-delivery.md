@@ -1,265 +1,178 @@
-# On-board power delivery
+# 板载供电
 
-## What this page covers
+## 本页内容
 
-The CMP 170HX's own power path: the four board-level inputs, the rails they derive, the
-controllers and power stages that derive them, the power-on sequence, and the depopulated
-VRM phases that generate so much speculation. For PSU sizing, connectors, adapters, measured
-draw and `nvidia-smi -pl`, see [Power and PSU](../operations/power-and-psu.md).
+CMP 170HX 自身的供电路径：四个板级输入、它们派生的电压轨、派生它们的控制器和功率级、上电时序，以及引发大量猜测的缺件 VRM 相位。有关 PSU 尺寸、连接器、转接线、实测功耗和 `nvidia-smi -pl`，参见[供电与 PSU](../operations/power-and-psu.md)。
 
-The board is the **NVIDIA A100 40 GB PCIe reference design with components deliberately
-deleted**. Every component reference designator matches the leaked NVIDIA Tesla A100
-electrical schematic (`NVIDIA-A100-GA100-883-P1001-B02-Rev-A.pdf`, PG100/PG101 family), so
-that document is the authoritative map of this power tree. The deletions relevant here are
-unpopulated VRM phases (DrMOS transistors plus their output inductors) and some rear-side
-filter capacitors.
+这块板是 **NVIDIA A100 40 GB PCIe 参考设计，故意删除了部件**。每个元器件参考编号都与泄露的 NVIDIA Tesla A100 电气原理图（`NVIDIA-A100-GA100-883-P1001-B02-Rev-A.pdf`，PG100/PG101 系列）匹配，所以那份文档是这棵供电树的权威地图。这里相关的删除是未贴装的 VRM 相位（DrMOS 晶体管及其输出电感）和一些背面的滤波电容。
 
-The headline for anyone considering rework: **the stock VRM is not the limiting factor on
-this card, and repopulating the missing phases does not raise the power ceiling.** Measured
-full-load draw is about 250 W against an estimated ~500 W of installed power-stage
-capability.
+对任何考虑返工的人来说，头条是：**出厂 VRM 不是这张卡的瓶颈，重新贴装缺失的相位也提高不了功耗上限。** 实测满载功耗约 250 W，而安装的功率级能力估计约 500 W。
 
 ---
 
-## The four inputs
+## 四个输入
 
-| Input | Source | Feeds |
+| 输入 | 来源 | 供向 |
 |---|---|---|
-| `3V3_PEX` | PCIe slot | stepped to **1.8 V** by an LDO, for auxiliary control circuits |
-| `12V_PEX` | PCIe slot | 5 V, 1.35 V, HBMVPP 2.5 V, PEXVDD |
-| `12V_EXT1` | EPS 8-pin connector, rail 1 | NVVDD core (multiphase) and HBMVDD |
-| `12V_EXT2` | EPS 8-pin connector, rail 2 | a second group of the same |
+| `3V3_PEX` | PCIe 插槽 | 经 LDO 降到 **1.8 V**，供辅助控制电路 |
+| `12V_PEX` | PCIe 插槽 | 5 V、1.35 V、HBMVPP 2.5 V、PEXVDD |
+| `12V_EXT1` | EPS 8-pin 连接器，轨 1 | NVVDD 核心（多相）和 HBMVDD |
+| `12V_EXT2` | EPS 8-pin 连接器，轨 2 | 同类第二组 |
 
-The single physical 8-pin EPS socket carries `12V_EXT1` and `12V_EXT2` as two separate 12 V
-inputs internally. They remain distinguishable when an adapter cable is used. This is the
-origin of the "2x 8-pin" figure in third-party spec databases: two logical rails, one
-physical connector.
+单个物理 8-pin EPS 插座在内部把 `12V_EXT1` 和 `12V_EXT2` 作为两个独立的 12 V 输入承载。使用转接线时它们仍然可区分。这就是第三方规格数据库里 "2x 8-pin" 数字的来源：两个逻辑轨、一个物理连接器。
 
 ---
 
-## Rail map
+## 电压轨图
 
-Read directly from page 1 of the A100 schematic and cross-checked by probing a physical
-board during a repair.
+直接读自 A100 原理图第 1 页，并通过维修时对一块物理板的探测交叉核对。
 
-| Rail | Voltage | Regulator | Phases | Derived from |
+| 电压轨 | 电压 | 调节器 | 相位 | 派生自 |
 |---|---|---|---|---|
-| **NVVDD** (GPU core) | 1.0 V | MP2988 PWM controller driving DrMOS stages | multiple | `12V_EXT1` / `12V_EXT2` |
-| **HBMVDD** (HBM core) | not stated | MP2988 driving DrMOS stages | multiple | `12V_EXT1` / `12V_EXT2` |
-| **HBMVPP** | 2.5 V | MP1475 buck | 1 | `12V_PEX` |
-| **PEXVDD** (PCIe I/O signalling domain) | not stated | MP2988 | 1 DrMOS phase | `12V_PEX` |
-| 5 V | 5 V | MP1475 buck (MP1475DJ) | 1 | `12V_PEX` |
-| 1.35 V | 1.35 V | MP2988 | 1 DrMOS phase | `12V_PEX` |
+| **NVVDD**（GPU 核心） | 1.0 V | MP2988 PWM 控制器驱动 DrMOS 级 | 多个 | `12V_EXT1` / `12V_EXT2` |
+| **HBMVDD**（HBM 核心） | 未说明 | MP2988 驱动 DrMOS 级 | 多个 | `12V_EXT1` / `12V_EXT2` |
+| **HBMVPP** | 2.5 V | MP1475 降压 | 1 | `12V_PEX` |
+| **PEXVDD**（PCIe I/O 信令域） | 未说明 | MP2988 | 1 个 DrMOS 相位 | `12V_PEX` |
+| 5 V | 5 V | MP1475 降压（MP1475DJ） | 1 | `12V_PEX` |
+| 1.35 V | 1.35 V | MP2988 | 1 个 DrMOS 相位 | `12V_PEX` |
 | 1.8 V | 1.8 V | LDO | - | `3V3_PEX` |
 
-The HBMVPP rail is suspected to power the memory controller itself, on the grounds that its
-supply is far simpler than the multiphase HBMVDD rail. That inference is not confirmed.
+HBMVPP 轨被怀疑给内存控制器本身供电，理由是它的供电远比多相 HBMVDD 轨简单。这个推断未被确认。
 
-Power stages are **MP86957 smart power stages, rated 70 A output each**.
+功率级是 **MP86957 智能功率级，每颗额定输出 70 A**。
 
 ---
 
-## Power-on sequencing
+## 上电时序
 
-Useful because it tells you where to probe when a card is dead on the bus.
+它有用，因为它告诉你当一张卡在总线上"死掉"时该去哪里测。
 
-1. 12 V is applied and the filtered net `12V_F` comes up.
-2. `12V_F` feeds resistive divider **R391 / R392**, producing a **2.5 V** logic-level
-   `5V_PS_EN` signal.
-3. `5V_PS_EN` is de-glitched by a **10 nF** capacitor.
-4. `5V_PS_EN` enables the **MP1475DJ** 5 V buck.
+1. 12 V 被施加，滤波后的网络 `12V_F` 起来。
+2. `12V_F` 供给分压电阻 **R391 / R392**，产生一个 **2.5 V** 逻辑电平的 `5V_PS_EN` 信号。
+3. `5V_PS_EN` 被一颗 **10 nF** 电容去毛刺。
+4. `5V_PS_EN` 使能 **MP1475DJ** 5 V 降压。
 
-Documented on schematics page 48; the MP1475DJ itself is on page 18.
+记录在原理图第 48 页；MP1475DJ 本身在第 18 页。
 
 > [!TIP]
-> **Diagnostic consequence**
+> **诊断结论**
 >
-> If the card is dead on the PCIe bus, **check the 12 V input filter inductors and the
-> 5 V rail switching node first, not the core rail.** This sequence was used successfully
-> to guide a real repair.
+> 如果卡在 PCIe 总线上死掉，**先查 12 V 输入滤波电感和 5 V 轨开关节点，不要先查核心轨。** 这个时序被成功用来引导过一次真实维修。
 
 ---
 
-## The depopulated phases
+## 缺件的相位
 
-The 170HX is VRM-depopulated relative to the A100, and this is the single most misunderstood
-feature of the board.
+170HX 相对 A100 是 VRM 缺件的，而这是这块板最被误解的一个特性。
 
-| Board | Missing power MOSFETs and coils |
+| 板 | 缺失的功率 MOSFET 和线圈 |
 |---|---|
-| CMP 170HX | **3 per side** (one direct comparison); **roughly 6 of about 20 phases** (a second independent comparison), plus some rear-side filter capacitors |
-| A100 40 GB | 1 per side |
-| A100 80 GB | none |
+| CMP 170HX | **每侧 3 颗**（一次直接对比）；**约 20 相中的约 6 相**（第二次独立对比），外加一些背面的滤波电容 |
+| A100 40 GB | 每侧 1 颗 |
+| A100 80 GB | 无 |
 
-Both figures come from side-by-side photo and board comparisons by two independent people
-holding the hardware. Nobody has repopulated phases or scoped the rails, so confidence is
-medium. The phases are **not uniform**: some feed memory, some feed the GPU, so "6 of 20" is
-not a uniform 30% capability reduction.
+两个数字都来自两位独立持有硬件的对比者所做的并排照片和板卡对比。没有人重新贴装过相位或探测过电压轨，所以置信度为中等。这些相位**不均匀**：有些给显存供电、有些给 GPU 供电，所以 "6/20" 不是均匀的 30% 能力削减。
 
-A circulating PDF (`a100-unlock.pdf`, also seen as
-`cmp-170hx_a100_hardware-restore.pdf`) is essentially a list of which parts to add back.
-Note that the Winbond BIOS chip in that document's bill of materials is a **backup VBIOS chip
-for recovering from a bad flash**, not part of any unlock. The document's author stated that
-only the small components on the PCIe lanes are needed for x16; everything else in that build
-was an attempt to replicate an A100 under the hood.
+一份流传的 PDF（`a100-unlock.pdf`，也见 `cmp-170hx_a100_hardware-restore.pdf`）本质上是一份要加回哪些部件的清单。注意那份文档物料清单里的 Winbond BIOS 芯片是一个用于从刷坏中恢复的**备份 VBIOS 芯片**，不是任何解锁的一部分。该文档作者声明，只有 PCIe 通道上的小元件是 x16 所需要的；那份构建里其它一切都是为了在引擎盖下复刻一台 A100。
 
-### Repopulating them does not help
+### 重新贴装它们无济于事
 
-This has been refuted from several directions and should be treated as settled:
+这一点已从多个方向被驳斥，应当视为已定论：
 
-- **Capability is not the constraint.** MP86957 stages at 70 A each put the installed VRM at
-  an estimated **~500 W** against a measured full-load draw of about **250 W**. (The 500 W
-  figure is datasheet reasoning, never validated by an actual 500 W run.)
-- **The GPU does not sense phase count.** A VRM runs correctly under full load with half its
-  MOSFETs fitted; the fitted ones simply run hotter.
-- **Soldering parts on would not even activate them.** The PWM controllers would have to be
-  reconfigured to drive any added phases, which makes this a very large amount of handwork
-  for no effect.
-- **The added parts from the A100 restoration guide serve voltage stabilisation only.** They
-  do not raise the power ceiling.
-- **The 8 GB card has identical power delivery and is entirely stable at 64 GB**, with the
-  VRM mod reported unnecessary and minimal error observed without it.
-- **The 80 GB failures were never power-related:** the failing cards never drew above about
-  80 W during the crashing workload, against a 250 W limit.
+- **能力不是约束。** MP86957 级每颗 70 A，把已安装的 VRM 放在估计约 **~500 W**，而实测满载功耗约 **250 W**。（500 W 是数据手册推理，从未被一次真实的 500 W 运行验证过。）
+- **GPU 不感知相位数量。** 一个 VRM 在只装一半 MOSFET 的情况下满载也运行正确；已装的只是更热。
+- **焊上部件甚至不会激活它们。** PWM 控制器必须重新配置才能驱动任何新增相位，这让它成为一堆毫无效果的纯手工活。
+- **A100 恢复指南里加回的部件只服务电压稳定。** 它们提高不了功耗上限。
+- **8 GB 卡有相同的供电，在 64 GB 下完全稳定**，VRM 改装被报告为没必要，不做它观察到的错误也极少。
+- **80 GB 的失败从来不是供电问题：** 崩溃工作负载下失败的卡从未超过约 80 W，而上限是 250 W。
 
 > [!CAUTION]
-> **Missing capacitors are a different matter from missing phases**
+> **缺失电容与缺失相位是两回事**
 >
-> An LC filter on a MOSFET output with its capacitors missing turns a chopped switching
-> waveform into unfiltered output. Best case the card does not boot; **overvolt is
-> possible.** If you are adding parts back, do not add MOSFETs and inductors without their
-> filter capacitors.
+> MOSFET 输出上缺电容的 LC 滤波器，会把斩波开关波形变成未滤波的输出。最坏情况卡不启动；**过压是可能的。** 如果你在加回部件，不要在没有滤波电容的情况下加 MOSFET 和电感。
 
-An overload counter-argument also stands on the record: the 8 GB card already has an
-overclock VBIOS raising the limit to 300 W (the same as A100 PCIe), and an overloaded PWM
-would either trip its protection and shut down, or overheat and burn out. Neither outcome
-gives you more performance.
+一个过载的反方论点也已记录在案：8 GB 卡已经有一个把上限提到 300 W（与 A100 PCIe 相同）的超频 VBIOS，而一个过载的 PWM 要么触发其保护并关机，要么过热烧毁。这两个结果都不会给你更多性能。
 
 ---
 
-## Raising the ceiling: what has and has not been tried
+## 提高上限：试过什么、没试过什么
 
-| Route | Status |
+| 路径 | 状态 |
 |---|---|
-| 300 W "OC mining" VBIOS | **Works**, on 8 GB cards. Real ceiling, `POW 278 / 300 W` logged over 30 minutes. Buys about +2.8% BF16. |
-| Shunt mod to restore full A100 TDP | **Never performed.** Expected by an experienced hardware modder to be a simple shunt mod rather than a firmware change, but nobody has done or measured one. |
-| Software or VBIOS route to a 400-500 W limit | **Never achieved.** Proposed as the alternative for people uncomfortable with shunt modding. |
-| Repopulating VRM phases | **Does not raise the ceiling.** See above. |
+| 300 W "OC mining" VBIOS | **有效**，在 8 GB 卡上。真实上限，30 分钟内记录到 `POW 278 / 300 W`。换来约 +2.8% BF16。 |
+| 分流电阻改装以恢复完整 A100 TDP | **从未执行。** 一位有经验的硬件改装者预期它是一个简单的分流改装而非固件改动，但没人做过或测过。 |
+| 软件或 VBIOS 路径达到 400-500 W 上限 | **从未达成。** 作为对不适于做分流改装的人的替代方案被提出。 |
+| 重新贴装 VRM 相位 | **提高不了上限。** 见上。 |
 
-Since raising the limit from 250 W to 300 W measurably gains only about 2.8% with core and
-memory both below 65 C, none of these is likely to be worth the risk. The core does not want
-to clock higher. See [Power and PSU](../operations/power-and-psu.md) and
-[Tuning](../operations/tuning.md).
+既然把上限从 250 W 提到 300 W 在核心和显存都低于 65 C 时实测只换得约 2.8%，这些路径没有一条值得冒险。核心并不想跑得更高。参见[供电与 PSU](../operations/power-and-psu.md) 和[调优](../operations/tuning.md)。
 
 ---
 
-## VRM registers: a dead end with a hazard attached
+## VRM 寄存器：一条带危险的死路
 
 > [!CAUTION]
-> **`0x20340` / `0x20344` and runtime devinit can overvolt the card**
+> **`0x20340` / `0x20344` 和运行时 devinit 可能过压**
 >
-> A proposal to change VRM duty cycle directly through registers `0x20340` / `0x20344` was
-> posted as a shot in the dark: "Not sure if 0x20340/0x20344 changing the duty cycle on
-> VRMs directly would give the clock increase on its own. I don't think there's a PLL
-> controlling clocks. If there is, then just changing the duty cycle should work on its
-> own." The reasoning is self-contradictory as written: if there is no PLL, a duty-cycle
-> change alone should not set a clock. **It was never tested.**
+> 一个直接通过寄存器 `0x20340` / `0x20344` 改变 VRM 占空比的提案被当作瞎猜贴了出来："Not sure if 0x20340/0x20344 changing the duty cycle on VRMs directly would give the clock increase on its own. I don't think there's a PLL controlling clocks. If there is, then just changing the duty cycle should work on its own."（不确定直接改 VRM 占空比是否就足以提升时钟。我不认为有 PLL 在控制时钟。如果有，那么光改占空比就应该有效。）这个推理写出来就自相矛盾：如果没有 PLL，光改占空比就不该能设一个时钟。**它从未被测试过。**
 >
-> The same registers were separately flagged as an **overvolt hazard**: re-executing
-> devinit through the PMU at runtime could push the VRM **past 1.3 V** with a wrong value,
-> because the devinit region containing timing and MRS programming is part of the training
-> section that also covers clocks, PLLs and VID-PWM. Recorded here only because the
-> addresses may be useful later, and because anyone poking at runtime devinit should know
-> what is adjacent to it.
+> 同一个寄存器被单独标记为**过压危险**：通过 PMU 在运行时重放 devinit，可能用一个错误值把 VRM 推**过 1.3 V**，因为含时序和 MRS 编程的 devinit 区域属于也覆盖时钟、PLL 和 VID-PWM 的训练部分。记录在这里只是因为这些地址以后可能有用，以及任何摆弄运行时 devinit 的人应该知道它旁边有什么。
 
-These addresses appear **nowhere** in the shipping unlocker or in any of the 12 unreleased
-branches, verified by keyword sweep.
+这些地址在出货解锁器或 12 个未发布分支的任何一个中都**从不出现**，经关键字扫描验证。
 
 ---
 
-## The unlock does not touch power at all
+## 解锁根本不碰供电
 
-A keyword sweep of the shipping tree and all 12 unreleased branch snapshots for `0x20340`,
-`0x20344`, `freqDelta`, `power_limit`, `powerlimit`, `thermal`, `pstate`, `vid_pwm`,
-`clkdomain`, `MHz` and `watt` returns nothing in any patch, script or config. The unlock
-touches privilege-level masks, SS0/SS1, CFG1, LMR and the GSP framebuffer/PMA description
-and nothing else.
+对出货树和全部 12 个未发布分支快照做 `0x20340`、`0x20344`、`freqDelta`、`power_limit`、`powerlimit`、`thermal`、`pstate`、`vid_pwm`、`clkdomain`、`MHz` 和 `watt` 的关键字扫描，在任何补丁、脚本或配置里都一无所获。解锁只碰权限级别掩码、SS0/SS1、CFG1、LMR 以及 GSP 帧缓冲/PMA 描述，不碰其它任何东西。
 
-Every power and thermal characteristic of an unlocked card is therefore a property of the
-**stock VBIOS and stock board**, and cannot be fixed, or broken, by the unlocker.
+因此解锁卡的每一个供电和热特性都是**出厂 VBIOS 和出厂板**的属性，解锁器既修不了它们，也弄不坏它们。
 
 ---
 
-## The unpopulated 4-pin pad
+## 未贴装的 4-pin 焊盘
 
-An unpopulated 4-pin pad on the PCB was measured carrying **12 V** and is suspected to be a
-fan header.
+PCB 上一个未贴装的 4-pin 焊盘被测得携带 **12 V**，被怀疑是一个风扇接口。
 
 > [!NOTE]
-> **Open problem: is it a fan header, and is it PWM-controllable?**
+> **未解问题：它是风扇接口吗，能 PWM 控制吗？**
 >
-> One participant reported "it has 12v and gnd", which is power only: no tachometer, no
-> PWM, meaning any fan attached would run at fixed full speed with no RPM reporting. A
-> skeptic in the same thread said the connector "doesn't look like a fan con". **No
-> photo-confirmed pinout, no mating receptacle part number, and no working fan install
-> has ever been posted.** Next step: scope the remaining two pins while the card idles and
-> loads, and trace them on the leaked schematic. This matters because it would enable
-> standalone per-card fan control with no external controller. See
-> [Cooling](../operations/cooling.md).
+> 一位参与者报告 "it has 12v and gnd"（它有 12v 和地），这只有电：没有转速计、没有 PWM，意味着任何接上的风扇都会以固定全速运行且没有 RPM 报告。同一条线程里一位怀疑者说这个连接器 "doesn't look like a fan con"（看起来不像风扇连接器）。**从未贴出过照片确认的引脚定义、配对插座料号，或成功安装的风扇。** 下一步：让卡空转和负载时探测剩余两个引脚，并在泄露的原理图上追踪它们。这很重要，因为它能实现无需外部控制器的独立每卡风扇控制。参见[散热](../operations/cooling.md)。
 
 ---
 
-## Open and unresolved
+## 开放与未解决
 
 > [!NOTE]
-> **Open problem: do power-raised cards blow a rear-board capacitor after prolonged mining?**
+> **未解问题：提高功耗的卡在长期挖矿后会烧掉一块背面电容吗？**
 >
-> One owner relayed that the supplier of their cards had this happen repeatedly and
-> showed a blown board: "literally goes poof and lets out black smoke", described as
-> cheap and repairable, with the suspected parts narrowed to two components on the rear of
-> an 8 GB board believed to be capacitors. That same operator ran cards at around 56 C,
-> raising the suspicion that the wrong sensor was being monitored and the VRM was
-> overheating under bandwidth-bound mining loads. An experienced long-time owner said they
-> had never seen this failure and doubted it, arguing the components can handle far more
-> than the BIOS allows. No photograph of the failed component and no measurement were
-> produced. **What would settle it:** a photograph of a failed board with the designator
-> readable, plus a thermocouple reading on the VRM under a bandwidth-bound load.
+> 一位拥有者转述他们卡的供应商反复遇到这事，并展示了一块烧毁的板："literally goes poof and lets out black smoke"（真就砰一声冒出黑烟），被描述为便宜且可修，被怀疑的部件缩小到一块 8 GB 板背面两个据信是电容的元件。同一个操作者让卡在约 56 C 运行，这让人怀疑被监控的是错误的传感器、VRM 在带宽受限的挖矿负载下过热。一位有经验的老拥有者说他们从没见过这种失效并对此存疑，辩称这些元件能承受的远比 BIOS 允许的多。没有生产出故障元件的照片，也没有测量。**什么能定论它：** 一张设计编号可读的故障板照片，加上带宽受限负载下 VRM 上的一次热电偶读数。
 
 > [!NOTE]
-> **Open problem: are the medium rear-side SMD capacitors near the core needed?**
+> **未解问题：核心附近背面中等尺寸的 SMD 电容需要吗？**
 >
-> Raised from a photo by someone who had previously seen an RTX 2070 with two of these
-> broken off, which wrecked its voltages: roughly two per MOSFET on the left and right
-> capacitor rows, dual-placed for redundancy, but at least one of each pair must be
-> present and working. Flagged explicitly as a hypothesis, not a finding, and specifically
-> as a possible 80 GB stability factor. This concerns local decoupling rather than VRM
-> phases, so it is not covered by the phase-repopulation refutation above. **Next step:**
-> photograph the rear of a working 8 GB and a working 10 GB card and compare against the
-> schematic's C-designator list.
+> 从一张照片提出，拍照者之前见过一张 RTX 2070 有两颗这种电容断掉、毁掉了它的电压：左右电容排上每 MOSFET 大约两颗，成对冗余放置，但每对至少必须有一颗存在且工作。被明确标记为假设而非发现，并专门作为可能的 80 GB 稳定性因素。这关乎本地去耦而非 VRM 相位，所以它不被上面相位重贴装的驳斥覆盖。**下一步：** 给一块工作的 8 GB 和一块工作的 10 GB 卡背面拍照，对照原理图的 C 设计编号清单。
 
 ---
 
-## Interface summary
+## 接口汇总
 
-| Quantity | Value |
+| 量 | 值 |
 |---|---|
-| PCIe slot power limit (DevCap) | 75 W |
-| External connector | 1 x EPS 8-pin, 300 W rated, carrying `12V_EXT1` and `12V_EXT2` |
-| Stock power limit | 250 W default = 250 W maximum, 100 W minimum |
-| OC mining VBIOS power limit | 300 W maximum |
-| Measured full-load draw | ~250 W stock, 278 W at a 300 W limit |
-| Power stages | MP86957, 70 A each |
-| Estimated installed VRM capability | ~500 W (datasheet reasoning, never validated) |
-| VRM overvolt hazard threshold | past 1.3 V, if a wrong value reaches `0x20340` / `0x20344` during runtime devinit |
+| PCIe 插槽功耗上限（DevCap） | 75 W |
+| 外部连接器 | 1 × EPS 8-pin，额定 300 W，承载 `12V_EXT1` 和 `12V_EXT2` |
+| 出厂功耗上限 | 250 W 默认 = 250 W 最大，100 W 最小 |
+| OC mining VBIOS 功耗上限 | 300 W 最大 |
+| 实测满载功耗 | 出厂约 250 W，300 W 上限下 278 W |
+| 功率级 | MP86957，每颗 70 A |
+| 估计已安装 VRM 能力 | 约 500 W（数据手册推理，从未验证） |
+| VRM 过压危险阈值 | 若运行时 devinit 期间错误值到达 `0x20340` / `0x20344`，则超过 1.3 V |
 
 ---
 
-## See also
+## 相关页面
 
-- [Power and PSU](../operations/power-and-psu.md): connectors, adapters, PSU sizing,
-  measured draw, `nvidia-smi -pl`.
-- [Thermals](thermals.md): thermal limits, sensors, and the leakage feedback loop.
-- [Cooling](../operations/cooling.md): the VRM needs its own airflow.
-- [Physical mods](../operations/physical-mods.md): teardown and rework, including the
-  capacitor mod (which is a PCIe signalling mod, not a power mod).
-- [Board and variants](board-and-variants.md): the A100 lineage and what else was deleted.
+- [供电与 PSU](../operations/power-and-psu.md)：连接器、转接线、PSU 尺寸、实测功耗、`nvidia-smi -pl`。
+- [热设计](thermals.md)：热限制、传感器，以及泄漏反馈回路。
+- [散热](../operations/cooling.md)：VRM 需要它自己的气流。
+- [物理改装](../operations/physical-mods.md)：拆解与返工，包括电容改装（它是 PCIe 信令改装，不是供电改装）。
+- [板卡与变体](board-and-variants.md)：A100 血统和还删掉了什么。

@@ -1,472 +1,338 @@
-# Measured performance
+# 实测性能
 
-**What this page covers.** Every reproducible throughput number for the CMP 170HX: compute
-rates per datatype before and after the unlock, HBM bandwidth, PCIe bandwidth at each link
-configuration that anyone has actually reached, and how all of it compares against a real
-A100. Test conditions are stated on every row. Tuning levers (clock offsets, power limits,
-profiles) live on [tuning.md](tuning.md); inference-specific numbers live on
-[llm-inference.md](llm-inference.md).
+**本页覆盖内容。** CMP 170HX 的每一个可复现吞吐数字：解锁前后按数据类型的算力速率、HBM 带宽、每种实际达到的链路配置下的 PCIe 带宽，以及如何与一颗真 A100 对比。每一行都注明测试条件。调优杠杆（时钟偏移、功耗限制、档位）在[tuning.md](tuning.md)；推理专属数字在[llm-inference.md](llm-inference.md)。
 
-**The headline result.** The compute unlock is a register write, not a clock change. Writing
-SS0 `0x0082381c` = `0x88888888` and SS1 `0x00823820` = `0x00000008` (after opening the FEAT
-PLM at `0x00823804`) takes FP32 from **0.30-0.41 TFLOPS to 12.2-12.8 TFLOPS**, a **26-32x**
-gain, at unchanged clocks. Nothing in the shipping unlocker touches core clock, memory clock,
-power limit or PCIe link speed, so every figure below is a stock-clock figure unless it says
-otherwise. See [compute-throttle.md](../unlock/compute-throttle.md) for the mechanism.
+**头条结果。** 算力解锁是一次寄存器写、不是时钟改动。写 SS0 `0x0082381c` = `0x88888888` 和 SS1 `0x00823820` = `0x00000008`（打开 `0x00823804` 处的 FEAT PLM 之后）把 FP32 从 **0.30-0.41 TFLOPS 提到 12.2-12.8 TFLOPS**、**26-32x** 增益、时钟不变。出货解锁器里没有任何东西碰核心时钟、显存时钟、功耗限制或 PCIe 链路速度，所以除非另有说明、下面每个数字都是一个出厂时钟数字。机制见[算力节流](../unlock/compute-throttle.md)。
 
-**The control that proves the mechanism.** In the same-card A/B where FP32 moves 30.7x,
-memory bandwidth moves from **1592 GB/s to 1599 GB/s**, a ratio of 1.0x. NVIDIA restricted the
-instruction issue rate, not the memory subsystem.
+**证明机制的对照。** 在同卡 A/B 里 FP32 移动 30.7x、显存带宽从 **1592 GB/s 到 1599 GB/s** 移动、比值 1.0x。NVIDIA 限制的是指令发射速率、不是显存子系统。
 
 ---
 
-## How to read these numbers
+## 如何读这些数字
 
-- **Stock clocks throughout.** Sustained SM clock is 1410 MHz (1470 MHz with
-  `nvidia-smi -pl 300`), base 1140 MHz. The `clocks.max.sm = 1935 MHz` field that `nvidia-smi`
-  reports post-unlock is a *reported field*, not an achievable clock; it is a single report,
-  never re-checked, and the VBIOS table maximum is 1695 MHz. Treat 1935 MHz as low confidence.
-- **The throttle is per-instruction-class.** It is not a global multiplier. On a clean CMP 90HX
-  the ratios were FP64 1/64, FP32 1/32, FP16 1x (untouched), INT32 1/2, INT8 1/16. The 170HX
-  follows the same pattern with different divisors, which is why one datatype can look normal
-  while another is 30x down.
-- **Two INT8 numbers are both real.** The tensor MMA path and the library/OpenCL path differ by
-  7.6x. Do not average them.
-- **Compression is off.** Shipping patch `0005-ce-scrub-workarounds.patch` forces
-  `*pteKind = NV_MMU_PTE_KIND_GENERIC_MEMORY` for `0x20C2` and `0x2082`, where stock returns
-  `NV_MMU_PTE_KIND_GENERIC_MEMORY_COMPRESSIBLE_DISABLE_PLC`. Any bandwidth comparison against a
-  real A100 must note this.
-- **Two measurement gotchas that produce garbage.** `CUBLAS_COMPUTE_16F` with a `float`
-  alpha/beta pointer returns instantly and reports an absurd 10748 TFLOPS: that is a no-op, not
-  a result, so use the fp32-accumulate rows. And CUDA 13 removed `cudaDeviceProp::clockRate` and
-  `memoryClockRate`, so query `cudaDeviceGetAttribute` with `cudaDevAttrClockRate` /
-  `cudaDevAttrMemoryClockRate` instead.
+- **全程出厂时钟。** 持续 SM 时钟是 1410 MHz（`nvidia-smi -pl 300` 下 1470 MHz）、基础 1140 MHz。`nvidia-smi` 解锁后报告的 `clocks.max.sm = 1935 MHz` 字段是一个*报告字段*、不是可达时钟；它是一个单一报告、从未复查，而 VBIOS 表最大是 1695 MHz。把 1935 MHz 当中等置信度。
+- **节流是按指令类的。** 它不是一个全局乘数。在一块干净的 CMP 90HX 上比值是 FP64 1/64、FP32 1/32、FP16 1x（未触碰）、INT32 1/2、INT8 1/16。170HX 跟随同样的模式、带不同除数，这就是为什么一个数据类型看起来正常、另一个却低 30x。
+- **两个 INT8 数字都是真的。** 张量 MMA 路径和库/OpenCL 路径相差 7.6x。不要平均它们。
+- **压缩被关闭。** 出货补丁 `0005-ce-scrub-workarounds.patch` 为 `0x20C2` 和 `0x2082` 强制 `*pteKind = NV_MMU_PTE_KIND_GENERIC_MEMORY`、出厂则返回 `NV_MMU_PTE_KIND_GENERIC_MEMORY_COMPRESSIBLE_DISABLE_PLC`。任何对真 A100 的带宽对比都必须注明这个。
+- **两个产生垃圾的测量坑。** 带一个 `float` alpha/beta 指针的 `CUBLAS_COMPUTE_16F` 立即返回并报告一个荒谬的 10748 TFLOPS：那是一个空操作、不是结果，所以用 fp32-累加行。CUDA 13 移除了 `cudaDeviceProp::clockRate` 和 `memoryClockRate`、所以改经 `cudaDeviceGetAttribute` 用 `cudaDevAttrClockRate` / `cudaDevAttrMemoryClockRate` 查询。
 
 > [!WARNING]
-> **Theoretical peaks masquerading as measurements**
+> **伪装成测量的理论峰值**
 >
-> Three separate figures in circulation are tool-computed device properties, not run results.
-> `1769.47 GB/sec` is exactly `864 MHz x 4 x 4096 bits / 8`; `12633.60 GFlops` is exactly
-> `4480 x 2 x 1410 MHz`. Both are derived from the clock and bus-width fields printed two
-> lines above them in the same mixbench dump. **No card has ever measured 1769 GB/s.** The
-> same 12633.6 GFLOPS reappears in a second dump as "4480 cores, 12.634 TFLOPs/s", again as a
-> device property.
+> 流传的三个独立数字是工具计算的设备属性、不是运行结果。`1769.47 GB/sec` 恰好是 `864 MHz x 4 x 4096 bits / 8`；`12633.60 GFlops` 恰好是 `4480 x 2 x 1410 MHz`。两者都从同一份 mixbench 转储里、打印在它们上面两行的时钟和总线宽度字段派生。**没有任何卡测量过 1769 GB/s。** 同一个 12633.6 GFLOPS 在第二份转储里再次作为 "4480 cores, 12.634 TFLOPs/s" 出现、同样是一个设备属性。
 
 ---
 
-## Compute: locked versus unlocked
+## 算力：锁定对比解锁
 
-All rows measured on compute-unlocked cards at stock clocks unless noted. The locked column is
-the same silicon before the SS0/SS1 writes.
+除注明外，所有行都在算力解锁卡、出厂时钟上测量。锁定列是 SS0/SS1 写之前的同一颗硅片。
 
-| Datatype / path | Locked | Unlocked | Ratio | Conditions |
+| 数据类型 / 路径 | 锁定 | 解锁 | 比值 | 条件 |
 |---|---|---|---|---|
-| FP32 non-tensor | 0.30 / 0.40 / 0.41 TFLOPS | 12.58 TFLOPS | 28.4x-30.7x | 1024³ / 4096³ / 8192³ modded sweep, same card |
-| FP32 SGEMM | 393 Gflop/s | 12,233-12,256 Gflop/s | 31x | gpu-burn, peak 67 C |
-| FP32 (rented cohort) | 0.39 TFLOPS | 12.6 TFLOPS | 32.3x | mean of 8 cards, driver 610.43.02 |
-| FP64 non-tensor | 0.20 TFLOPS | 6.223-6.31 TFLOPS | ~31x | 1/2 of FP32, the full unrestricted GA100 rate |
-| FP64 tensor | 197 / 191 Gflop/s (paper) | 11.6-11.96 TFLOPS | 59x-62x (paper) | 11,668 / 11,786 Gflop/s DGEMM / FP64 tensor |
-| TF32 tensor | 2.96-3.21 TFLOPS | 79-94 TFLOPS | 15x-28x | widest spread of any datatype |
-| FP16 tensor | 6.01 TFLOPS | 158.7-190 TFLOPS | ~27x | fp32 accumulate at the low end |
-| BF16 tensor | 6.41 TFLOPS | 164.4-192.7 TFLOPS | ~28x | ceiling 202.1 TFLOPS |
-| INT8 tensor MMA | 1.60 TOPS | 335.0-335.6 TOPS | n/a | per-instruction microbenchmark |
-| INT8 library / OpenCL | 1.60 TOPS | 43.33-47.894 TOPS | 27.0x | torch, cuBLAS, OpenCL-Benchmark |
-| INT4 tensor MMA | n/a | 320.2 TOPS | n/a | `mma_s4s4s32_8_8_32` |
-| FP4 / FP6 / FP8 MMA | not supported | not supported | n/a | expected for sm_80 |
+| FP32 非张量 | 0.30 / 0.40 / 0.41 TFLOPS | 12.58 TFLOPS | 28.4x-30.7x | 1024³ / 4096³ / 8192³ 修改扫、同卡 |
+| FP32 SGEMM | 393 Gflop/s | 12,233-12,256 Gflop/s | 31x | gpu-burn、峰值 67 C |
+| FP32（租用群组） | 0.39 TFLOPS | 12.6 TFLOPS | 32.3x | 8 卡均值、驱动 610.43.02 |
+| FP64 非张量 | 0.20 TFLOPS | 6.223-6.31 TFLOPS | 约 31x | FP32 的 1/2、完整的无限制 GA100 速率 |
+| FP64 张量 | 197 / 191 Gflop/s（论文） | 11.6-11.96 TFLOPS | 59x-62x（论文） | 11,668 / 11,786 Gflop/s DGEMM / FP64 张量 |
+| TF32 张量 | 2.96-3.21 TFLOPS | 79-94 TFLOPS | 15x-28x | 任何数据类型最宽的分布 |
+| FP16 张量 | 6.01 TFLOPS | 158.7-190 TFLOPS | 约 27x | 低端 fp32 累加 |
+| BF16 张量 | 6.41 TFLOPS | 164.4-192.7 TFLOPS | 约 28x | 上限 202.1 TFLOPS |
+| INT8 张量 MMA | 1.60 TOPS | 335.0-335.6 TOPS | n/a | 按指令微基准测试 |
+| INT8 库 / OpenCL | 1.60 TOPS | 43.33-47.894 TOPS | 27.0x | torch、cuBLAS、OpenCL-Benchmark |
+| INT4 张量 MMA | n/a | 320.2 TOPS | n/a | `mma_s4s4s32_8_8_32` |
+| FP4 / FP6 / FP8 MMA | 不支持 | 不支持 | n/a | 对 sm_80 是预期的 |
 
-### FP32, the load-bearing number
+### FP32，那个承重数字
 
-Seven tools on at least a dozen distinct cards land inside a 12.2-12.8 TFLOPS band.
+七个工具、至少十几张不同的卡、都落在 12.2-12.8 TFLOPS 波段内。
 
-| Value | Tool / conditions |
+| 值 | 工具 / 条件 |
 |---|---|
 | 12.72 TFLOPS | torch GEMM 8192² |
-| 12.76 TFLOPS | `gemm_probe.cu` n=8192, 30 iterations |
-| 12.58 TFLOPS | 8192³ modded sweep |
-| 12,565.14 GFLOPS | clpeak, driver 13.0 / CUDA 13.3 |
-| 12.493 TFLOPs/s | OpenCL-Benchmark, 10 GB to 40 GB card |
-| 12.6 TFLOPS | mean of eight rented cards |
-| 12,233-12,256 Gflop/s | paper Table 2, gpu-burn |
-| 12,229-12,254 Gflop/s | sustained burn-in, 268435456 B buffers, 24 iterations |
-| 11.1 TFLOPS | per-instruction scalar `fma_fp32` microbenchmark (lower bound) |
+| 12.76 TFLOPS | `gemm_probe.cu` n=8192、30 次迭代 |
+| 12.58 TFLOPS | 8192³ 修改扫 |
+| 12,565.14 GFLOPS | clpeak、驱动 13.0 / CUDA 13.3 |
+| 12.493 TFLOPs/s | OpenCL-Benchmark、10 GB 到 40 GB 卡 |
+| 12.6 TFLOPS | 八张租用卡均值 |
+| 12,233-12,256 Gflop/s | 论文表 2、gpu-burn |
+| 12,229-12,254 Gflop/s | 持续烧机、268435456 B 缓冲、24 次迭代 |
+| 11.1 TFLOPS | 按指令标量 `fma_fp32` 微基准测试（下限） |
 
-The theoretical peak for a 70-SM GA100 at 1410 MHz is 12,633.6 GFLOPS, so the card achieves
-roughly 99% of arithmetic peak. Locked, independent measurements sit at 0.3159 TFLOPS FFMA / 0.32 / 0.39
-TFLOPS / 393 Gflop/s SGEMM / 367 GFLOPS clpeak, all inside the 1/32 issue-rate model.
+一颗 70-SM GA100 在 1410 MHz 的理论峰值是 12,633.6 GFLOPS，所以卡达到约 99% 的算术峰值。锁定时独立测量落在 0.3159 TFLOPS FFMA / 0.32 / 0.39 TFLOPS / 393 Gflop/s SGEMM / 367 GFLOPS clpeak、全部在 1/32 发射速率模型内。
 
-### FP64 has two rates and they must not be conflated
+### FP64 有两条速率、绝不可混为一谈
 
-Non-tensor FP64 runs at exactly **1/2 of FP32** (6.223 TFLOPs/s OpenCL, 6308.65 GFLOPS clpeak,
-~6,200 GFLOPS DGEMM, 5.6 TFLOPS for a pure scalar `fma_fp64` microbenchmark). FP64 **tensor**
-runs at roughly **2x that** (11.65 TFLOPS, 11.96 TFLOPS clpeak WMMA fp64 8x8x4, 11.6 TFLOPS
-across eight rented cards, 11,668-11,786 Gflop/s in the paper). The 1/2 ratio is the full
-unrestricted GA100 rate: FP64 is genuinely restored, not partially.
+非张量 FP64 恰好跑在 **FP32 的 1/2**（OpenCL 6.223 TFLOPs/s、clpeak 6308.65 GFLOPS、DGEMM 约 6,200 GFLOPS、纯标量 `fma_fp64` 微基准测试 5.6 TFLOPS）。FP64 **张量**跑在**约 2 倍**（11.65 TFLOPS、clpeak WMMA fp64 8x8x4 11.96 TFLOPS、跨八张租用卡 11.6 TFLOPS、论文里 11,668-11,786 Gflop/s）。1/2 比值是完整的无限制 GA100 速率：FP64 被真正恢复、不是部分。
 
-### Tensor throughput detail
+### 张量吞吐细节
 
-| Datatype | Value | Tool / shape |
+| 数据类型 | 值 | 工具 / 形状 |
 |---|---|---|
-| TF32 | 79.0 TFLOPS | 8 rented cards, torch GEMM |
-| TF32 | 80.59 / 84.75 / 51.53 TFLOPS | 8192³ / 4096³ / 1024³ modded sweep |
+| TF32 | 79.0 TFLOPS | 8 张租用卡、torch GEMM |
+| TF32 | 80.59 / 84.75 / 51.53 TFLOPS | 8192³ / 4096³ / 1024³ 修改扫 |
 | TF32 | 81.35 TFLOPS | torch GEMM 8192² |
 | TF32 | 83.2 TFLOPS | `mma_tf32tf32f32_16_16_8` |
 | TF32 | 88.9-91.9 TFLOPS | `gemm_probe.cu` n=8192 |
 | TF32 | 89.69 TFLOPS | clpeak `mma.sync m16n8k8` |
-| TF32 | 94,103 Gflop/s | paper, gpu-burn, 64 C |
-| FP16 (fp32 acc) | 158.7-160.0 TFLOPS | `gemm_probe.cu` n=8192 |
-| FP16 (fp32 acc) | 162.7 TFLOPS | 8 rented cards |
-| FP16 | 174.11 TFLOPS | 4096³ modded sweep |
+| TF32 | 94,103 Gflop/s | 论文、gpu-burn、64 C |
+| FP16（fp32 累加） | 158.7-160.0 TFLOPS | `gemm_probe.cu` n=8192 |
+| FP16（fp32 累加） | 162.7 TFLOPS | 8 张租用卡 |
+| FP16 | 174.11 TFLOPS | 4096³ 修改扫 |
 | FP16 | 175.79 TFLOPS | torch GEMM 4096² |
-| FP16 (fp32 acc) | 179.1 TFLOPS | `mma_f16f16f32`, both tile shapes |
-| FP16 (fp16 acc) | 180.2 / 180.3 TFLOPS | `mma_f16f16f16_16_16_16` / `_32_8_16` |
-| FP16 (fp16 acc) | 189.66 TFLOPS | clpeak `mma.sync m16n8k16` |
-| BF16 | 164.4 TFLOPS | `mma_bf16bf16f32`, both tile shapes |
-| BF16 | 171.4 TFLOPS | 8 rented cards |
+| FP16（fp32 累加） | 179.1 TFLOPS | `mma_f16f16f32`、两个 tile 形状 |
+| FP16（fp16 累加） | 180.2 / 180.3 TFLOPS | `mma_f16f16f16_16_16_16` / `_32_8_16` |
+| FP16（fp16 累加） | 189.66 TFLOPS | clpeak `mma.sync m16n8k16` |
+| BF16 | 164.4 TFLOPS | `mma_bf16bf16f32`、两个 tile 形状 |
+| BF16 | 171.4 TFLOPS | 8 张租用卡 |
 | BF16 | 180.09 TFLOPS | torch GEMM 4096² |
-| BF16 | 183.75 TFLOPS | 4096³ modded sweep |
-| BF16 | 188.1-192.7 TFLOPS | `gemm_probe.cu` n=8192, fp32 accumulate |
-| BF16 ceiling | 202.1 TFLOPS | arithmetic: 2048 x 70 SM x 1410 MHz, verified exact |
+| BF16 | 183.75 TFLOPS | 4096³ 修改扫 |
+| BF16 | 188.1-192.7 TFLOPS | `gemm_probe.cu` n=8192、fp32 累加 |
+| BF16 上限 | 202.1 TFLOPS | 算术：2048 x 70 SM x 1410 MHz、精确验证 |
 
-Two spreads are unexplained and are recorded as such. TF32 varies 19% across seven tools while
-FP16 and BF16 stay tight. FP16 with fp16 accumulate reads consistently *above* FP16 with fp32
-accumulate, where on A100 the two should be the same rate; the likeliest explanation is that
-mmapeak-style microbenchmarks keep operands in shared memory and therefore flatter the card.
+两个分布无法解释、照此记录。TF32 跨七个工具变化 19%、而 FP16 和 BF16 保持紧凑。带 fp16 累加的 FP16 一致地读在*高于*带 fp32 累加的 FP16 处，而 A100 上两者应同速；最可能解释是 mmapeak 式微基准测试把操作数留在共享内存里、因此让卡显得更好。
 
 > [!NOTE]
-> **Open problem: INT4 measures below INT8**
+> **未解问题：INT4 测得低于 INT8**
 >
-> `mma_s4s4s32_8_8_32` returns **320.2 TOPS** against INT8's 335.0/335.6 TOPS. On Ampere INT4
-> tensor throughput should be roughly 2x INT8. Nobody re-ran it. The INT8 side is sound (two
-> tile shapes agree); the INT4 side is one run. Re-running the INT4 shape with a longer target
-> time and varied tiles is the cheapest open lead in this domain.
+> `mma_s4s4s32_8_8_32` 返回 **320.2 TOPS** 对比 INT8 的 335.0/335.6 TOPS。在 Ampere 上 INT4 张量吞吐应约为 INT8 的 2x。没人重跑过它。INT8 侧可靠（两个 tile 形状一致）；INT4 侧是单次运行。用更长目标时间和不同 tile 重跑 INT4 形状是这个领域最便宜的开放线索。
 
 > [!NOTE]
-> **Open problem: the INT8 library path is 7.6x below the INT8 tensor path**
+> **未解问题：INT8 库路径比 INT8 张量路径低 7.6x**
 >
-> Direct MMA gives 335 TOPS; torch, cuBLAS and OpenCL all land at 43-48 TOPS. Either those
-> libraries are not issuing IMMA on this device, or the unlock leaves an INT8 issue-rate
-> restriction partially in place. The suggested test is an explicit `CUBLAS_COMPUTE_32I` GEMM
-> with INT8 inputs against the raw MMA figure.
+> 直接 MMA 给出 335 TOPS；torch、cuBLAS 和 OpenCL 都落在 43-48 TOPS。要么那些库没在这个设备上发 IMMA、要么解锁让一个 INT8 发射速率限制部分地留在原地。建议的测试是带 INT8 输入的一次显式 `CUBLAS_COMPUTE_32I` GEMM 对比原始 MMA 数字。
 
-### Silicon-to-silicon reproducibility
+### 硅片到硅片的可复现性
 
-Eight unlocked 64 GB cards from one rental, benchmarked in a single session on driver 610.43.02
-at PCIe Gen1 x4, showed **under 2.5% per-card spread** and **8/8 passes** on a full byte-compare
-VRAM integrity test. Eight cards, one report.
-Stock cards, no capacitor mod, no Gen2.
+从一个租赁来的八张解锁 64 GB 卡、在单次会话、驱动 610.43.02、PCIe Gen1 x4 下基准测试，显示 **每卡分布低于 2.5%**、且在一次完整字节对比 VRAM 完整性测试里 **8/8 通过**。八张卡、一份报告。出厂卡、无电容改装、无 Gen2。
 
-| FP16 | BF16 | TF32 | FP32 (locked) | FP64 | INT8 | HBM |
+| FP16 | BF16 | TF32 | FP32（锁定） | FP64 | INT8 | HBM |
 |---|---|---|---|---|---|---|
-| 162.7 TFLOPS | 171.4 TFLOPS | 79.0 TFLOPS | 12.6 TFLOPS (0.39) | 11.6 TFLOPS | 44.1 TOPS | 1600 GB/s |
+| 162.7 TFLOPS | 171.4 TFLOPS | 79.0 TFLOPS | 12.6 TFLOPS（0.39） | 11.6 TFLOPS | 44.1 TOPS | 1600 GB/s |
 
-This is the strongest evidence in the archive that the unlock lands identically across cards.
+这是档案里解锁跨卡一致落地的最强证据。
 
-### Failed-unlock signature
+### 失败解锁的签名
 
-If BF16 comes back around **12 TFLOPS instead of ~185**, the payload did not land. One user
-reporting mixbench 12 BF16 TFLOPS, clpeak 367 GFLOPS and a custom GEMM at 6.25 TFLOPS was
-diagnosed as seeing "the performance of tf32 in locked mode" against the known 202 TFLOPS
-ceiling, accepted the diagnosis and retried. An order-of-magnitude shortfall against 202 TFLOPS
-is the tell. See [verify.md](../procedures/verify.md).
+如果 BF16 回到约 **12 TFLOPS 而非约 185**、载荷没落地。一位用户报告 mixbench 12 BF16 TFLOPS、clpeak 367 GFLOPS、一次定制 GEMM 6.25 TFLOPS，被诊断为对照已知 202 TFLOPS 上限看到 "locked-mode tf32 performance"（锁定模式 tf32 性能）、接受诊断并重试。对照 202 TFLOPS 一个数量级的缺口就是破绽。见[验证](../procedures/verify.md)。
 
-Note also that **gaming frame rates are not a valid verification method**: one tester measured
-identical FPS with and without the compute unlock while LLM and CUTLASS throughput clearly
-moved. The unlock targets SM issue rate, not the graphics path.
+也要注意**游戏帧率不是一个有效验证方法**：一位测试者在有和没有算力解锁时测量到相同的 FPS、而 LLM 和 CUTLASS 吞吐明显移动了。解锁针对 SM 发射速率、不针对图形路径。
 
 ---
 
-## Memory bandwidth
+## 显存带宽
 
-| Quantity | Value | Conditions |
+| 量 | 值 | 条件 |
 |---|---|---|
-| Theoretical peak | 1555.2 GB/s = 1448.4 GiB/s | 1215 MHz DDR x 5120-bit; the two figures are the same number in different units |
-| Peak line of a real sweep | 1448 GiB/s | 79.3 GiB total / 79.0 free |
-| Measured, 8 rented 64 GB cards | 1600 GB/s | identical across all eight |
-| Stock versus modded, same card | 1592 to 1599 GB/s (1.0x) | 256 MB working set, the unlock control row |
-| OpenCL coalesced read / write | 1305.86 / 1521.62 GB/s | 10 GB to 40 GB card, driver 580.159.03 |
-| OpenCL misaligned read / write | 789.82 / 161.76 GB/s | same card |
-| One OpenCL test | 1333 GB/s | stock VBIOS |
-| 2023 external review ceiling | 1355 GB/s | used for its roofline ridge points |
+| 理论峰值 | 1555.2 GB/s = 1448.4 GiB/s | 1215 MHz DDR x 5120-bit；两个数字是不同单位下的同一个数 |
+| 真实扫描的峰值线 | 1448 GiB/s | 79.3 GiB 总 / 79.0 空闲 |
+| 实测、8 张租用 64 GB 卡 | 1600 GB/s | 八张全部相同 |
+| 出厂对改装、同卡 | 1592 到 1599 GB/s（1.0x） | 256 MB 工作集、解锁对照行 |
+| OpenCL 合并读 / 写 | 1305.86 / 1521.62 GB/s | 10 GB 到 40 GB 卡、驱动 580.159.03 |
+| OpenCL 未对齐读 / 写 | 789.82 / 161.76 GB/s | 同卡 |
+| 一次 OpenCL 测试 | 1333 GB/s | 出厂 VBIOS |
+| 2023 外部回顾上限 | 1355 GB/s | 用于它的峰值线脊点 |
 
 > [!NOTE]
-> **There is no single canonical HBM number**
+> **不存在单一规范 HBM 数字**
 >
-> Measured HBM bandwidth spans **1305.86 GB/s to 1600 GB/s** and no methodology reconciles
-> the range. Partial reconciliation: the 8 GB card carries 4 stacks of faster HBM2e
-> (4096-bit) while the 10 GB card carries 5 stacks of slower HBM2 (5120-bit), and
-> read/write/misaligned patterns differ by nearly 10x *within a single tool*. Quote the range,
-> not a point estimate. Separately, "1493 GB/s datasheet" and "1555 GB/s theoretical at full
-> boost" are different quantities (the first is the A100 40 GB PCIe datasheet figure, the
-> second is what 1215 MHz x 5120-bit computes to) and are frequently used interchangeably in
-> circulating documents.
+> 实测 HBM 带宽跨越 **1305.86 GB/s 到 1600 GB/s**、没有任何方法论调和这个范围。部分调和：8 GB 卡携带 4 堆更快的 HBM2e（4096-bit）、10 GB 卡携带 5 堆更慢的 HBM2（5120-bit），而读/写/未对齐模式在*单个工具内*相差近 10x。引用范围、不要点估计。分开地，"1493 GB/s datasheet"（数据手册）和 "1555 GB/s full boost theoretical"（满加速理论）是不同的量（前者是 A100 40 GB PCIe 数据手册数字、后者是 1215 MHz x 5120-bit 的计算结果）、在流传的文档里经常互换使用。
 
-### The 79% plateau above an 8 GiB offset
+### 8 GiB 偏移之上的 79% 平台
 
-Measured on a 10 GB card fired to the abandoned 80 GB geometry, with a 1 GB memset sweep:
+在把一张 10 GB 卡发射到废弃 80 GB 几何布局、带 1 GB memset 扫描上测量：
 
-| Offset | Bandwidth | Percent of peak | Time |
+| 偏移量 | 带宽 | 峰值的百分比 | 时间 |
 |---|---|---|---|
 | 0 GB | 1416 GiB/s | 98% | 0.70-0.71 ms |
 | 1 GB | 1422 GiB/s | 98% | 0.70-0.71 ms |
 | 2 GB | 1416 GiB/s | 98% | 0.70-0.71 ms |
 | 4 GB | 1419 GiB/s | 98% | 0.70-0.71 ms |
-| 8 GB through 76 GB | 1147-1151 GiB/s (flat) | 79% | ~0.87 ms |
+| 8 GB 到 76 GB | 1147-1151 GiB/s（平坦） | 79% | 约 0.87 ms |
 
-The gap closes entirely with a large enough chunk: at a 32 GB chunk the sweep gives
-1452 GiB/s (100%) at offset 0 against 1443 GiB/s (100%) at offset 40 GB, versus
-1419 vs 1149 GiB/s for a 1 GB chunk.
+对一个足够大的块缺口完全消失：在 32 GB 块时扫描在偏移量 0 给 1452 GiB/s（100%）对比偏移量 40 GB 的 1443 GiB/s（100%）、对比 1 GB 块的 1419 对 1149 GiB/s。
 
-Two shipping-code facts bear on this without settling it:
+两个出货代码事实与此相关、却不解决它：
 
-- `0004-bar0-pramin-clamp.patch` pins the BAR0 window to `(0x2000ULL << 20) - DRF_SIZE(NV_PRAMIN)`
-  whenever `devId` is `0x20C2` or `0x2082` and `fbAddrSpaceSizeMb > 0x2000`. That is a genuine
-  8 GiB discontinuity in shipping code at exactly the offset of the observed step, but PRAMIN is
-  a CPU-side BAR0 aperture and the sweep was a device-side memset, so causality is **not**
-  established.
-- `0001-sec2-postbl-plm-ss-cfg.patch` extends the last FB region to `targetFbBytes - 1` with
-  `supportCompressed = NV_TRUE`, `supportISO = NV_TRUE` and `performance = 20`. The resource
-  manager therefore models the whole unlocked range as uniform-performance memory and has no way
-  to prefer the fast region.
+- `0004-bar0-pramin-clamp.patch` 在 `devId` 是 `0x20C2` 或 `0x2082` 且 `fbAddrSpaceSizeMb > 0x2000` 时把 BAR0 窗口钉在 `(0x2000ULL << 20) - DRF_SIZE(NV_PRAMIN)`。那是出货代码里、恰好位于观察到的台阶偏移量处的一个真实 8 GiB 不连续，但 PRAMIN 是一个 CPU 侧 BAR0 孔径而扫描是一次设备侧 memset，所以因果性**未**确立。
+- `0001-sec2-postbl-plm-ss-cfg.patch` 把最后一个 FB 区域扩展到 `targetFbBytes - 1`、带 `supportCompressed = NV_TRUE`、`supportISO = NV_TRUE` 和 `performance = 20`。资源管理器因此把整个解锁范围建模为统一性能内存、没有任何办法偏好快速区域。
 
 > [!NOTE]
-> **Open problem: does the plateau exist on shipping geometries?**
+> **未解问题：平台存在于出货几何布局上吗？**
 >
-> The sweep was only ever run on the abandoned 80 GB configuration. Repeating the identical
-> offset and chunk sweeps on a shipping 8 GB to 64 GB card would settle whether this is a
-> property of any unlocked geometry or an artefact of the over-fire. See
-> [80gb.md](../frontier/80gb.md).
+> 扫描只在废弃的 80 GB 配置上跑过。在出货 8 GB 到 64 GB 卡上重跑完全相同的偏移量和块扫描、能确定这是任何解锁几何布局的属性、还是过度配置的一个伪影。见[80 GB 问题](../frontier/80gb.md)。
 
 ---
 
-## PCIe bandwidth by link configuration
+## 按链路配置的 PCIe 带宽
 
-Two independent mechanisms, never to be conflated. **Link speed** (Gen1 to Gen2) is a
-driver/firmware change and exists only on unreleased branches. **Link width** (x4 to x16) is a
-physical board modification: 12 of the 16 lanes ship with their AC-coupling capacitors
-depopulated, and restoring them means hand-soldering 24 0402 parts. See
-[pcie-gen2.md](../unlock/pcie-gen2.md) and [physical-mods.md](physical-mods.md).
+两个独立机制、绝不可混为一谈。**链路速度**（Gen1 到 Gen2）是一个驱动/固件改动、只存在于未发布分支上。**链路位宽**（x4 到 x16）是一个物理板卡改装：16 条通道中 12 条发货时交流耦合电容被缺件、恢复它们意味着手工焊接 24 颗 0402 部件。见[PCIe Gen2](../unlock/pcie-gen2.md) 和[物理改装](physical-mods.md)。
 
-| Link configuration | How reached | Measured bandwidth | Tool / conditions | Confidence |
+| 链路配置 | 如何达到 | 实测带宽 | 工具 / 条件 | 置信度 |
 |---|---|---|---|---|
-| Gen1 x4 (stock, shipping unlock) | nothing required | send 0.80 / receive 0.84 / bidirectional 0.81 GB/s | One OpenCL-Benchmark screenshot, relayed from an outside hardware group, on a 10 GB-to-40 GB card; the tool printed the link as "Gen1 x16" | medium |
-| Gen1 x4 | nothing required | ~0.85 GB/s | clpeak | high |
-| Gen1 x4 under inference load | nothing required | ~1.0 GB/s, did not ramp | 8-card rig, device max reported Gen2 x16 | high |
-| Gen1 x16 | capacitor mod only | 2.88 GB/s (nominal ~4 GB/s) | one report, one modded card, tool unnamed; the measurer expected 3.2 GB/s and was told the gap is Gen1 signal overhead | medium |
-| Gen2 x4 | `Gen2`-family branch only | send 1.68 / receive 1.71 GB/s | OpenCL-Benchmark, one archived screenshot, unmodded card; the setup script independently predicts "~0.85 to ~1.7 GB/s, exactly 2x" | medium |
-| Gen1 → Gen2 on a cap-modded card that negotiated x8 | branch **and** a partial capacitor mod | 1.67 → 3.24 GB/s | one A/B, single card, Asus Prime Z370 / i3-8100 / 8 GB RAM. Not a Gen2 x4 figure: 3.24 GB/s is above the ~2.0 GB/s Gen2 x4 ceiling because the link was x8 | medium |
-| Gen2 x4 (vendor claim) | distributed package README | "2 GB/s" | not independently logged, not achievable on shipping `master` | low |
-| Gen2 x16 | branch **and** full 24-capacitor mod | 6.63-6.67 GB/s (~83% of the 8 GB/s line rate); nvtop TX 7.061 GiB/s | `ocl_pcie_bw` | medium |
+| Gen1 x4（出厂、出货解锁） | 什么都不需要 | 发送 0.80 / 接收 0.84 / 双向 0.81 GB/s | 一份 OpenCL-Benchmark 截图、从一个外部硬件组转发、10 GB 到 40 GB 卡；工具把链路打印为 "Gen1 x16" | 中等 |
+| Gen1 x4 | 什么都不需要 | 约 0.85 GB/s | clpeak | 高 |
+| 推理负载下的 Gen1 x4 | 什么都不需要 | 约 1.0 GB/s、不爬升 | 8 卡机架、设备最大报告 Gen2 x16 | 高 |
+| Gen1 x16 | 仅电容改装 | 2.88 GB/s（标称约 4 GB/s） | 一份报告、一张改装卡、工具未点名；测量者预期 3.2 GB/s、被告知缺口是 Gen1 信号开销 | 中等 |
+| Gen2 x4 | 仅 `Gen2` 家族分支 | 发送 1.68 / 接收 1.71 GB/s | OpenCL-Benchmark、一份归档截图、未改装卡；设置脚本独立预测 "约 0.85 到约 1.7 GB/s、恰好 2x" | 中等 |
+| 协商到 x8 的电容改装卡上的 Gen1 → Gen2 | 分支**和**部分电容改装 | 1.67 → 3.24 GB/s | 一次 A/B、单卡、Asus Prime Z370 / i3-8100 / 8 GB RAM。不是 Gen2 x4 数字：3.24 GB/s 高于约 2.0 GB/s 的 Gen2 x4 上限、因为链路是 x8 | 中等 |
+| Gen2 x4（厂商声称） | 分发包 README | "2 GB/s" | 未被独立记录、在出货 `master` 上不可达 | 低 |
+| Gen2 x16 | 分支**和**完整 24 电容改装 | 6.63-6.67 GB/s（8 GB/s 线路速率的约 83%）；nvtop TX 7.061 GiB/s | `ocl_pcie_bw` | 中等 |
 
 > [!NOTE]
-> **Gen2 x16 bandwidth figures**
+> **Gen2 x16 带宽数字**
 >
-> Two rigs have published captures: 6.63 to 6.67 GB/s on one card on 2026-07-26, and
-> 5.97 GB/s on each of four cards with zero AER errors over 90 minutes. Nobody has
-> published a long burn-in. Gen2 itself ships in `master`, so these figures are what a
-> capacitor-modded card with the unlocker installed should be expected to reach.
+> 两台机架发布过捕获：2026-07-26 单卡 6.63 到 6.67 GB/s、以及 90 分钟零 AER 错误下四张卡各 5.97 GB/s。没人发布过长时间烧机。Gen2 本身在 `master` 里出货、所以这些数字是装了解锁器的电容改装卡应该预期达到的。
 
-Also relevant: **12 of 24 capacitors populated yields x8**, because width negotiation falls back
-to the next legal width (16, 8, 4, 1). An x8 result after a mod means incomplete or bridged
-solder work, not a distinct hardware limit.
+也相关：**24 颗电容中装 12 颗得到 x8**、因为位宽协商回退到下一个合法位宽（16、8、4、1）。改装后一个 x8 结果意味着不完整或桥接的焊锡工作、不是一个不同的硬件限制。
 
-### How much PCIe actually costs you
+### PCIe 实际花你多少
 
-PCIe sensitivity is engine- and topology-dependent, and the two headline results are not in
-conflict.
+PCIe 敏感性是引擎和拓扑依赖的、两个头条结果并不冲突。
 
-| Case | Change | Result |
+| 情况 | 变化 | 结果 |
 |---|---|---|
-| Single card, llama.cpp | x4 to x16 (same generation) | pp 439 to 448, tg 81.91 to 85.75 (about +2%) |
-| Three cards, llama.cpp | x4 to x16 | pp 441 to 461, tg 86 to 89 |
-| Three cards, GLM-5.2 with almost all of the model on CPU (one layer plus buffers on the GPUs) | Gen1 x4 run to a later "gen2 x4 attempt" | pp2048 33.44 ± 0.37 to 48.22 ± 1.36 t/s (**+44.2%**), tg512 5.90 ± 0.03 to 6.39 ± 0.09, time-to-first-response 61,253.57 ± 675.94 ms to 42,510.25 ± 1,217.69 ms (**-30.6%**). Both percentages are computed here from two separately posted runs, not stated by the tester |
-| Single card, `Qwen3.6-27B-MTP-UD-Q8_K_XL` on ik_llama with MTP, model fully VRAM-resident | Gen1 x4 to Gen2 x4, "all other factors unchanged" | pp2048 328.81 to 449.41 t/s, pp8192 363.25 to 493.86, tg128 38.15 to 41.52, tg512 37.69 to 40.12. Same tester as the row above, runs five days apart |
-| Single card, model load | Gen1 x4 | ~30 s, a one-time cost |
-| Graphics (BeamNG.drive) | Gen1 x16 versus x4, cap mod done | 15 fps versus 5 fps, "still awful" either way |
+| 单卡、llama.cpp | x4 到 x16（同代） | pp 439 到 448、tg 81.91 到 85.75（约 +2%） |
+| 三卡、llama.cpp | x4 到 x16 | pp 441 到 461、tg 86 到 89 |
+| 三卡、GLM-5.2、几乎整个模型在 CPU 上（一层的缓冲在 GPU 上） | Gen1 x4 运行到更晚的 "gen2 x4 attempt" | pp2048 33.44 ± 0.37 到 48.22 ± 1.36 t/s（**+44.2%**）、tg512 5.90 ± 0.03 到 6.39 ± 0.09、到首响应时间 61,253.57 ± 675.94 ms 到 42,510.25 ± 1,217.69 ms（**-30.6%**）。两个百分比都在这里从两次分别贴出的运行计算、不是测试者陈述 |
+| 单卡、`Qwen3.6-27B-MTP-UD-Q8_K_XL` 在 ik_llama 上带 MTP、模型完全驻留 VRAM | Gen1 x4 到 Gen2 x4、"其它一切不变" | pp2048 328.81 到 449.41 t/s、pp8192 363.25 到 493.86、tg128 38.15 到 41.52、tg512 37.69 到 40.12。同一测试者、运行相隔五天 |
+| 单卡、模型加载 | Gen1 x4 | 约 30 s、一次性代价 |
+| 图形（BeamNG.drive） | Gen1 x16 对比 x4、做了电容改装 | 15 fps 对比 5 fps、"无论哪种方式仍然糟糕" |
 
-The reconciliation: single-card work is largely bandwidth-local (weights are resident, only the
-model load crosses the link), while multi-card and CPU-offload prefill is link-bound. Caveat
-carried from the source for the +44.2% row: the post-Gen2 run used a Q4-labelled quant where the
-pre-Gen2 run was unlabelled, so the prompt-processing delta may be overstated. A Q2_K_XL quant on
-the same rig at Gen2 x4 gave pp2048 49.00 ± 1.08 and tg512 6.81 ± 0.06. The single-card row
-complicates the picture rather than settling it: that model was entirely resident in VRAM, and
-neither the tester nor anyone in the channel could explain why the link speed moved it at all.
-Both rows are the same tester; there is no independent Gen2 x4 inference measurement.
-Full tables and conditions on [llm-inference.md](llm-inference.md).
+调和：单卡工作大体上是带宽局部的（权重驻留、只有模型加载跨链路），而多卡和 CPU 卸载的 prefill 是链路绑定的。从 +44.2% 行来源带出的注意：Gen2 后的运行用一个 Q4 标签量化、Gen2 前运行未标签，所以提示处理增量可能被高估。同一机架上 Gen2 x4 的 Q2_K_XL 量化给 pp2048 49.00 ± 1.08 和 tg512 6.81 ± 0.06。单卡行复杂化而非解决了画面：那个模型完全驻留 VRAM、而测试者和频道里任何人都无法解释为什么链路速度移动了它。两行都是同一个测试者；不存在独立的 Gen2 x4 推理测量。完整表格和条件见[llm-inference.md](llm-inference.md)。
 
 > [!NOTE]
-> **Open problem: nobody has measured Gen2 x16 on a multi-card LLM rig**
+> **未解问题：没人测过多卡 LLM 机架上的 Gen2 x16**
 >
-> The Gen2 x16 bandwidth figure and the Gen1-to-Gen2 inference runs were
-> measured on different systems and never combined. The 2x2 matrix of {Gen1, Gen2} x {x4, x16}
-> on one rig with one model would settle both this and the width-versus-generation dispute.
+> Gen2 x16 带宽数字和 Gen1 到 Gen2 推理运行是在不同系统上测量的、从未结合。在同一个机架、同一个模型上做 {Gen1、Gen2} x {x4、x16} 的 2x2 矩阵、会同时解决这个和位宽-对比-代数之争。
 
 ---
 
-## Thermals and power, in brief
+## 热与功耗，简版
 
-Full treatment is on [thermals.md](../hardware/thermals.md), [cooling.md](cooling.md) and
-[power-and-psu.md](power-and-psu.md); what matters for benchmarking is here.
+完整处理在[热设计](../hardware/thermals.md)、[散热](cooling.md) 和[供电与 PSU](power-and-psu.md)；对基准测试要紧的在这。
 
-| Observation | Value |
+| 观察 | 值 |
 |---|---|
-| Sustained full-rate GEMM burn-in | 12,229-12,254 Gflop/s flat while the die went 62 to 64 to 69 to 71 to 73 C over ~30-40 s, zero errors |
-| Peak load temperatures (paper) | 67 C FP32, 64 C FP64 tensor and TF32 tensor; a full-capability part throttles only above ~85 C |
-| Default `gpu_burn` | ~70 C ± 2 |
-| Idle draw / stock cap | ~42 W / 250 W on the controlled rig |
-| Power under hashcat versus FP32 burn | 160+ W versus 60-75 W (2023, locked card) |
+| 持续满速率 GEMM 烧机 | 12,229-12,254 Gflop/s 平坦、晶片约 30-40 s 内从 62 到 64 到 69 到 71 到 73 C、零错误 |
+| 峰值负载温度（论文） | FP32 67 C、FP64 张量和 TF32 张量 64 C；全能力部件只在约 85 C 之上节流 |
+| 默认 `gpu_burn` | 约 70 C ± 2 |
+| 空转功耗 / 出厂上限 | 受控机架上约 42 W / 250 W |
+| hashcat 下的功耗对比 FP32 烧机 | 160+ W 对比 60-75 W（2023、锁定卡） |
 
-**Practical rule: do not validate stability or cooling with a conventional FP32 burn-in.** This
-card is hard to load. Integer and memory benchmarks pull far more power than FP32 tools do.
+**实用规则：不要用常规 FP32 烧机验证稳定性或散热。** 这张卡很难加负载。整型和显存基准测试拉的功率比 FP32 工具大得多。
 
-The accepted post-unlock validation recipe:
+被接受的解锁后验证配方：
 
 ```bash
 # github.com/wilicc/gpu-burn
 make COMPUTE=80
-./gpu_burn -tc -m 90% 1200          # 20 minutes, tensor cores, 90% of VRAM
-# variant used by one distributed package, expecting 0 memory errors:
+./gpu_burn -tc -m 90% 1200          # 20 分钟、张量核、90% 的 VRAM
+# 一个分发包用的变体、预期 0 显存错误：
 ./gpu_burn -m 63500 -d 30
 ```
 
-Reported clean runs: 30 minutes on a tuned single card; 2 hours on each of four 8 GB to 64 GB
-cards with no instability; a 5-minute pass on a 10 GB to 40 GB card. Ensure adequate cooling
-first.
+报告的干净运行：调优单卡 30 分钟；四张 8 GB 到 64 GB 卡各 2 小时无任何不稳定；10 GB 到 40 GB 卡 5 分钟通过。先确保充分散热。
 
 > [!CAUTION]
-> **Never validate the 80 GB geometry as if it worked**
+> **绝不要像它工作那样验证 80 GB 几何布局**
 >
-> Firing a 10 GB card to 80 GB produces gpu-burn errors, independently reproduced. 10 GB cards
-> ship at 40 GB for this reason. See [80gb.md](../frontier/80gb.md).
+> 把一张 10 GB 卡发射到 80 GB 产生 gpu-burn 错误、被独立复现。10 GB 卡为此以 40 GB 出货。见[80 GB 问题](../frontier/80gb.md)。
 
-Memory overclocking was reported to buy about **+2.5%** (gpu_burn 12,180 Gflop/s average at
-default versus 12,472-12,485 Gflop/s sustained) at a cost of about 5 C (70 C ± 2 versus 75-77 C).
-Note that no branch named `mem_overclock` exists in the archived branch set, and no archived
-branch contains any clock, boost or p-state code at all: a grep across all thirteen trees for
-overclock/memclk/pstate/boost returns nothing. The result stands as a tester report that cannot
-be checked against code.
+显存超频被报告买来约 **+2.5%**（默认下 gpu_burn 12,180 Gflop/s 平均 对比持续 12,472-12,485 Gflop/s）、代价约 5 C（70 C ± 2 对比 75-77 C）。注意归档的分支集里不存在名为 `mem_overclock` 的分支、也没有任何归档分支含任何时钟、加速或 p 状态代码：对全部十三棵树做 overclock/memclk/pstate/boost 的 grep 返回零。这个结果作为一份无法对代码核对的测试者报告成立。
 
 ---
 
-## Comparison with the A100
+## 与 A100 对比
 
-The 170HX carries a **complete GA100 die** (826 mm², `PMC_BOOT_0` = `0x170000a1`, identical to
-all three A100 SKUs and the Drive A100), floorswept to 70 of the die's SMs. So the honest
-comparison is "same architecture, fewer SMs, worse I/O, no ECC, no NVLink".
+170HX 携带一颗**完整 GA100 晶片**（826 mm²、`PMC_BOOT_0` = `0x170000a1`、与全部三个 A100 SKU 和 Drive A100 相同）、被地板清扫到晶片的 70 个 SM。所以诚实的对比是 "same architecture, fewer SMs, worse I/O, no ECC, no NVLink"（相同架构、更少 SM、更差 I/O、无 ECC、无 NVLink）。
 
-| Property | CMP 170HX (unlocked) | A100 40 GB reference | Notes |
+| 属性 | CMP 170HX（解锁） | A100 40 GB 参考 | 备注 |
 |---|---|---|---|
-| Die | GA100, 826 mm² | GA100, same die | `PMC_BOOT_0` `0x170000a1` on both |
-| SMs / CUDA cores | 70 / 4480 | 108 / 6912 (A100 SXM4 40 GB) | 5 active GPCs, 35 TPCs |
-| Compute capability | 8.0 (sm_80) | 8.0 | identical ISA, no FP8, no NVFP4 |
-| L2 cache | 32 MB (32768 KB) | n/a | TechPowerUp's 8 MB for the 170HX is wrong, corroborated by latency-spike measurement |
-| Capacity | 64 GB (8 GB SKU) or 40 GB (10 GB SKU) | 40 GB | see [memory-geometry.md](../unlock/memory-geometry.md) |
-| Bus width | 4096-bit (8 GB, 4 stacks) / 5120-bit (10 GB, 5 stacks) | 5120-bit | GPU-Z on an A100-PCIE-40GB reports 5120-bit, 1555.2 GB/s, 1215 MHz memory |
-| HBM bandwidth | 1305.86-1600 GB/s measured | 1493 GB/s datasheet | the eight-card 1600 GB/s figure is above the A100 40 GB datasheet number |
-| Host link | Gen1 x4 stock; Gen2 x4 on a branch; x16 only after soldering | PCIe 4.0 x16 | the single largest gap |
-| NVLink / P2P | fused off, no lever found; 0 of 56 GPU pairs report peer access | present | see [nvlink.md](../frontier/nvlink.md), [p2p.md](../frontier/p2p.md) |
-| ECC | fused off, no telemetry | on | see [ecc.md](../frontier/ecc.md) |
-| Memory compression | forced off by the shipping patch | on | affects any bandwidth comparison |
-| MIG | only a `1g.64gb` profile exists; standard A100 profiles are rejected | full profile set | |
+| 晶片 | GA100、826 mm² | GA100、同一晶片 | 两者上 `PMC_BOOT_0` `0x170000a1` |
+| SM / CUDA 核心 | 70 / 4480 | 108 / 6912（A100 SXM4 40 GB） | 5 个活动 GPC、35 个 TPC |
+| 计算能力 | 8.0（sm_80） | 8.0 | 相同 ISA、无 FP8、无 NVFP4 |
+| L2 缓存 | 32 MB（32768 KB） | n/a | TechPowerUp 对 170HX 的 8 MB 是错的、被延迟尖峰测量佐证 |
+| 容量 | 64 GB（8 GB SKU）或 40 GB（10 GB SKU） | 40 GB | 见[显存几何布局](../unlock/memory-geometry.md) |
+| 总线宽度 | 4096-bit（8 GB、4 堆）/ 5120-bit（10 GB、5 堆） | 5120-bit | GPU-Z 在 A100-PCIE-40GB 上报告 5120-bit、1555.2 GB/s、1215 MHz 显存 |
+| HBM 带宽 | 实测 1305.86-1600 GB/s | 数据手册 1493 GB/s | 八卡 1600 GB/s 数字高于 A100 40 GB 数据手册数字 |
+| 主机链路 | 出厂 Gen1 x4；分支上 Gen2 x4；焊接后才 x16 | PCIe 4.0 x16 | 单一最大缺口 |
+| NVLink / P2P | 熔断关闭、未找到杠杆；56 个 GPU 对中 0 个报告对等访问 | 存在 | 见[NVLink](../frontier/nvlink.md)、[P2P](../frontier/p2p.md) |
+| ECC | 熔断关闭、无遥测 | 开启 | 见[ECC](../frontier/ecc.md) |
+| 显存压缩 | 被出货补丁强制关闭 | 开启 | 影响任何带宽对比 |
+| MIG | 只存在 `1g.64gb` 档位；标准 A100 档位被拒绝 | 完整档位集 | |
 
-### Application-level comparisons
+### 应用级对比
 
-The FluidX3D and hashcat rows below were measured in 2023 on a **locked** card, before the
-register unlock existed. The FluidX3D rows used the no-FMA source workaround; hashcat was run
-unmodified, being integer work that the FP32 FMA throttle does not reach. They are the only whole-application
-comparisons against a named A100 in the archive, and they are a floor, not a ceiling, for what
-an unlocked card should do.
+下面的 FluidX3D 和 hashcat 行是在 **2023 年一张锁定卡**上测量的、先于寄存器解锁存在。FluidX3D 行用了无-FMA 源码变通方案；hashcat 未修改地运行、作为 FP32 FMA 节流够不到的整型工作。它们是档案里对一颗具名 A100 的仅有的整应用对比、而且它们是解锁卡应该做到的**下限**、不是上限。
 
-| Workload | CMP 170HX | A100 | Ratio |
+| 工作负载 | CMP 170HX | A100 | 比值 |
 |---|---|---|---|
-| FluidX3D FP32/FP32, no-FMA | 7681 MLUPs/s at 1175 GB/s (458 steps/s) | 8526 MLUPs/s (A100 40 GB PCIe) | 90.1% |
-| FluidX3D FP32/FP16S, no-FMA | 12386 MLUPs/s at 954 GB/s (738 steps/s) | 16035 MLUPs/s | 77.2% (and +11.7% over an RTX 4090's 11091) |
-| hashcat MD5 | 43930.0 MH/s (53.01 ms) @ Accel:64 Loops:512 Thr:1024 Vec:1 | ~64900 MH/s | 67.7% (also slower than an RTX 3080's 54000.1 MH/s) |
-| GLM-5.2 decode, 8-way pipeline parallel | 30.2 t/s on 8 unlocked 64 GB cards | the circulated reference recipe targeted 8x A100 80 GB at an expected ~40 t/s | see [llm-inference.md](llm-inference.md) |
+| FluidX3D FP32/FP32、无-FMA | 1175 GB/s 下 7681 MLUPs/s（458 步/s） | 8526 MLUPs/s（A100 40 GB PCIe） | 90.1% |
+| FluidX3D FP32/FP16S、无-FMA | 954 GB/s 下 12386 MLUPs/s（738 步/s） | 16035 MLUPs/s | 77.2%（并相对 RTX 4090 的 11091 高 +11.7%） |
+| hashcat MD5 | 43930.0 MH/s（53.01 ms）@ Accel:64 Loops:512 Thr:1024 Vec:1 | 约 64900 MH/s | 67.7%（也慢于 RTX 3080 的 54000.1 MH/s） |
+| GLM-5.2 解码、8 路流水线并行 | 8 张解锁 64 GB 卡上 30.2 t/s | 流传的参考配方瞄准 8x A100 80 GB 预期约 40 t/s | 见[llm-inference.md](llm-inference.md) |
 
-Note on the FluidX3D rows: with FMA enabled on the locked card the same kernel is *compute*-bound
-at 2276 MLUPs/s and only 348 GB/s. Dropping to FP32/FP16S halves memory traffic to 173 GB/s but
-leaves throughput at 2250 MLUPs/s. Flat throughput across halved bandwidth is the diagnostic
-signature of the throttle. With FMA removed the kernel becomes memory-bound again, achieving
-1175 GB/s, which is 87% of that review's 1355 GB/s ceiling.
+FluidX3D 行上的注记：在锁定卡上启用 FMA 时同一个内核是*算力*绑定的、2276 MLUPs/s、只有 348 GB/s。降到 FP32/FP16S 把显存流量减半到 173 GB/s、吞吐却停在 2250 MLUPs/s。跨减半带宽的平坦吞吐是节流的诊断签名。移除 FMA 后内核再次变显存绑定、达到 1175 GB/s、那是那份回顾 1355 GB/s 上限的 87%。
 
-A single-A100 GLM-5.2 figure of **55 tok/s** circulates as a comparison baseline. It is
-second-hand with no configuration attached and is rated low confidence.
+一个单-A100 GLM-5.2 的 **55 tok/s** 数字作为对比基线流传。它是二手的、没带配置、被评为低置信度。
 
-### Roofline selection rule
+### 峰值线选择规则
 
-From the 2023 external review, still the best guidance for deciding whether a kernel suits this
-card in its **locked** state: useful below **0.3 FLOPs/byte** of arithmetic intensity with stock
-FMA, or below **4.6 FLOPs/byte** after disabling FMA. Those ridge points follow from 394 GFLOPS
-and 6250 GFLOPS over a 1355 GB/s measured ceiling (0.291 and 4.61 exactly). After the compute
-unlock the FP32 ridge moves out by roughly the same 30x factor, so the rule stops binding: an
-unlocked card is a normal memory-bound GA100 for most kernels.
+来自 2023 外部回顾、仍是决定一个内核是否适合这颗卡在其**锁定**状态的最佳指导：算术强度在带出厂 FMA 时低于 **0.3 FLOPs/byte**、或禁用 FMA 后低于 **4.6 FLOPs/byte** 的有用。那些脊点来自 394 GFLOPS 和 6250 GFLOPS 除以 1355 GB/s 实测上限（精确 0.291 和 4.61）。算力解锁后 FP32 脊点以大约同样的 30x 因子外移、所以该规则停止约束：一张解锁卡对大多数内核是一颗正常的显存绑定 GA100。
 
-Two worked examples of the rule in action:
+规则起作用的两个工作示例：
 
-- A SYCL FDTD kernel at 0.25 FLOPs/byte needed **no** workaround at all on a locked card:
-  10110 MC/s and 1156992 MiB/s (16777216 cells x 1000 timesteps in 1.66 s), about 1.5x a
-  Radeon VII / Instinct MI50's ~6000 MC/s, using unmodified source. Its achieved 181.98 GFLOPS
-  never approaches the 394 GFLOPS throttled ceiling. Note 1156992 MiB/s is base-2 and so looks
-  smaller than the base-10 GB/s figures elsewhere.
-- FluidX3D at 1.7 FLOPs/byte (261 FP32 + 102 INT32 ops over 153 B of traffic, 363 ops per cell
-  update) sits above the locked ridge and is exactly where the FMA workaround pays.
+- 一个 0.25 FLOPs/byte 的 SYCL FDTD 内核在锁定卡上**完全不需要**变通方案：10110 MC/s 和 1156992 MiB/s（16777216 个单元 x 1000 时间步、1.66 s）、约是 Radeon VII / Instinct MI50 约 6000 MC/s 的 1.5 倍、用未修改源码。它实现的 181.98 GFLOPS 从不接近 394 GFLOPS 的节流上限。注意 1156992 MiB/s 是基-2、所以看起来比别处的基-10 GB/s 数字小。
+- 1.7 FLOPs/byte 的 FluidX3D（153 B 流量上 261 FP32 + 102 INT32 运算、每单元更新 363 运算）坐在锁定脊点之上、恰是 FMA 变通方案回报的地方。
 
 ---
 
-## Tools and the evidentiary standard
+## 工具与证据标准
 
-The community standard for a claimed unlock is a screenshot of
-`ProjectPhysX/OpenCL-Benchmark`. AI-written summaries were explicitly rejected as proof.
+社区对一个声称解锁的标准是一张 `ProjectPhysX/OpenCL-Benchmark` 截图。AI 写的摘要被明确拒绝为证据。
 
-| Tool | Use | Caveat |
+| 工具 | 用途 | 注意 |
 |---|---|---|
-| `ProjectPhysX/OpenCL-Benchmark` | proof-of-unlock artefact, full-device dump | **does not measure tensor cores at all**; reading only its output leads to "the card does 12.5 TFLOPS" and misses the ~190 TFLOPS tensor path |
-| mixbench (CUDA) | compute sweep | prints theoretical peaks next to measurements; see the warning above |
-| cuBLAS tensor tests / torch GEMM sweeps | representative tensor numbers | torch GEMM reads from HBM, so it is more representative than MMA microbenchmarks |
-| `ReinForce-II/mmapeak` | per-instruction MMA sweep | optimistic: operands stay in shared memory |
-| `gemm_probe.cu` | highest published FP32 and BF16 numbers | its TF32 (88.9-91.9) is below the paper's 94.1 |
-| clpeak | full-device dump | explicitly **unsuitable** for measuring the FMA/DP4A patches |
-| gpu-burn | stability and sustained flops | build with `make COMPUTE=80` |
-| `ocl_pcie_bw` | PCIe bandwidth | the tool behind the Gen2 x16 figure |
+| `ProjectPhysX/OpenCL-Benchmark` | 解锁证据工件、全设备转储 | **根本不测张量核**；只读它的输出会导致 "the card does 12.5 TFLOPS"（卡做 12.5 TFLOPS）并错过约 190 TFLOPS 张量路径 |
+| mixbench（CUDA） | 算力扫描 | 在测量旁边打印理论峰值；见上面警告 |
+| cuBLAS 张量测试 / torch GEMM 扫描 | 代表性张量数字 | torch GEMM 从 HBM 读、所以比 MMA 微基准测试更代表 |
+| `ReinForce-II/mmapeak` | 按指令 MMA 扫描 | 乐观：操作数留在共享内存里 |
+| `gemm_probe.cu` | 已发布最高的 FP32 和 BF16 数字 | 它的 TF32（88.9-91.9）低于论文的 94.1 |
+| clpeak | 全设备转储 | 明确**不适于**测量 FMA/DP4A 补丁 |
+| gpu-burn | 稳定性和持续 flops | 用 `make COMPUTE=80` 构建 |
+| `ocl_pcie_bw` | PCIe 带宽 | Gen2 x16 数字背后的工具 |
 
 ---
 
-## Non-LLM workload results
+## 非 LLM 工作负载结果
 
-| Workload | Result | Conditions |
+| 工作负载 | 结果 | 条件 |
 |---|---|---|
-| SDXL 1024², 30 steps | 4.73 s (6.35 it/s, 10.5 GB) versus 7.59 s (3.95 it/s) on an RTX 3090 = **1.60x** | identical script |
-| Wan2.1-T2V, 81 frames at 480p | 73.4 s (0.91 s/frame, 18.5 GB) versus 132.8 s = **1.81x** | identical script |
-| LTX-Video, 81 frames | 11.0 s (0.14 s/frame, 15.9 GB) versus 20.0 s = **1.82x** | identical script |
-| Wan2.1, 129 frames at 720p | 1,485 s using 33.3 GB versus **OOM** on the 3090's 24 GB | identical script |
-| pearlhash mining | 3 TH to 147 TH after the unlock (~49x, one tester); 140-170 "th" at 200 W after a wildrig update | the Pearl network's aggregate hashrate doubled after the unlocker was released |
-| Gravity bench, 50k asteroids | 18 FPS | best reported; unlock state not stated |
-| FurMark | 56 fps | pre-memory-unlock |
+| SDXL 1024²、30 步 | 4.73 s（6.35 it/s、10.5 GB）对比 RTX 3090 的 7.59 s（3.95 it/s）= **1.60x** | 相同脚本 |
+| Wan2.1-T2V、81 帧 480p | 73.4 s（0.91 s/帧、18.5 GB）对比 132.8 s = **1.81x** | 相同脚本 |
+| LTX-Video、81 帧 | 11.0 s（0.14 s/帧、15.9 GB）对比 20.0 s = **1.82x** | 相同脚本 |
+| Wan2.1、129 帧 720p | 1,485 s 用 33.3 GB 对比 3090 的 24 GB 上 **OOM** | 相同脚本 |
+| pearlhash 挖矿 | 解锁后 3 TH 到 147 TH（约 49x、一位测试者）；wildrig 更新后 200 W 下 140-170 "th" | Pearl 网络的总算力在解锁器发布后翻倍 |
+| Gravity bench、5 万小行星 | 18 FPS | 最佳报告；解锁状态未说明 |
+| FurMark | 56 fps | 显存解锁前 |
 
-Diffusion is the standout non-LLM fit: the workload is compute-bound and fits entirely in VRAM,
-so the Gen1 x4 link never bites.
+扩散是突出的非 LLM 契合：工作负载是算力绑定的、完全装进 VRAM、所以 Gen1 x4 链路从不咬人。
 
 > [!NOTE]
-> **Open problem: the mining unit is uninterpretable**
+> **未解问题：挖矿单位无法解读**
 >
-> "140-170 th @ 200 W" is reported with no unit expansion and no second per-card source. The
-> network-level doubling is solid; the per-card figure is not usable as written.
+> "200 W 下 140-170 th" 被报告、没有任何单位展开、也没有第二个每卡来源。网络级翻倍是可靠的；每卡数字不能按原样使用。
 
 ---
 
-## Open questions in this domain
+## 本领域的开放问题
 
-1. Why INT4 measures below INT8.
-2. Why the INT8 library path sits 7.6x below the INT8 tensor path.
-3. Whether the 79%-of-peak bandwidth plateau above 8 GiB applies to shipping 64 GB and 40 GB
-   geometries.
-4. Whether the `n_ubatch` scheduling cliff seen on a CMP 100-210 (pp512 353.59 to 977.20 with
-   flash attention off, 380.96 to 1159.39 with it on, a 3.04x gain from one flag) also exists on
-   a 70-SM 170HX. This is the single cheapest untested lead in the archive: sweep `n_ubatch`
-   from 48 to 80 with `llama-bench`.
-5. Why TF32 spreads 79-94 TFLOPS when BF16 and FP16 are tight.
-6. Whether the Gen2 x16 bandwidth result translates into multi-card LLM throughput.
-7. What practical P2P bandwidth between two 170HX cards is, if any.
+1. 为什么 INT4 测得低于 INT8。
+2. 为什么 INT8 库路径坐在 INT8 张量路径下方 7.6x 处。
+3. 8 GiB 之上峰值的 79% 平台是否适用于出货 64 GB 和 40 GB 几何布局。
+4. 在 CMP 100-210 上看到的 `n_ubatch` 调度悬崖（关 flash attention 时 pp512 353.59 到 977.20、开时 380.96 到 1159.39、一个标志 3.04x 增益）是否也存在于 70-SM 170HX 上。这是档案里最便宜的未测试线索：用 `llama-bench` 把 `n_ubatch` 从 48 扫到 80。
+5. 为什么 TF32 分散 79-94 TFLOPS、而 BF16 和 FP16 紧凑。
+6. Gen2 x16 带宽结果是否转化为多卡 LLM 吞吐。
+7. 两张 170HX 卡之间、如果有的话、的实际 P2P 带宽是多少。
 
-See [open-questions.md](../frontier/open-questions.md) and
-[dead-ends.md](../history/dead-ends.md) for the full register.
+完整登记见[未解问题](../frontier/open-questions.md) 和[死路](../history/dead-ends.md)。

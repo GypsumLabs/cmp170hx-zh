@@ -1,669 +1,372 @@
-# The open-problem register
+# 未解问题登记
 
-**What this page covers.** Every unsolved problem on the CMP 170HX, aggregated from all 24
-adjudicated domain documents, deduplicated, and ranked by tractability rather than by importance.
-For each item: what is wanted, what has been tried, why it failed, what evidence would settle it,
-and the most promising next step.
+**本页覆盖内容。** CMP 170HX 上每个未解决的问题、从全部 24 份已裁决领域文档聚合、去重、按可处理性而非重要性排名。对每一项：想要什么、试过什么、为什么失败、什么证据会定论它、以及最有希望的下一步。
 
-The single most useful thing to know is that **a large fraction of the open list is cheap**. Six of
-the items in Tier 0 need no hardware at all, only a header file, a hash, or a `--dry-run`. Another
-dozen in Tier 1 need one card, one reboot, and a posted log. The genuinely hard problems (NVLink,
-ECC, Gen3) are hard for identified reasons, and those reasons are stated below rather than
-hand-waved. 80 GB used to sit in that group and no longer does: the fold is explained and gone, and
-what is left is narrower (see item 1.1).
+最有用的一件事是知道**开放清单里很大一部分是便宜的**。Tier 0 里的六个条目完全不需要硬件、只需要一个头文件、一个哈希、或一次 `--dry-run`。Tier 1 里另外十几个需要一张卡、一次重启、和一条贴出的日志。真正困难的问题（NVLink、ECC、Gen3）因已识别的原因困难、那些原因在下面陈述而非搪塞。80 GB 曾经坐在那个组里、不再了：折叠已被解释并消失、剩下的是更窄的（见条目 1.1）。
 
-Items that closed during the archived period are kept in place, marked closed, with the result
-recorded, rather than deleted. Nothing below is still open unless it says so.
+在归档期间关闭的条目被保留在位置、标记关闭、带记录的结果、而非删除。下面没有任何东西仍是开放的、除非它这么说。
 
-For current capability states rather than open problems, see the
-[status board](status-board.md).
+要当前能力状态而非开放问题、见[状态板](status-board.md)。
 
-## How items are ranked
+## 条目如何排名
 
-| Tier | Cost to close |
+| Tier | 关闭成本 |
 |---|---|
-| **Tier 0** | No hardware. A file, a header, a hash, an offline dry-run, or a code change. |
-| **Tier 1** | One card, one boot or one command. A log posted afterwards settles it. |
-| **Tier 2** | One card plus a rebuild, a controlled A/B, or an instrumented run. |
-| **Tier 3** | New capability: equipment, hardware nobody has, or a technique nobody has built. |
-| **Tier 4** | Measurement disputes. Not unknown so much as never measured under one methodology. |
-| **Unanswerable** | Nothing in the record or the code can settle it. |
+| **Tier 0** | 无硬件。一个文件、一个头、一个哈希、一次离线 dry-run、或一次代码改动。 |
+| **Tier 1** | 一张卡、一次引导或一条命令。事后一条贴出的日志定论它。 |
+| **Tier 2** | 一张卡加一次重建、一次受控 A/B、或一次插桩运行。 |
+| **Tier 3** | 新能力：设备、没人有的硬件、或没人建过的技术。 |
+| **Tier 4** | 测量争议。与其说未知、不如说从没在一种方法论下测过。 |
+| **不可回答** | 记录或代码里没有任何东西能定论它。 |
 
 ---
 
-## Tier 0: settleable without touching a card
+## Tier 0：不动卡就可定论
 
-### 0.1 The LMR magnitude field width
+### 0.1 LMR 幅值字段宽度
 
-**Wanted:** the width of `LOWER_MAG` in `NV_PFB_PRI_MMU_LOCAL_MEMORY_RANGE` on GA100: 6 bits at
-`[9:4]` or 7 bits at `[10:4]`.
-**Tried:** arithmetic only. Under a 6-bit field the rule `size_MiB = MAG[9:4] << SCALE[3:0]` is
-exact for all five values in real use (`0x208`, `0x288`, `0x20B`, `0x28A`, `0x28B`), and `0x50A`
-decodes to 16384 MiB, not 81920 MiB. Under a 7-bit field `0x50A` would be `80 << 10` = 81920 MiB.
-**Why it is open:** nobody has read `dev_fb.h`.
-**Evidence that settles it:** the header definition. This is a lookup, not an experiment.
-**Why it matters:** it is the last thing standing between the `0x28B`-versus-`0x50A` dispute and a
-clean answer, and that dispute feeds directly into the 80 GB retry (item 1.1).
+**想要：** GA100 上 `NV_PFB_PRI_MMU_LOCAL_MEMORY_RANGE` 里 `LOWER_MAG` 的宽度：`[9:4]` 的 6 位或 `[10:4]` 的 7 位。
+**试过：** 仅算术。6 位字段下规则 `size_MiB = MAG[9:4] << SCALE[3:0]` 对真实使用里全部五个值（`0x208`、`0x288`、`0x20B`、`0x28A`、`0x28B`）精确、`0x50A` 解码为 16384 MiB、不是 81920 MiB。7 位字段下 `0x50A` 会是 `80 << 10` = 81920 MiB。
+**为什么它开放：** 没人读过 `dev_fb.h`。
+**定论它的证据：** 头文件定义。这是一次查找、不是实验。
+**为什么要紧：** 它是 `0x28B`-对比-`0x50A` 争论和一个干净答案之间站立的最后一样东西、那个争论直接喂进 80 GB 重试（条目 1.1）。
 
-### 0.2 Do the seven unverified point releases in the port branch apply?
+### 0.2 移植分支里那七个未验证点发布能应用吗？
 
-**Wanted:** either fuzz-match confirmation or removal from the whitelist for the seven driver
-versions listed in `driver/VERSION` on the `clanker/driver-port` branch that no `constants.yaml`
-entry backs.
-**Tried:** nothing. The risk was found by code reading.
-**Next step:** download each tarball and run `patch -p1 --dry-run` against the matching major
-version patch directory. Purely offline and mechanical.
+**想要：** 要么模糊匹配确认、要么从 `clanker/driver-port` 分支 `driver/VERSION` 里列出的、没有任何 `constants.yaml` 条目支持的那七个驱动版本的白名单移除。
+**试过：** 什么都没做。风险靠读代码发现。
+**下一步：** 下载每个 tarball 并对匹配的主版本补丁目录跑 `patch -p1 --dry-run`。纯离线且机械。
 
-### 0.3 Is `booter_load` really unchanged across driver 535 to 610?
+### 0.3 `booter_load` 在驱动 535 到 610 之间真的不变吗？
 
-**Wanted:** confirmation of a claim that is used operationally ("extract once"), with 580-named
-binaries fed to a 610-era chain.
-**Tried:** asserted twice, never shown. No hashes across versions appear anywhere.
-**Evidence that settles it:** SHA-256 of the decompressed `IMAGE_PROD` entry from
-`g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c` in 535.x, 580.x and 610.x.
-Related and equally cheap: hash `IMAGE_DBG` against `IMAGE_PROD` in the same bindata archive,
-which settles whether a debug-derived ROP chain is guaranteed to work on production silicon.
+**想要：** 对一个被操作性使用（"extract once"）的声称的确认、把 580 命名的二进制喂给一个 610 时代的链。
+**试过：** 断言两次、从没展示。任何地方都没有跨版本的哈希。
+**定论它的证据：** `g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c` 里 535.x、580.x 和 610.x 解压 `IMAGE_PROD` 条目的 SHA-256。
+相关且同样便宜：哈希同一个 bindata 档案里 `IMAGE_DBG` 对 `IMAGE_PROD`、它定论一个调试派生的 ROP 链是否保证在生产硅片上工作。
 
-### 0.4 Fix the `0008` retrain success predicate
+### 0.4 修 `0008` 重训练成功谓词
 
-**Wanted:** a driver log that tells the truth about Gen2. `LnkSta 0x1042` is a genuine Gen2 link,
-but `0008` includes `PCI_EXP_LNKSTA_DLLLA` (bit 13) in its success test and that bit can never be
-set, because the GPU's `LnkCap` bit 20 (DLL Link Active Reporting Capable) is 0.
-**Consequence:** the patch prints failure on a working link, which has already misled one
-downstream analysis into concluding `0008` "runs too late".
-**Next step:** drop the DLLLA term, or make it conditional on `PCI_EXP_LNKCAP_DLLLARC`, or read
-`LnkSta` from the upstream bridge instead of the endpoint. One-line change in
-`0008-pcie-gen2-probe-retrain.patch`.
+**想要：** 一个关于 Gen2 说真话的驱动日志。`LnkSta 0x1042` 是一个真实的 Gen2 链路、但 `0008` 在它的成功测试里含 `PCI_EXP_LNKSTA_DLLLA`（位 13）、而那个位永远无法被设置、因为 GPU 的 `LnkCap` 位 20（DLL Link Active Reporting Capable）是 0。
+**后果：** 补丁在一条工作的链路上打印失败、那已经误导一份下游分析得出结论 `0008` "runs too late"（跑得太晚）。
+**下一步：** 删掉 DLLLA 项、或让它以 `PCI_EXP_LNKCAP_DLLLARC` 为条件、或改从上游桥读 `LnkSta`、而非端点。`0008-pcie-gen2-probe-retrain.patch` 里一处一行改动。
 
-### 0.5 Tooling reporting gaps
+### 0.5 工具报告缺口
 
-Three self-contained additions that need no hardware to write:
+三个无需硬件就能写的自包含补充：
 
-- Add the five PLM addresses the shipping unlock actually manipulates to `probe.sh`:
-  FBPA PLM `0x009a0148`, WPR PLM `0x001fa7c4`, WPR_CFG PLM `0x001fa7cc`, WPR2 lo/hi
-  `0x001fa824` / `0x001fa828`, and MMU LMR `0x00100ce0`. The existing 120-register catalog predates
-  the unlock and covers none of them.
-- Add a PCIe check to `verify.sh`. It does not check link speed on any branch, **including the
-  Gen2 lineage**, so the branch whose README claims Gen2 "Working" ships a verifier that cannot
-  see Gen2.
-- Pin or checksum the `open-gpu-kernel-modules` tarball. `build.sh` fetches it with
-  `curl -L --fail` and caches it with no verification anywhere in the tree.
+- 把出货解锁实际操纵的五个 PLM 地址加进 `probe.sh`：FBPA PLM `0x009a0148`、WPR PLM `0x001fa7c4`、WPR_CFG PLM `0x001fa7cc`、WPR2 lo/hi `0x001fa824` / `0x001fa828`、和 MMU LMR `0x00100ce0`。现有 120 寄存器目录先于解锁、一个都不覆盖。
+- 给 `verify.sh` 加一个 PCIe 检查。它任何分支都不检查链路速度、**包括 Gen2 谱系**、所以那个 README 声称 Gen2 "Working" 的分支出货一个看不见 Gen2 的验证器。
+- 钉住或校验 `open-gpu-kernel-modules` tarball。`build.sh` 用 `curl -L --fail` 抓它并缓存、树里任何地方都没有验证。
 
-### 0.6 Merge blockers for Gen2 and multi-card
+### 0.6 Gen2 和多卡的合并阻塞者
 
-**Wanted:** Gen2 and multi-card support in the default install.
-**Blockers visible in the tree:** `0007` is a large debug-instrumented hunk logging at
-`LEVEL_ERROR` throughout; `tools/retrain.sh` is dead code on the current Gen2 lineage (`Gen2`,
-`far` and `deced` all `rm -f` it at install time, and only the earlier `debug-gen2` ever installed
-it; its hard-coded BDF was fixed only on `deced`); `constants.yaml` omits five registers the
-mechanism depends on.
-**Next step:** the `multiple-cards` installer changes (`b1cb6d8`) are self-contained and could land
-alone, independent of the Gen2 PCIe patches. Master's patch `0001` already bakes in both
-geometries, so the `mixed` profile works without any driver change.
+**想要：** 默认安装里的 Gen2 和多卡支持。
+**树里可见的阻塞者：** `0007` 是一个通篇在 `LEVEL_ERROR` 记录的大型调试插桩 hunk；`tools/retrain.sh` 在当前 Gen2 谱系（`Gen2`、`far` 和 `deced` 都在安装时 `rm -f` 它、只有更早的 `debug-gen2` 装过它；它的硬编码 BDF 只在 `deced` 上被修）上是死代码；`constants.yaml` 省略机制依赖的五个寄存器。
+**下一步：** `multiple-cards` 安装器改动（`b1cb6d8`）自包含、能单独落地、独立于 Gen2 PCIe 补丁。Master 的补丁 `0001` 已经烘焙两种几何布局、所以 `mixed` 档位无需任何驱动改动就工作。
 
 ---
 
-## Tier 1: one card, one boot
+## Tier 1：一张卡、一次引导
 
-### 1.1 What still limits 80 GB now that the fold is gone
+### 1.1 折叠消失后、什么仍限制 80 GB
 
-**Largely answered on the driverless path; the in-driver build has still not been rebuilt with it.**
-**What was open:** whether the `80` branch's fold at exactly 40 GiB came from the incoherent LMR or
-from the LTC decode. The branch as compiled programs CFG1 `0x02779000` (tier `0x77`, 4096 MiB per
-FBPA, 81920 MiB across 20 FBPAs) against LMR `0x0000028A` (40960 MiB) and `fb_length 0x1400000000`
-(80 GiB). Three layers, three different answers, and the fold boundary matched the LMR exactly.
+**在免驱动路径上大体已回答；驱动内构建仍未用它重建。**
+**什么曾开放：** `80` 分支在恰好 40 GiB 的折叠来自不连贯 LMR 还是来自 LTC 解码。按编译的分支编程 CFG1 `0x02779000`（档位 `0x77`、每 FBPA 4096 MiB、跨 20 个 FBPA 81920 MiB）对 LMR `0x0000028A`（40960 MiB）和 `fb_length 0x1400000000`（80 GiB）。三个层、三个不同答案、折叠边界与 LMR 精确匹配。
 
-**Answered on the driverless path, 2026-07-25.** A fire that combined LMR `0x028b` with
-CFG1 `0x02779000` and the L2 decode at `0x10000300` came up with **79.3 GiB total, 79.0 GiB free**
-and a **77 GiB** buffer that did *not* fold: the offset sweep read real bandwidth past the old
-40 GiB collision point, and the run was summarised in-channel as "80GB seems to be verified in
-tests". A 72 GiB no-fold run followed on 2026-07-27 at stock boot timings. So the coherent-LMR
-hypothesis is supported and the LTC decode is not an absolute wall.
+**在免驱动路径上回答、2026-07-25。** 一次结合 LMR `0x028b` 与 CFG1 `0x02779000` 和 `0x10000300` 处 L2 解码的 fire 起来**79.3 GiB 总、79.0 GiB 空闲**和一个**77 GiB** 缓冲、它*没有*折叠：偏移扫描在旧 40 GiB 碰撞点之后读到真实带宽、运行在频道内被总结为 "80GB seems to be verified in tests"（80GB 似乎已在测试中验证）。一个 72 GiB 无折叠运行在 2026-07-27 出厂引导时序下跟随。所以连贯-LMR 假设被支持、LTC 解码不是一个绝对墙。
 
-**What is still open** is narrower than this item's original framing:
+**仍开放的**比这个条目原来的框架窄：
 
-- Bandwidth above 40 GiB sits at roughly 79% of peak rather than the ~98% seen at low offsets.
-- Only about one CUDA context survives per fire before Xid 154.
-- Nobody has reproduced any of it from a compiled driver. Setting
-  `lmrValue = 0x0000028BU` in `driver/patches/0001-sec2-postbl-plm-ss-cfg.patch` **and**
-  `LMR="0x0000028B"` in `driver/build.sh` (not just `constants.yaml`, which the build never reads)
-  remains uncompiled and unbooted.
+- 40 GiB 之上的带宽坐在峰值的约 79%、而非低偏移看到的约 98%。
+- 每次 fire 只有约一个 CUDA 上下文在 Xid 154 前存活。
+- 没人从一个编译驱动复现过它。在 `driver/patches/0001-sec2-postbl-plm-ss-cfg.patch` 设 `lmrValue = 0x0000028BU` **并且**在 `driver/build.sh` 设 `LMR="0x0000028B"`（不只 `constants.yaml`、构建从不读它）仍未被编译、未被引导。
 
-See [the 80 GB problem](80gb.md).
+见[80 GB 问题](80gb.md)。
 
-### 1.2 `RMPcieLinkSpeed=0x1` or `0x2`?
+### 1.2 `RMPcieLinkSpeed=0x1` 还是 `0x2`？
 
-**Wanted:** the correct modprobe line for Gen2.
-**State:** both spellings ship. `debug-gen2/install.sh:191` and `Gen2/install.sh:280` write
-`NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"`; `far/install.sh:280` and
-`deced/install.sh:280` write `0x2`, introduced by commit `8854d3e` "Remove clamp link to Gen1".
-Both readings are internally coherent depending on whether the key means "clamp to gen N" or
-"enable up to gen N", and the branch whose README claims Gen2 works ships `0x1`.
-**Next step:** boot the same card and kernel three times (no key, `0x1`, `0x2`) and post `LnkSta`
-each time. Cheap and decisive.
+**想要：** Gen2 的正确 modprobe 行。
+**状态：** 两种拼写都出货。`debug-gen2/install.sh:191` 和 `Gen2/install.sh:280` 写 `NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"`；`far/install.sh:280` 和 `deced/install.sh:280` 写 `0x2`、由提交 `8854d3e` "Remove clamp link to Gen1" 引入。两种读数内部都自洽、取决于该键意思是 "clamp to gen N"（钳制到代 N）还是 "enable up to gen N"（使能到代 N）、而那个 README 声称 Gen2 工作的分支出货 `0x1`。
+**下一步：** 同一张卡和内核引导三次（无键、`0x1`、`0x2`）、每次贴 `LnkSta`。便宜且决定性。
 
-### 1.3 Do the 595 / 590 / 580 driver ports boot?
+### 1.3 595 / 590 / 580 驱动移植能引导吗？
 
-**Tried:** the branch was announced 2026-07-21 with an explicit call for testers; nothing came back.
-**Why it stalled:** it needs an owner willing to downgrade a working card.
-**Evidence that settles it:** one tester per branch reporting `dmesg | grep SEC2_DEBUG` and the
-`POST-BooterLoad verify` line. That single line answers it.
+**试过：** 分支于 2026-07-21 宣布、带一个显式测试者请求；什么都没回来。
+**为什么它停滞：** 它需要一个愿意降级一张工作卡的拥有者。
+**定论它的证据：** 每分支一个测试者报告 `dmesg | grep SEC2_DEBUG` 和 `POST-BooterLoad verify` 行。那一行就回答它。
 
-### 1.4 Is `610.43.02` or `610.43.03` more reliable?
+### 1.4 `610.43.02` 还是 `610.43.03` 更可靠？
 
-Asked directly in-channel and never answered. Successful unlocks exist on both; `610.43.03` is
-merely first in `driver/VERSION`.
-**Next step:** collect the `driver_version` metadata file plus the SEC2 PLM-open success rate from
-the existing installed base and compare.
+频道内被直接问、从没回答。两者上都有成功解锁；`610.43.03` 只是 `driver/VERSION` 里第一个。
+**下一步：** 从现有已安装基收集 `driver_version` 元数据文件加 SEC2 PLM 打开成功率并比较。
 
-### 1.5 Is MIG usable on an unlocked card?
+### 1.5 MIG 在解锁卡上可用吗？
 
-The MIG-relevant registers are populated and readable (`FBHUB_MEM_PART_BOT 0x00100b88`,
-`MID 0x00100b8c`, `BOUNDARY_CFG0 0x00100b90`, `SYSMEM_HSHUB_CONNECTION_CFG 0x00100b98`) and the
-fuse survey shows the 170HX has *no* MIG partitioning programmed rather than MIG fused off.
-Separately, a MIG enable via bit 0 of `0x820840` was demonstrated and reported persistent.
-**Already reported once:** on an unlocked card `nvidia-smi mig -lgip` lists exactly one profile,
-`MIG 1g.64gb` (63.00 GiB, 70 SMs), and `nvidia-smi mig -cgi 0` creates it, while a standard A100
-profile (`-cgi 9,3g.20gb -C`) returns `Invalid Argument`. So MIG turns on but cannot partition the
-card as shipped.
-**Next step:** repeat on a second card, and find where RM builds the GA100 GPU-instance profile
-list so more profiles can be added. If the enable holds, open the pull request; the maintainer
-offered to merge one.
+MIG 相关寄存器被填充且可读（`FBHUB_MEM_PART_BOT 0x00100b88`、`MID 0x00100b8c`、`BOUNDARY_CFG0 0x00100b90`、`SYSMEM_HSHUB_CONNECTION_CFG 0x00100b98`）、熔丝调查显示 170HX 有*没有* MIG 分区被编程、而非 MIG 被熔断关闭。分开地、经 `0x820840` 位 0 的一个 MIG 使能被演示并报告持久。
+**已报告一次：** 解锁卡上 `nvidia-smi mig -lgip` 恰好列出一个档位、`MIG 1g.64gb`（63.00 GiB、70 SMs）、`nvidia-smi mig -cgi 0` 创建它、而一个标准 A100 档位（`-cgi 9,3g.20gb -C`）返回 `Invalid Argument`。所以 MIG 打开却不能按出货分区卡。
+**下一步：** 在第二张卡上重复、并找 RM 在哪里构建 GA100 GPU 实例档位列表、好加更多档位。如果使能成立、打开拉取请求；维护者提出合并一个。
 
-### 1.6 Does P2P do anything on a 170HX-only host?
+### 1.6 P2P 在纯-170HX 主机上做任何事吗？
 
-**Tried:** the out-of-tree P2P patch builds into a cmpunlocker tree. One tester reported no effect
-on 170HX-only. A same-day positive report came from a rig that also held two RTX 3090s, which is
-the mixed-model case the negative report says is the only one that works.
-**Evidence that settles it:** a `p2pBandwidthLatencyTest` connectivity matrix from a 170HX-only
-multi-card host, with and without the layered patch. The test is cheap and the result is
-unambiguous.
-**Caveat:** everyone involved agrees P2P is bandwidth-bound and buys little at Gen1 x4.
+**试过：** 树外 P2P 补丁构建进一个 cmpunlocker 树。一位测试者报告对纯-170HX 无效果。一个同日阳性报告来自一个也含两张 RTX 3090 的机架、那正是负面报告说唯一工作的混合型号情况。
+**定论它的证据：** 一个纯-170HX 多卡主机的 `p2pBandwidthLatencyTest` 连通性矩阵、带和不带分层补丁。测试便宜、结果不含糊。
+**注意：** 所有参与方都同意 P2P 是带宽绑定、在 Gen1 x4 买不到什么。
 
-### 1.7 Long-term stability at Gen2 x16
+### 1.7 Gen2 x16 的长期稳定性
 
-Reproduction is settled: two rigs, five cards, two board revisions, `lspci` captures and zero AER
-errors over 90 minutes of continuous four-card load. See the
-[field report](../operations/physical-mods.md#field-report-four-cards-at-gen2-x16).
+复现已定论：两架机、五张卡、两个板修订、`lspci` 捕获、连续四卡负载 90 分钟内零 AER 错误。见[现场报告](../operations/physical-mods.md#现场报告四卡-gen2-x16)。
 
-What is still missing is duration. Nobody has published error counters after days of sustained
-load, which is the only remaining way a marginal AC-coupling network would show itself.
-**Next step:** anyone running a capacitor-modded card at Gen2 x16 posts
-`cat /sys/bus/pci/devices/<bdf>/aer_dev_correctable` after a week of uptime, alongside
-`lspci -d 10de:20c2 -vv | grep -E 'LnkCap:|LnkSta:'`.
+仍缺的是时长。没人发布过数天持续负载后的错误计数器、那是边缘交流耦合网络唯一剩下的现身方式。
+**下一步：** 任何跑一张电容改装卡在 Gen2 x16 的人在运行一周后贴 `cat /sys/bus/pci/devices/<bdf>/aer_dev_correctable`、连同 `lspci -d 10de:20c2 -vv | grep -E 'LnkCap:|LnkSta:'`。
 
-### 1.8 What does `0x008200FC` read, and is it writable?
+### 1.8 `0x008200FC` 读什么、它可写吗？
 
-Three incompatible observations: `0x000003FF` with the write failing and direct host `writel` also
-capped at `0x3FF` (2026-07-09); `0xffffffff` across the whole Ampere lineup (2026-07-16); and
-`PLM[8] OPT_PLM(0x8200fc) attempt=0 status=0xffff reg=0xffffffff`, reported as success, from the
-nine-PLM branch tool (2026-07-23/24). The same register carries two names: `OPT_PLM` in branch
-code, `FUSE_SS_PLM` in the clean-room tooling.
-**Next step:** read `0x008200FC` on a cold-booted card before any unlock, then after each of the
-nine PLM opens, on the same unit.
+三个不兼容观察：`0x000003FF` 带写失败、直接主机 `writel` 也封顶在 `0x3FF`（2026-07-09）；整个 Ampere 产线上 `0xffffffff`（2026-07-16）；和 `PLM[8] OPT_PLM(0x8200fc) attempt=0 status=0xffff reg=0xffffffff`、被报告为成功、来自九-PLM 分支工具（2026-07-23/24）。同一个寄存器携带两个名字：分支代码里的 `OPT_PLM`、净室工具里的 `FUSE_SS_PLM`。
+**下一步：** 在任何解锁前冷引导的卡上读 `0x008200FC`、然后在九次 PLM 打开的每一次后、在同一单元上。
 
-### 1.9 The RAMCFG re-strap result (closed)
+### 1.9 RAMCFG 重新跳线结果（已关闭）
 
 > [!TIP]
-> **Closed 2026-07-25: confirmed negative, as predicted**
+> **2026-07-25 关闭：确认阴性、如所预测**
 >
-> The RAMCFG resistors on a 10 GB card were moved to `HHLLH`, the 8 GB stock strap pattern. The
-> card booted, and `probe.sh` read `FBPA_CFG1_BROADCAST` at `0x009a0204` still equal to
-> **`0x02449000`**, the 10 GB value. Summarised in-channel as "the resistor change had no effect".
-> This is exactly the **predicted outcome from code**: the driver keys geometry off the PCI device
-> ID, not off the strap. Worth noting the card booted with the L2 decode already at `0x10000300`.
-> Physical RAMCFG re-strapping is a dead end for capacity.
+> 一张 10 GB 卡上的 RAMCFG 电阻被移到 `HHLLH`、8 GB 出厂跳线模式。卡引导了、`probe.sh` 读 `FBPA_CFG1_BROADCAST` at `0x009a0204` 仍等于 **`0x02449000`**、10 GB 值。频道内总结为 "the resistor change had no effect"（电阻改动没有效果）。这恰恰是从代码**预测的结果**：驱动按 PCI 设备 ID 键控几何布局、不是按跳线。值得注意卡在 L2 解码已在 `0x10000300` 时引导了。物理 RAMCFG 重新跳线对容量是一条死路。
 
-### 1.10 Does the eviction-test fold reproduce on the shipping geometries?
+### 1.10 驱逐测试折叠在出货几何布局上复现吗？
 
-The offset sweep showing a uniform 79%-of-peak plateau above the 8 GiB boundary was only ever run
-on the abandoned 80 GB configuration. Shipping master clamps BAR0/PRAMIN to exactly 8 GiB for both
-device IDs, which is suggestive, but PRAMIN is a CPU aperture and the sweep was a device-side
-memset.
-**Next step:** repeat the identical offset and chunk sweeps on a shipping 8 GB to 64 GB card. If
-the step reappears at 8 GiB it is a geometry effect; if not, it was specific to the over-fire.
+显示 8 GiB 边界之上一个均匀 79%-of-peak 平台的偏移扫描只在被放弃的 80 GB 配置上跑过。出货 master 对两个设备 ID 都把 BAR0/PRAMIN 钳到恰好 8 GiB、那是暗示性的、但 PRAMIN 是一个 CPU 孔径、扫描是一次设备侧 memset。
+**下一步：** 在一张出货 8 GB 到 64 GB 卡上重复相同的偏移和块扫描。如果台阶在 8 GiB 重现它是几何布局效应；如果不是、它是过度 fire 专属的。
 
-### 1.11 The uBatch cliff
+### 1.11 uBatch 悬崖
 
-A CMP 100-210 with 68 of 84 SMs showed a **3.04x prompt-processing gain** from one `n_ubatch` flag
-tuned just below the SM count. Nothing equivalent has been run on a 70-SM 170HX.
-**Next step:** `llama-bench` with `n_ubatch` swept 48 to 80 on a compute-unlocked card. Cheapest
-untested performance lead in the corpus.
+一张 84 SM 中 68 个的 CMP 100-210 显示一个 `n_ubatch` 标志调在 SM 数略下方带来 **3.04x 提示处理增益**。没有等价物在 70-SM 170HX 上跑过。
+**下一步：** 在一张算力解锁卡上用 `llama-bench` 把 `n_ubatch` 从 48 扫到 80。语料库里最便宜的未测试性能线索。
 
-### 1.12 Log the throttle onset
+### 1.12 记录节流起始
 
-Four temperature figures coexist: throttling observed at 80 C, community reports of 85 C, a driver
-report of `GPU Max Operating Temp 85 C` / `GPU Slowdown Temp 95 C`, and an account of throttling
-above 100 C when cooling fails. These may all be true at different layers, but nobody captured a
-throttle log.
-**Next step:** log
-`nvidia-smi --query-gpu=temperature.gpu,clocks.sm,clocks_throttle_reasons.active` through 75-95 C.
+四个温度数字共存：80 C 观察到的节流、85 C 的社区报告、驱动报告 `GPU Max Operating Temp 85 C` / `GPU Slowdown Temp 95 C`、和散热失效时 100 C 之上节流的一次叙述。这些可能在不同层都真、但没人捕获过一次节流日志。
+**下一步：** 用 `nvidia-smi --query-gpu=temperature.gpu,clocks.sm,clocks_throttle_reasons.active` 记录穿过 75-95 C。
 
 ---
 
-## Tier 2: one card plus a rebuild or a controlled A/B
+## Tier 2：一张卡加一次重建或受控 A/B
 
-### 2.1 An intermediate capacity on the 10 GB card
+### 2.1 10 GB 卡上的中间容量
 
-**Wanted:** something between the stable 40 GB and the broken 80 GB. Asked directly in-channel and
-answered "I don't believe its been tried."
-**Why the obvious route does not work:** the per-channel tier is coarse (`0x44`/`0x66`/`0x77` =
-512 / 2048 / 4096 MiB), so intermediate sizes are unreachable by tier alone.
-**Next step:** fix CFG1 at tier `0x77` and clamp the driver-visible size through `targetFbBytes` to
-48, 56 or 64 GB, then run the write-all-then-read-all fold test at each rung. One constant change
-and one reboot per rung. It is also the decisive falsifier for the bad-stack binning theory.
+**想要：** 稳定 40 GB 和坏 80 GB 之间的某个东西。频道内被直接问、回答 "I don't believe its been tried."（我不认为被试过。）
+**为什么明显路线不工作：** 每通道档位很粗（`0x44`/`0x66`/`0x77` = 512 / 2048 / 4096 MiB），所以中间大小单靠档位不可达。
+**下一步：** 把 CFG1 钉在档位 `0x77`、通过 `targetFbBytes` 把驱动可见大小钳到 48、56 或 64 GB、然后在每个梯级跑先写全再读全的折叠测试。每个梯级一个常量改动加一次重启。它也是坏堆叠分级理论的决定性反驳器。
 
-### 2.2 Broadcast versus per-FBPA CFG1 writes
+### 2.2 广播对每-FBPA CFG1 写
 
-The shipping driver writes CFG1 only to the broadcast alias `0x009a0204`. The one reported
-phantom-free readback came from writing all FBPAs individually. Nobody has instrumented whether the
-FBPA broadcast is a genuine PRI priv-ring hardware mechanism.
-**Next step:** with the FB-geometry PLMs open and no devinit, write only the broadcast and read all
-24 per-FBPA CFG1 mirrors at `0x00900204 + n*0x4000` plus `CSTATUS_RAMAMOUNT` at
-`0x0090020C + n*0x4000`, then repeat with per-FBPA writes and compare.
+出货驱动只把 CFG1 写给广播别名 `0x009a0204`。唯一报告的无幻影回读来自单独写全部 FBPA。没人插桩过 FBPA 广播是否是一个真实的 PRI 特权环硬件机制。
+**下一步：** FB-几何 PLM 打开、无 devinit、只写广播并读 `0x00900204 + n*0x4000` 处全部 24 个每-FBPA CFG1 镜像加 `0x0090020C + n*0x4000` 处 `CSTATUS_RAMAMOUNT`、然后重复每-FBPA 写并比较。
 
-### 2.3 Which PLM actually gates the LMR?
+### 2.3 哪个 PLM 实际门控 LMR？
 
-**Wanted:** the privilege mask that guards `0x00100CE0`, so LMR could be written from the host
-without an HS fire. A candidate FBHUB table was posted and then disclaimed by its own author.
-**The shortcut nobody took:** the shipping driver *does* write LMR successfully from the host after
-opening exactly four PLMs, so **one of those four already gates it**. A four-way ablation of the
-shipping `plmTable[]` identifies which.
+**想要：** 守护 `0x00100CE0` 的特权掩码、这样 LMR 能从主机不经 HS fire 写。一张候选 FBHUB 表被贴出、随后被它自己的作者撇清。
+**没人走的捷径：** 出货驱动*确实*在恰好打开四个 PLM 后从主机成功写 LMR、所以**那四个中已经有一个门控它**。对出货 `plmTable[]` 做一次四方消融识别是哪个。
 
-### 2.4 What the leading digit of CFG1 means (closed)
+### 2.4 CFG1 首位数是什么意思（已关闭）
 
 > [!TIP]
-> **Closed 2026-07-27: bit 29 halves the tier**
+> **2026-07-27 关闭：位 29 减半档位**
 >
-> The experiment was run. Writing CFG1 `0x22779000` in place of `0x02669000` on a card with 20
-> live FBPAs **halved the `0x77` tier** to 2048 MiB per FBPA, giving 20 x 2048 = 40960 MiB (40 GB).
-> Per-FBPA `CSTATUS` stayed at `0x0800` and LMR stayed at `0x0000028a` across the change, so the
-> capacity move came from CFG1 alone.
+> 实验被跑了。在一张 20 个活 FBPA 的卡上、把 CFG1 `0x22779000` 代替 `0x02669000` 写、**把 `0x77` 档位减半**到每 FBPA 2048 MiB、给出 20 x 2048 = 40960 MiB（40 GB）。每-FBPA `CSTATUS` 在改动中停 `0x0800`、LMR 停 `0x0000028a`、所以容量移动来自 CFG1 单独。
 >
-> A second effect showed up in the timing block: `HBM_CFG0` at `0x9a038c` went `0xa7` to `0xa6`,
-> the dual-rank bit, and 6 of 7 timing registers moved to their strap-5 values. So the leading
-> digit is not a pure capacity divider; it re-selects a rank configuration and drags the timing
-> strap with it. The candidate VBIOS strap entry `00 90 77 22` carrying the same odd `2` is
-> consistent with that reading.
+> 第二个效果在时序块里出现：`HBM_CFG0` at `0x9a038c` 从 `0xa7` 变 `0xa6`、双 rank 位、6 个时序寄存器中的 7 个移到它们的跳线 5 值。所以首位数不是纯容量分频器；它重新选择 rank 配置、拖走时序跳线。携带相同奇数 `2` 的候选 VBIOS 跳线条目 `00 90 77 22` 与该读数一致。
 >
-> The ROP path may be required for the write; that part was reported as not entirely certain.
+> 这次写可能要求 ROP 路径；那部分被报告为不完全确定。
 
-### 2.5 Gen3 through the same table that attempts the Gen2 fuse
+### 2.5 Gen3 经尝试 Gen2 熔丝的同一个表
 
-**Worth one boot, but the prior is low.** The 23-entry `xp3gTable` does contain
-`FUSE_PCIE_GEN23_DIS 0x0082057c`, but that write is observed to *fail* on silicon
-(`status=0xffff rd=0x00000001`, then `SEC2_DEBUG: PCIe xp3g booter FAILED to set OPT_GEN23`), so
-there is no proven write path on this fuse bank to extend to `0x00820580`. Gen2 is reached by the
-`CYA_0` / `LINK_CONFIG_0` / XP3G / `PRIV_MISC_1` overrides plus a root-port retrain, not by that
-fuse write. `FUSE_PCIE_GEN3_DIS 0x00820580` reads `0x00000001` and **has never been written by
-anyone**, and no code path ever requests a target link speed above 2.
-**Next step:** add `0x00820580 = 0` to the same table, then request TLS = 3 and read `LnkCap2`. If
-it reaches `0x0000000E` the contiguity argument holds; if it stays at `0x00000006` the Gen3 fuse is
-enforced independently downstream, which is currently the better-supported reading (forcing the PHY
-rate to a Gen3-capable `0x00340036` left the link at Gen1).
+**值得一次引导、但先验低。** 23 条目 `xp3gTable` 确实含 `FUSE_PCIE_GEN23_DIS 0x0082057c`、但那次写在硅片上被观察到*失败*（`status=0xffff rd=0x00000001`、随后 `SEC2_DEBUG: PCIe xp3g booter FAILED to set OPT_GEN23`）、所以这颗熔丝组上没有可证明的写路径可扩展到 `0x00820580`。Gen2 经 `CYA_0` / `LINK_CONFIG_0` / XP3G / `PRIV_MISC_1` 覆盖加一次根端口重训练达到、不经那次熔丝写。`FUSE_PCIE_GEN3_DIS 0x00820580` 读 `0x00000001`、**从没被任何人写过**、也没有代码路径曾请求高于 2 的目标链路速度。
+**下一步：** 往同一个表加 `0x00820580 = 0`、然后请求 TLS = 3 并读 `LnkCap2`。如果它到达 `0x0000000E` 连续性论证成立；如果它停 `0x00000006` Gen3 熔丝在下游被独立强制、那目前是更受支持的读数（把 PHY 速率强制到一个 Gen3 能力的 `0x00340036` 让链路停 Gen1）。
 
-### 2.6 The second feature-override group
+### 2.6 第二个特性覆盖组
 
-`0x823830` through `0x82383C` read `0xbadf5040` from PL0 and return real values on an HS read. No
-manual PLM covers the group and an HS write-then-readback has never been performed. Related and
-also untested: `0x823b00` as the candidate PLM for the row remapper at `0x823824`.
+`0x823830` 到 `0x82383C` 从 PL0 读 `0xbadf5040`、在 HS 读返回真实值。没有手动 PLM 覆盖这个组、HS 写-后-回读从没被执行。相关且也未测试：`0x823b00` 作为 `0x823824` 处行重映射器的候选 PLM。
 
-### 2.7 Isolate SS1
+### 2.7 隔离 SS1
 
-The claim that "SS1 nerfs 64-bit compute" is an untested belief that happens to sit next to a
-correct FP64 measurement. SS1 has been in the recipe since 2026-07-14 and always shipped alongside
-SS0.
-**Next step:** a one-line build with the `0x00823820` write removed, then re-run the OpenCL FP64
-test. Expect 6.421 TFLOP/s if the belief is wrong, something near 0.19 if it is right.
+"SS1 nerfs 64-bit compute"（SS1 削弱 64 位算力）的声称是一个恰好坐在一个正确 FP64 测量旁的未测试信念。SS1 自 2026-07-14 起就在配方里、总是与 SS0 一起出货。
+**下一步：** 一次删掉 `0x00823820` 写的一行构建、然后重跑 OpenCL FP64 测试。如果信念错、预期 6.421 TFLOP/s；如果对、接近 0.19 的某个东西。
 
-### 2.8 Why INT8/IMMA is still gated
+### 2.8 为什么 INT8/IMMA 仍被门控
 
-An unlocked card does INT8 at 44.1 TOPS, roughly 3.7x *slower* than its FP16, where an A100 does
-INT8 at about 2x FP16. The IMLA fuses read the same `0x5` as the FMA ones and SS0 sets their
-override nibbles identically, yet the measured rate does not follow. Separately, the raw MMA path
-measures 335 TOPS while the library path (torch, cuBLAS, OpenCL) sits at 43-48.
-**Next step:** an explicit `CUBLAS_COMPUTE_32I` GEMM with INT8 inputs against the raw MMA figure,
-plus a dump of `0x00823818` alongside a per-datatype microbenchmark to check whether the
-*effective* IMLA fields really are zero.
+一张解锁卡做 INT8 在 44.1 TOPS、相对它的 FP16 大约**慢 3.7x**、而 A100 做 INT8 约在 FP16 的 2x。IMLA 熔丝读与 FMA 相同的 `0x5`、SS0 相同地设置它们的覆盖半字节、实测速率却不跟随。分开地、原始 MMA 路径测 335 TOPS、而库路径（torch、cuBLAS、OpenCL）坐在 43-48。
+**下一步：** 一个带 INT8 输入、对原始 MMA 数字的显式 `CUBLAS_COMPUTE_32I` GEMM、加一次 `0x00823818` 的转储与一个按数据类型微基准测试并排、检查*有效* IMLA 字段是否真的为零。
 
-### 2.9 Residual compute gates
+### 2.9 残余算力门
 
-- `SM_ISSUE_RATE_MODIFIER 0x00504204` reads `0x00000005` on a fully unlocked card and is not touched
-  by the unlock. Writing it to 0 on an unlocked card and re-running the benchmark suite has never
-  been done, though the register is host-writable at PL3 and the write primitive exists.
-- `SKED_UNK54 0x00407054` is the most-referenced undocumented SKED register in the GSP firmware
-  (13 references) and the only register in the 13-card cohort that is non-zero on the 170HX and zero
-  on both A100 and RTX 3090. Nobody has write-tested it. The driver clears it during GR init, so it
-  is only observable pre-driver.
-- `FEATURE_READOUT_1 0x00823818` has no known field layout. A naive nine-by-three-bit unpack of the
-  stock `0x016DB6ED` does not match the fuses. Sweeping single nibbles of SS0 on an unlocked card
-  and watching which bits move is a direct bit-mapping experiment.
+- `SM_ISSUE_RATE_MODIFIER 0x00504204` 在一张完全解锁的卡上读 `0x00000005`、不被解锁碰。在一张解锁卡上把它写 0 并重跑基准套件从没被做过、尽管寄存器在 PL3 主机可写、写原语存在。
+- `SKED_UNK54 0x00407054` 是 GSP 固件里被引用最多的未文档化 SKED 寄存器（13 处引用）、也是 13 卡群组里唯一在 170HX 上非零、在 A100 和 RTX 3090 上都为零的寄存器。没人写测试过它。驱动在 GR init 时清除它、所以它只在驱动前可观察。
+- `FEATURE_READOUT_1 0x00823818` 没有已知字段布局。对出厂 `0x016DB6ED` 的一次朴素九乘三位解包不匹配熔丝。在解锁卡上扫 SS0 的单一半字节、看哪些位移动、是一个直接的位映射实验。
 
-### 2.10 Training status versus the "untrained memory" theory
+### 2.10 训练状态对比 "未训练显存" 理论
 
-`FBPA_TRAINING_STATUS 0x009a0974` reads `0x00000000` on every card, **including an unlocked card
-already carrying the 64 GB CFG1 value**, yet the leading explanation for 80 GB instability is that
-the upper region is untrained and without timings. Nobody has correlated `TRAINING_STATUS` with an
-actual crash trace.
-**Next step:** read it immediately before and after a crash at the over-provisioned tier, and diff
-the `TIMING*_GEN` shadows between a stock boot and an unlocked boot.
+`FBPA_TRAINING_STATUS 0x009a0974` 在每张卡上读 `0x00000000`、**包括一张已携带 64 GB CFG1 值的解锁卡**、而 80 GB 不稳定性的主导解释是上区域未训练且无时序。没人把 `TRAINING_STATUS` 与一个实际崩溃迹线关联过。
+**下一步：** 在过度配置档位一次崩溃前后立即读它、并 diff 一个出厂引导和一个解锁引导之间的 `TIMING*_GEN` 影子。
 
-### 2.11 Retention versus address decode at 80 GB
+### 2.11 80 GB 的驻留对比地址解码
 
-Two mechanisms are proposed for the >40 GB failure and they predict different failure geometry. A
-retention failure scatters errors by time and address across the whole upper region; a decode fold
-produces exact aliasing at a power-of-two boundary. The observed fold sits at **exactly 40 GiB**,
-which is suspiciously exact for a retention problem, and doubling refresh landed successfully on all
-20 live FBPAs without fixing the instability while costing roughly 40% of bandwidth.
-**Next step:** run the write-all-then-read-all fold test at 80 GB geometry with stock timings,
-single context, on a freshly cold-booted card, and report both pass/fail and the address
-distribution of failures.
-**Related and unexplained:** `cuda_memtest` passes over all 80 GB once immediately after a reboot
-and fails on every retry. That reboot dependence is the most concrete remaining lead.
+为 >40 GB 失败提出两个机制、它们预测不同的失败几何。一次驻留失败按时间和地址把错误散布在整个上区域；一次解码折叠在 2 的幂边界产生精确别名。观察到的折叠坐在**恰好 40 GiB**、对驻留问题可疑地精确、而加倍刷新成功落在全部 20 个活 FBPA 上、没修不稳定、却花掉约 40% 带宽。
+**下一步：** 在 80 GB 几何布局、出厂时序、单上下文、一张刚冷引导的卡上跑先写全再读全折叠测试、报告通过/失败和失败的地址分布。
+**相关且未解释：** `cuda_memtest` 在重启后立即一次通过全部 80 GB、每次重试失败。那个重启依赖是最具体的剩余线索。
 
-### 2.12 Recoverable FBPs
+### 2.12 可恢复的 FBP
 
-Some cards show `FBP_DISABLE 0x852` against `FBP_DEFECTIVE 0x840`, two extra disabled-only bits. The
-one 10 GB card actually dumped in-channel had `DISABLE == DEFECTIVE == 0x840`, and the
-software-override experiment showed the effective mask does not move even from HS.
-**Next step:** run the eight-register read on a card whose masks differ (an 8 GB-class card), attempt
-re-enable under CPU-RM with GSP disabled, and check whether writes to `0x00820364` survive an FLR.
-**Caveat:** whether "disabled but not defective" silicon is recoverable at all is itself unproven.
+有些卡显示 `FBP_DISABLE 0x852` 对 `FBP_DEFECTIVE 0x840`、两个额外仅禁用位。频道内实际转储的那张 10 GB 卡有 `DISABLE == DEFECTIVE == 0x840`、而软件覆盖实验显示即使从 HS 有效掩码也不移动。
+**下一步：** 在一张掩码不同的卡（一张 8 GB 级卡）上跑八寄存器读、在 GSP 禁用下于 CPU-RM 尝试重新启用、并检查对 `0x00820364` 的写是否挺过一次 FLR。
+**注意：** "disabled but not defective"（禁用但非有缺陷）硅片是否可恢复本身未证明。
 
-### 2.13 IOMMU and the Gen2 reliability story
+### 2.13 IOMMU 和 Gen2 可靠性故事
 
-Directly contradictory reports exist. Multiple testers went from "still PCIe 1" to success after one
-grub change and the branch installer now sets IOMMU automatically; an independent setup script lists
-`iommu=pt` / VT-d among things "tested and confirmed unnecessary", and its confirmed hosts made no
-grub changes at all.
-**Evidence that settles it:** a matrix of {IOMMU off, on, pt} × {Intel, AMD} × {userspace hammer,
-in-driver `0008`} on identical software. Plausible but undemonstrated reconciliation:
-`iomem=relaxed` matters only for the userspace `mmap`-based retrain and IOMMU mode only on some
-chipsets.
+存在直接矛盾的报告。多位测试者从 "still PCIe 1" 到一次 grub 改动后成功、分支安装器现在自动设 IOMMU；一个独立设置脚本把 `iommu=pt` / VT-d 列在 "tested and confirmed unnecessary"（测试并确认不必要）的事物里、它确认的主机根本没做 grub 改动。
+**定论它的证据：** 相同软件上 {IOMMU off、on、pt} × {Intel、AMD} × {用户态 hammer、驱动内 `0008`} 的矩阵。貌似合理却未演示的调和：`iomem=relaxed` 只对基于用户态 `mmap` 的重训练要紧、IOMMU 模式只在某些芯片组上要紧。
 
-### 2.14 Reboot persistence of Gen2
+### 2.14 Gen2 的重启持久性
 
-`nvidia-smi` reports `2, 2` immediately after `install.sh` and `1, 1` after reboot on some systems,
-reproducibly, with re-running `install.sh` restoring it each time.
-**Working hypothesis:** persistence depends on whether the *patched* module is actually loaded at
-boot rather than only live-patched by the installer.
-**Next step:** on a failing system, check `modinfo` and `dmesg` after reboot for the patched module
-and for `SEC2_DEBUG: PCIe` lines before blaming the retrain.
+`nvidia-smi` 在 `install.sh` 后立即报 `2, 2`、某些系统重启后报 `1, 1`、可复现、每次重跑 `install.sh` 恢复。
+**工作假设：** 持久性取决于*打过补丁的*模块是否实际在引导时加载、而非只被安装器热补丁。
+**下一步：** 在一个失败系统上、重启后检查 `modinfo` 和 `dmesg` 找打过补丁的模块和 `SEC2_DEBUG: PCIe` 行、再责怪重训练。
 
-### 2.15 The FLR survival map has one unwithdrawn dissent
+### 2.15 FLR 存活图有一个未撤回的反方
 
-Geometry reverting on FLR was reported as measured "every time" (2026-07-12), then reversed by the
-same researcher the next day, then re-established by an FLR readback table and a survival map. The
-adjudication leans strongly to "FLR reverts", but the reversal was never formally withdrawn.
-**Next step:** one clean FLR readback of CFG1, LMR and CSTATUS with no driver loaded, published with
-the card ID.
+几何布局在 FLR 上回退被报告为 "every time"（每次）测得（2026-07-12）、随后同一位研究者第二天逆转、然后被一张 FLR 回读表和一个存活图重新确立。裁决强烈倾向 "FLR reverts"（FLR 回退）、但那个逆转从没被正式撤回。
+**下一步：** 一次干净 FLR 回读 CFG1、LMR 和 CSTATUS、无驱动加载、带卡 ID 发布。
 
 ---
 
-## Tier 3: needs new capability, equipment, or hardware nobody has
+## Tier 3：需要新能力、设备、或没人有的硬件
 
 ### 3.1 ECC
 
-**Wanted:** error correction, which would materially change the risk picture and might make
-marginal geometries usable.
-**Tried:** nothing on hardware. Asked directly on 2026-07-20, answered "Not yet."
-**Blocking mechanism:** `OPT_ECC_EN 0x00820228 = 0` and `FBPA_ECC_CTRL 0x009a0470` with `MASTER_EN`
-read-only. It is not known whether `MASTER_EN` is fuse-gated or PLM-gated, and those imply very
-different ceilings.
-**Cheapest first experiment:** the `FEAT_OVR_ECC` family (`0x0082380c`, `0x00823810`, `0x0082382c`)
-is writable in principle once `0x00823804` is open, which the shipping patch already does. Test
-whether writing it has any effect at all post-DEVINIT.
-**Partly resolved prerequisite:** whether the HBM stacks carry ECC provisioning at all. One reading
-of the fuse table, never checked against a datasheet, says ECC on GA100 is a feature of the HBM2
-stack taken as in-band capacity: A100 per-FBPA `CSTATUS_RAMAMOUNT` reads `0x07ff` / `0x0fff` where
-consumer parts read `0x0800` / `0x1000`. If instead it is a vendor QA binning property, the
-question is not meaningful. See [ECC](ecc.md).
+**想要：** 纠错、它会实质改变风险画面、可能让边缘几何布局可用。
+**试过：** 硬件上什么都没做。2026-07-20 被直接问、回答 "Not yet."（还没有。）
+**阻塞机制：** `OPT_ECC_EN 0x00820228 = 0` 和 `FBPA_ECC_CTRL 0x009a0470` 带 `MASTER_EN` 只读。未知 `MASTER_EN` 是熔丝门控还是 PLM 门控、那两者暗示非常不同的天花板。
+**最便宜的第一个实验：** `FEAT_OVR_ECC` 家族（`0x0082380c`、`0x00823810`、`0x0082382c`）在 `0x00823804` 打开后原则上可写、出货补丁已经做。测试 DEVINIT 后写它是否有任何效果。
+**部分解决的前提：** HBM 堆叠是否携带 ECC 配置。对熔丝表的一次读数、从没对照数据手册检查、说 GA100 上 ECC 是 HBM2 堆叠的一个特性、作为带内容量：A100 每-FBPA `CSTATUS_RAMAMOUNT` 读 `0x07ff` / `0x0fff`、而消费级部件读 `0x0800` / `0x1000`。如果它是一个厂商 QA 分级属性、问题就没意义。见[ECC](ecc.md)。
 
 ### 3.2 NVLink
 
-**Wanted:** the actual unlock. **Summary as of 2026-07-20: "Still unsolved, a bit harder as there's
-no fuse mask."**
-**Both override paths are closed:** `CTRL_OPT_NVLINK 0x008209B8` is inert because
-`FUSE_EN_SW_OVERRIDE = 0x0` and `FUSE_DIS_SW_OVR = 0x1`; the FEAT_OVR route is closed because the
-`0x00823800`-`0x0082382C` block contains no NVLink register at all.
-**Nothing tractable is on the table.** The three cheapest things that would at least produce data:
+**想要：** 实际解锁。**截至 2026-07-20 的总结："Still unsolved, a bit harder as there's no fuse mask."**（仍未解决、因为没有熔丝掩码而更难。）
+**两个覆盖路径都关闭：** `CTRL_OPT_NVLINK 0x008209B8` 是惰性的因为 `FUSE_EN_SW_OVERRIDE = 0x0` 和 `FUSE_DIS_SW_OVR = 0x1`；FEAT_OVR 路径关闭因为 `0x00823800`-`0x0082382C` 块里根本没有 NVLink 寄存器。
+**桌上没有任何可处理的。** 三个至少会产出数据的便宜东西：
 
-1. A read-write-read probe of `0x008209B8` and `0x00820820` on an expendable card, then re-read
-   `STATUS_OPT_NVLINK 0x00820DB8`. The expected result is that the write is dropped and status
-   stays `0x00000007`. **That negative is worth recording**, because the corpus currently cannot
-   even say it was tried.
-2. High-resolution photographs of a de-shrouded 170HX at designators `R234`, `R236`, `R237`, `R238`,
-   `R976`, `R1024`, `R1029`, `R1030`, plus continuity from the NVLink edge fingers to BGA balls
-   `F1` and `G1`. This settles the standing dispute over whether the PCB area is populated at all,
-   which decides whether a fuse bypass would even be useful. Note `R237` is marked **NP** in the
-   A100 schematic itself, so at least one is expected absent on a genuine A100 too.
-3. Seat an actual A100 bridge. Nobody in the record has ever had a 170HX and a bridge at the same
-   time, so it is not even established that the connectors align.
+1. 在一张可牺牲卡上对 `0x008209B8` 和 `0x00820820` 做一次读-写-读探测、然后重读 `STATUS_OPT_NVLINK 0x00820DB8`。预期结果是写被丢弃、状态停 `0x00000007`。**那个负结果值得记录**、因为语料库现在甚至不能说它被试过。
+2. 一张去导流罩 170HX 在 `R234`、`R236`、`R237`、`R238`、`R976`、`R1024`、`R1029`、`R1030` 设计编号处的高分辨率照片、加从 NVLink 边缘金手指到 BGA 球 `F1` 和 `G1` 的连通性。这定论 PCB 区域是否完全贴装的常驻争议、那决定熔丝绕过是否甚至有用。注意 `R237` 在 A100 原理图**自己**里被标 **NP**、所以至少一颗在真 A100 上也预期缺失。
+3. 插一张实际 A100 桥。记录里从没有人同时持有一张 170HX 和一块桥、所以甚至未确立连接器对齐。
 
-Interposer fabrication was discussed (connector sourcing, Megtron laminate, non-standard card
-orientation) and is pointless before item 3 returns a positive.
+Interposer 制造被讨论过（连接器采购、Megtron 层压、非标准卡朝向）、在项目 3 返回阳性前没意义。
 
-### 3.3 Gen4, and the DevInit five-byte edit
+### 3.3 Gen4、和 DevInit 五字节编辑
 
-The PCIe Gen1 lock is 5 bytes across 3 devinit sites **inside** the VBIOS MAC range, so the ROM
-route is closed without forging the MAC. Whether that edit alone would restore Gen4 given a flash
-that could be re-signed has never been tested; the "firmware-only patch insufficient" conclusion is
-an inference from fuse values, not the outcome of an attempted patch. Additionally, the researcher
-who pursued Gen4 had **no Gen4-capable host**, so it is blocked on hardware access before it is
-blocked on technique.
-Named but untried alternatives: a wire-level retimer interposer (Astera Aries, TI
-DS160PR810-class) forging TS1/TS2 Rate-ID, and a GSP patch diverting where GSP-RM consumes the
-`0x57c` / `0x580` fuse reads (jump table at `0x5D55834` in 470.42.01 `gsp.bin`, `0x4DD9B00` in
-580.105.08 `gsp_tu10x.bin`).
+PCIe Gen1 锁是 VBIOS MAC 范围**内** 3 个 devinit 站点的 5 个字节、所以 ROM 路径在不伪造 MAC 时关闭。那个编辑单独是否会恢复 Gen4、给定一颗能被重新签名的闪存、从没被测试过；"firmware-only patch insufficient"（仅固件补丁不足够）结论是对熔丝值的推断、不是一次尝试补丁的结果。此外、追 Gen4 的研究者**没有 Gen4 能力的主机**、所以它在技术上被阻塞前先被硬件访问阻塞。
+具名但未试的替代：一个线缆级重定时器 interposer（Astera Aries、TI DS160PR810 类）伪造 TS1/TS2 Rate-ID、和一个分流 GSP-RM 消费 `0x57c` / `0x580` 熔丝读的 GSP 补丁（470.42.01 `gsp.bin` 里 `0x5D55834` 处的跳转表、580.105.08 `gsp_tu10x.bin` 里 `0x4DD9B00`）。
 
-### 3.4 HBM timings and MRS replay
+### 3.4 HBM 时序和 MRS 重放
 
-**Wanted:** correct timings for the over-provisioned region, and the ability to change the memory
-strap without physically removing the cooler for a reflash.
-**Why writing `TIMING*` registers does nothing:** `CONFIG0.USE_TIMING_REGS` (bit 31 of `0x9A0290`)
-is **0**, so the controller ignores the raw values and uses internally generated ones.
-**Why MRS replay fails:** the published paper reports that *every agent it could drive* (host, SEC2
-in non-secure mode, SEC2 in HS, PMU, GSP in non-secure mode) failed to issue a mode-register-set
-command the die consumed. Writes appear to be dropped on a source-identity basis. The only agent
-that visibly drives the die is the FB Falcon running its own code at boot.
-**Mechanically working, then blocked:** baseline MR1 `0x00100093`, MR2 `0x002000cf`,
-MR3 `0x003000ea`; derived strap-7 MR1 `0x0010009b`, MR2 `0x00200029`, MR3 `0x003000ef`; replay back
-to strap 4 reproduced the boot values exactly. The driver then refuses with
-`RmInitAdapter failed! (0x62:0x40:2674)`.
-**Next step named in-channel and never attempted:** patch the driver to tolerate the changed state
-rather than trying to make the state look untouched.
-**Prerequisite for everything here:** dump the HBM self-report (IEEE 1500 block,
-`0x009a3cb4`..`0x009a3cc8`), the FBPA training-result registers and the MR registers from a
-known-good 64 GB card and from a 10 GB card.
+**想要：** 过度配置区域的正确时序、和不物理拆散热器重刷就能改显存跳线的能力。
+**为什么写 `TIMING*` 寄存器没用：** `CONFIG0.USE_TIMING_REGS`（`0x9A0290` 的位 31）是 **0**、所以控制器忽略原始值、用内部生成的那些。
+**为什么 MRS 重放失败：** 已发布论文报告它*能驱动*的每个代理（主机、非安全模式 SEC2、HS SEC2、PMU、非安全模式 GSP）都未能发出晶片消费的一条模式寄存器设置命令。写看似按源身份被丢弃。唯一可见驱动晶片的代理是引导时跑自己代码的 FB Falcon。
+**机械工作、随后阻塞：** 基线 MR1 `0x00100093`、MR2 `0x002000cf`、MR3 `0x003000ea`；派生跳线 7 MR1 `0x0010009b`、MR2 `0x00200029`、MR3 `0x003000ef`；重放回跳线 4 精确复现引导值。驱动随后以 `RmInitAdapter failed! (0x62:0x40:2674)` 拒绝。
+**频道内命名、从未尝试的下一步：** 补丁驱动容忍改变的状态、而非试图让状态看起来没被碰。
+**这里一切的前提：** 从一张已知良好 64 GB 卡和一张 10 GB 卡转储 HBM 自报告（IEEE 1500 块、`0x009a3cb4`..`0x009a3cc8`）、FBPA 训练结果寄存器和 MR 寄存器。
 
-### 3.5 The L2 / LTC decode wall
+### 3.5 L2 / LTC 解码墙
 
-A managed-memory atomic kernel paging past 40 GB flips the L2 decode at `0x17E2A0` from
-`0x70000300` (2 GB per channel) to `0x10000300` (4 GB per channel) through the UVM atomic-fault
-path. The workload was 2 MiB-stride atomics across 46 GiB, roughly 23,552 atomics in 0.3 s. The
-decode holds while the workload is live and reverts the moment the context tears down, and the
-triggering fault poisons the context (CUDA error 719, then Xid 45, then Xid 154). A one-byte driver
-mod can hold it there without the workload.
-**Why this is not the answer:** flipping it does not fix the >40 GB problem, which is
-"downstream, unfortunately". What "downstream" means was never pinned down, and **that is the gap**.
-**Next step:** find a non-faulting trigger for the same lazy re-enable, and characterise what
-downstream actually blocks.
+一个托管显存原子内核分页越过 40 GB 经 UVM 原子故障路径把 `0x17E2A0` 处的 L2 解码从 `0x70000300`（每通道 2 GB）翻到 `0x10000300`（每通道 4 GB）。工作负载是 2 MiB 步长原子跨 46 GiB、约 23,552 个原子在 0.3 s。解码在工作负载活时保持、上下文拆掉那一刻回退、触发故障毒化上下文（CUDA 错误 719、然后 Xid 45、然后 Xid 154）。一个一字节驱动 mod 无需工作负载就能把它保持在那里。
+**为什么这不是答案：** 翻它不修复 >40 GB 问题、它 "downstream, unfortunately"（不幸是下游的）。"downstream" 是什么意思从没被钉住、**那是差距**。
+**下一步：** 找同一个惰性重新使能的一个非故障触发器、并表征下游实际阻塞什么。
 
-### 3.6 Recovering a csecret
+### 3.6 恢复一个 csecret
 
-Three indices map to three capabilities: **secret(6)** decrypts the ECB firmware blobs (would yield
-121.7 KB of plaintext firmware plus Booter code); **secret(2)** forges the content MAC, which would
-open the 2 CFG1 bytes and the 5 PCIe devinit bytes at once, i.e. the entire 7-byte VBIOS
-restriction; **secret(0)** is the debug bypass enabling a HULK cert with `SKIP_VBIOS_SIG`.
-**No csecret has been recovered.** All three are differential-fault-analysis targets requiring
-voltage-glitch hardware. An instant offline key verifier exists from the all-`0xFF` known-plaintext
-oracle, so a DFA campaign needs no flash cycles for validation. Very high effort.
+三个索引映射到三个能力：**secret(6)** 解密 ECB 固件块（会产出 121.7 KB 明文固件加 Booter 代码）；**secret(2)** 伪造内容 MAC、会一次打开 2 个 CFG1 字节和 5 个 PCIe devinit 字节、即整个 7 字节 VBIOS 限制；**secret(0)** 是带 `SKIP_VBIOS_SIG` 启用一个 HULK 证书的调试绕过。
+**没有 csecret 被恢复过。** 三个都是需要电压毛刺硬件的差分故障分析目标。一个即时离线密钥验证器从全-`0xFF` 已知明文预言存在、所以一场 DFA 行动无需闪存周期验证。极高工作量。
 
-### 3.7 VBIOS edits that need a hardware programmer
+### 3.7 需要硬件编程器的 VBIOS 编辑
 
-**Updated 2026-07-25: `nvflash` is not blocked outright.** A *patched* `nvflash` (omgvflash-style)
-wrote a full stock 8 GB image onto a 10 GB card and then flashed it back, with no leak and no
-programmer. Two things still fail: a **strap-edited** image trips a host-side image check during
-flashing, and the foreign image does not boot. There was no reboot between the two flashes, so
-treat the write itself as suggestive rather than definitive; see [vbios.md](../hardware/vbios.md).
+**2026-07-25 更新：`nvflash` 没有被彻底阻塞。** 一个*打过补丁的* `nvflash`（omgvflash 式）把一整份出厂 8 GB 映像写到一张 10 GB 卡上、然后刷回去、无泄漏无编程器。两件事仍失败：一个**跳线编辑的**映像在刷写期间触发一次主机侧映像检查、外来映像不引导。两次刷写之间没有重启、所以把写本身当提示性而非决定性；见[vbios.md](../hardware/vbios.md)。
 
-What this does *not* establish is whether an **unsigned-tail** edit survives that image check.
-Nobody has tried one. So a CH341A with a SOIC clip (and a 1.8 V adapter), cooler removal and a
-repaste remains the assumed route for the three edits below, but the cheaper experiment now is to
-attempt the tail edit with the patched `nvflash` first:
+这**不**确立一个**未签名尾**编辑是否挺过那个映像检查。没人试过一个。所以带 SOIC 夹的 CH341A（和一个 1.8 V 转接器）、拆散热器和重打导热膏仍是下面三个编辑的假定路线、但更便宜的实验现在是用打过补丁的 `nvflash` 先试尾编辑：
 
-- **250 W to 300 W power limit at `0x45E45`.** The 3-byte field reads `90 D0 03` and should become
-  `E0 93 04`. It sits inside the 15,616-byte unsigned FwSec tail at `0x43A00`-`0x47700`, so it cannot
-  break the MAC. Recorded as
-  OPEN and untested since 2026-05-09.
-- **`freqDelta` at `0x47177` / `0x47179` and the M0205 training table.** Outside every MAC range.
-  `freqDelta` is ±1000 on the 8 GB image and 0 on the 10 GB image, so writing ±1000 into the 10 GB
-  image and checking whether core offsetting appears is a clean natural experiment.
-- **HULK cert injection at `0xFE504`.** The slot is 1113 bytes, all-zero on stock, and because the
-  170HX license region is at `0xFE000` it falls inside the 1020 KB window nvflash writes. Whether
-  the license region is exempt from the FwSecLic check has never been tested. Three production certs
-  from the Lapsus leak (`HULK_9970`, `HULK_12231`, `HULK_12549`) carry `STRICT_ID_MATCH=NO` and
-  target `FUSE_FEATURE_OVERRIDE 0x823800`, and were described as "ready to test as-is". **No test
-  result is reported anywhere.**
+- **`0x45E45` 处 250 W 到 300 W 功耗上限。** 3 字节字段读 `90 D0 03`、应变成 `E0 93 04`。它坐在 `0x43A00`-`0x47700` 的 15,616 字节未签名 FwSec 尾内、所以不能破坏 MAC。自 2026-05-09 起记录为 OPEN 且未测试。
+- **`0x47177` / `0x47179` 处的 `freqDelta` 和 M0205 训练表。** 在每个 MAC 范围外。`freqDelta` 在 8 GB 映像是 ±1000、10 GB 映像是 0、所以把 ±1000 写进 10 GB 映像并检查核心偏移是否出现、是一个干净的自然实验。
+- **`0xFE504` 处的 HULK 证书注入。** 槽是 1113 字节、出厂全零、因为 170HX 许可区域在 `0xFE000`、它落在 nvflash 写的 1020 KB 窗口内。许可区域是否豁免 FwSecLic 检查从没被测试过。来自 Lapsus 泄露的三个生产证书（`HULK_9970`、`HULK_12231`、`HULK_12549`）携带 `STRICT_ID_MATCH=NO`、瞄准 `FUSE_FEATURE_OVERRIDE 0x823800`、并被描述为 "ready to test as-is"（可原样测试）。**任何地方都没报告测试结果。**
 
-### 3.8 A driverless unlock that hands off to a stock, signed driver
+### 3.8 一个交给出厂、已签名驱动的免驱动解锁
 
-**Wanted:** an unlock surviving Secure Boot and Windows code integrity.
-**Why it keeps failing:** the stock driver's booter rejects post-fire SEC2 state with the two-load
-"mutex horns" (`0x31` mutex held, `0x62` WPR2 up, `0x29` from `0x1180f8` because the `mutexfree`
-terminator leaves the top nibble at `0xf`). This fails even at 10 GB with consistent geometry,
-proving it is the SEC2 handoff state that the fire perturbs, not the geometry and not the write
-count. **The shipping unlocker sidestepped it by staging geometry from inside a patched driver.**
-Two candidate root fixes remain: preserve the booter success path so SEC2 primes its RTOS and sets
-DONE itself, or restore the AON `SECURE_SCRATCH` PLM and priv state, which today only a power-domain
-reset achieves.
+**想要：** 一个挺过安全启动和 Windows 代码完整性的解锁。
+**为什么它一直失败：** 出厂驱动的 booter 用两次加载 "mutex horns"（`0x31` 互斥锁持有、`0x62` WPR2 up、`0x29` 来自 `0x1180f8`、因为 `mutexfree` 终止符把顶半字节留在 `0xf`）拒绝 fire 后的 SEC2 状态。这在几何一致时甚至在 10 GB 也失败、证明被 fire 扰动的是 SEC2 交接状态、不是几何布局、也不是写计数。**出货解锁器通过从打过补丁的驱动内部阶段化几何布局绕开了它。** 两个候选根修复留下：保留 booter 成功路径、让 SEC2 自己启动它的 RTOS 并设 DONE；或恢复 AON `SECURE_SCRATCH` PLM 和 priv 状态、今天只有一次功率域复位能达成。
 
-### 3.9 Porting to other silicon
+### 3.9 移植到其它硅片
 
-- **CMP 90HX (GA102).** Host-side stage 1 is complete and the targets are known:
-  `FEAT_OVR_PLM 0x823804 = 0xffffff8f` (self-sealed via `FUSE_QUADRO_WR_SEC = 1`),
-  `FEAT_OVR_SM_SPD 0x82381c = 0x16334012` (target `0x88888888`), `FUSE_EN_SW_OVERRIDE = 1`,
-  `FUSE_FEAT_OVR_DIS = 0`. **The blocker is that the SEC2 HS Booter IMEM is encrypted in the GA102
-  VBIOS**, so static analysis yields nothing. One analysis concluded the GA102 booter has no
-  overflow point; the counter-proposal is not to use the GA10x booter at all but to load the
-  **TU10x** booter on the GA10x part, supported by a report that TU10x and GA10x debug booters use
-  the same AES-128 secret and one report of the TU10x `booter_load` loading on a 90HX with PLM
-  writes succeeding (self-qualified as "1 positive test isn't enough"). Only compute is worth
-  unlocking: the 90HX physically carries 10 GB of GDDR6X.
-- **CMP 50HX (TU102).** Different memory access-control register set entirely: "there is no single
-  PLM there but there seem to be several other masks for the interesting registers."
-- **PG199 / DRIVE A100 (`10de:20bb`).** Boot fails with `Booter failed 0x54` after
-  `kflcnResetIntoRiscv 0x0`, even though the PLMs open and the CFG1/LMR writes land. Nobody knows
-  what `0x54` means, and the status codes `0x31`/`0x47`/`0x15`/`0x29`/`0x88`/`0x96` were all pinned
-  by locating their write sites in the booter disassembly, which is already in hand. The branch
-  named `PG199` contains **no PG199 support**.
+- **CMP 90HX（GA102）。** 主机侧 stage 1 完成、目标已知：`FEAT_OVR_PLM 0x823804 = 0xffffff8f`（经 `FUSE_QUADRO_WR_SEC = 1` 自封）、`FEAT_OVR_SM_SPD 0x82381c = 0x16334012`（目标 `0x88888888`）、`FUSE_EN_SW_OVERRIDE = 1`、`FUSE_FEAT_OVR_DIS = 0`。**阻塞者是 GA102 VBIOS 里 SEC2 HS Booter IMEM 被加密**、所以静态分析一无所获。一份分析得出结论 GA102 booter 没有溢出点；反方是根本不用 GA10x booter、改在 GA10x 部件上加载 **TU10x** booter、由一份报告支持说 TU10x 和 GA10x 调试 booter 用同一个 AES-128 机密、和一份 TU10x `booter_load` 在 90HX 上加载、PLM 写成功的报告（自我限定为 "1 positive test isn't enough"（1 个阳性测试不够））。只有算力值得解锁：90HX 物理携带 10 GB GDDR6X。
+- **CMP 50HX（TU102）。** 完全不同的显存访问控制寄存器集："there is no single PLM there but there seem to be several other masks for the interesting registers."（那里没有单一 PLM、但有意思的寄存器似乎有几个其它掩码。）
+- **PG199 / DRIVE A100（`10de:20bb`）。** 引导在 `kflcnResetIntoRiscv 0x0` 后以 `Booter failed 0x54` 失败、即使 PLM 打开、CFG1/LMR 写落地。没人知道 `0x54` 是什么意思、而状态码 `0x31`/`0x47`/`0x15`/`0x29`/`0x88`/`0x96` 全部靠定位它们在 booter 反汇编里的写站点被钉住、那已经到手。名叫 `PG199` 的分支含**无 PG199 支持**。
 
-### 3.10 The NVGI pre-firmware write primitive
+### 3.10 NVGI 预固件写原语
 
-NVGI records in the SPI ROM are executed by the PBUS/XVE init-from-ROM sequencer *before any
-firmware runs*, i.e. before FWSEC raises the PLMs, whereas everything tried on the fuse bank so far
-has been at HS runtime after lockdown. Entirely untested.
-**Caveats stated by its own proposer:** NVGI is single-copy with no `+0x60000` fallback, so a bad
-write is unrecoverable without a 1.8 V SPI programmer; it is "a fancy footgun that could cause big
-issues".
-**Next step:** trace the record format read-only from a ROM dump before contemplating any write.
+SPI ROM 里的 NVGI 记录被 PBUS/XVE init-from-ROM 序列器在*任何固件运行前*执行、即 FWSEC 拉起 PLM 之前、而迄今对熔丝组尝试的一切都在锁定后的 HS 运行时。完全未测试。
+**它自己提议者陈述的注意：** NVGI 单副本、无 `+0x60000` 回退、所以一次坏写没有 1.8 V SPI 编程器不可恢复；它是一个 "a fancy footgun that could cause big issues"（一个可能造成大问题的花哨脚枪）。
+**下一步：** 在考虑任何写前、从一次 ROM 转储只读追踪记录格式。
 
-### 3.11 The 38 missing SMs
+### 3.11 缺失的 38 个 SM
 
-**Wanted:** 70 SM to something nearer 108.
-**Tried and failed:** `FUSE_CTRL_OPT_TPC_GPC` writes (remove-only), HS writes to `OPT_GPC_DISABLE`,
-`STATUS_OPT_GPC`, `OPT_TPC_GPC2` and `DIS_SW_OVR` (all bounce), and forcing `gpcMask` three ways
-(`0x408970` re-asserts to `0xdc`; `cuInit` segfaults).
-**Untried candidates named in-channel:** a GSP-RPC/RM control path via the static
-floorsweeping-masks queries (`0x2080122a` / `0x2080122b`), a GR-shadow write, or porting the ROP to
-PMU / GSP / FECS / GPCCS.
-**Sobering context:** on cards where `OPT_GPC_DEFECTIVE = 0` the disabled GPCs are physically good,
-so there is something to win, but every write path found so far is latched. One card was found
-CTRL_OPT-swept to 56 SM instead of the fuse-floor 70, with 6 SM clawed back to reach 62; that is a
-*rare* case, and every other surveyed card is already at its fuse floor.
+**想要：** 70 SM 到更接近 108。
+**试过并失败：** `FUSE_CTRL_OPT_TPC_GPC` 写（只移除）、对 `OPT_GPC_DISABLE`、`STATUS_OPT_GPC`、`OPT_TPC_GPC2` 和 `DIS_SW_OVR` 的 HS 写（全部弹回）、和用三种方式强制 `gpcMask`（`0x408970` 重新断言到 `0xdc`；`cuInit` 段错误）。
+**频道内命名的未试候选：** 经静态地板清扫掩码查询的 GSP-RPC/RM 控制路径（`0x2080122a` / `0x2080122b`）、一次 GR 影子写、或把 ROP 移植到 PMU / GSP / FECS / GPCCS。
+**清醒背景：** 在 `OPT_GPC_DEFECTIVE = 0` 的卡上被禁用的 GPC 物理完好、所以有可赢的东西、但迄今找到的每个写路径都被锁存。一张卡被发现被 CTRL_OPT 扫到 56 SM 而非熔丝下限 70、夺回 6 个 SM 到达 62；那是一个*罕见*案例、每张其它被调查的卡都已处在熔丝下限。
 
 ---
 
-## Tier 4: measurement disputes needing one controlled session
+## Tier 4：需要一次受控会话的测量争议
 
-These are not unknowns so much as numbers that were never taken under one methodology. Each needs
-one tester, one card, one session, with the tool, the clock and the flop-counting convention stated.
+这些与其说未知、不如说从没在一种方法论下取得的数字。每个需要一个测试者、一张卡、一个会话、带陈述的工具、时钟和 flop 计数约定。
 
 > [!TIP]
-> **Closed: the unlocked FP64 spread**
+> **已关闭：解锁的 FP64 分布**
 >
-> FP64 used to sit in this table as an 11.48-to-12.91 versus 6.3 TFLOPS dispute. It is resolved,
-> and it was never a counting error. A single clpeak dump on 2026-07-15 printed both figures in
-> one run on one card: **FP64 non-tensor 6.31 TFLOPS** (`double : 6308.65`, exactly half the same
-> run's `float : 12565.14`, i.e. the architectural 1:2 rate) and **FP64 tensor 11.96 TFLOPS**
-> (`wmma_fp64`, the 8x8x4 DMMA path). The high cluster is the tensor path. See
-> [compute-throttle.md](../unlock/compute-throttle.md).
+> FP64 曾作为 11.48-to-12.91 对比 6.3 TFLOPS 争议坐在这张表里。它已解决、而且从不是计数错误。2026-07-15 的一次 clpeak 转储在一次运行、一张卡上打印了两个数字：**FP64 非张量 6.31 TFLOPS**（`double : 6308.65`、恰好是同一运行 `float : 12565.14` 的一半、即架构 1:2 速率）和 **FP64 张量 11.96 TFLOPS**（`wmma_fp64`、8x8x4 DMMA 路径）。高簇是张量路径。见[compute-throttle.md](../unlock/compute-throttle.md)。
 
-| Dispute | The spread | What settles it |
+| 争议 | 分布 | 什么定论它 |
 |---|---|---|
-| HBM bandwidth | **1305.86 to 1600 GB/s** across sources. Theoretical peak is 1555.2 GB/s (1215 MHz DDR × 5120-bit) | Run one tool on an 8 GB-to-64 GB card and a 10 GB-to-40 GB card in the same session |
-| INT8 / INT4 | 44.1, 50.5, 276, ~280, ~300, 320.2, 335.6 TOPS have all been reported. INT4 measured *below* INT8, where Ampere should be ~2x | One INT8 and one INT4 CUTLASS GEMM at a fixed shape on a card with recorded clock and unlock state, published with the kernel |
-| TF32 | 79 to 94 TFLOPS across seven tools. Whether TF32 is throttled at all on a stock card is disputed | Torch GEMM, `gemm_probe.cu` and clpeak back to back in one session, plus one TF32 run on a card confirmed locked by `0x00823818 != 0` |
-| L2 cache | `deviceQuery` prints 32768 KB; the spec database says 8 MB; a microbenchmark independently found 32 MB | A published pointer-chase latency curve showing where the working set falls off |
-| Shader count | `deviceQuery` prints 8960 SPs and 25.27 TFLOPS; the arithmetic favours 4480 and 12.63 TFLOPS (the tool is applying the cc 8.6 figure of 128 FP32 lanes per SM instead of GA100's 64) | Already effectively settled by arithmetic; recorded because no source resolves it experimentally |
-| Memory clock | 304, 364, 432, 864, 1215, 1458, 1728 and 1890 MHz all appear. Different tools use different clock domains and multipliers, and nobody states the conversion | One card, one session: `nvidia-smi -q -d CLOCK`, mixbench and the bandwidth sweep captured together, with the VBIOS version |
-| `clocks.max.sm = 1935 MHz` | A reported field, not an operating clock. Every sustained measurement sits at 1410 MHz (1470 MHz at `-pl 300`), and the VBIOS table maximum is 1695 MHz | One re-check on a second card |
-| Single-card 27B decode | 97, 90, 75 and 58.5 t/s on vLLM, plus 36.87 t/s for llama.cpp Q4_K_M, differing in backend, quantisation, MTP state, context length and vLLM version. Each figure is a single report | Run one published repo configuration verbatim and post the flags |
-| PCIe sensitivity | Width barely matters (+2% single-card) versus generation mattering a lot (+44% on 3-card pipeline-parallel prefill) | A 2×2 matrix of {Gen1, Gen2} × {x4, x16} on one rig with one model |
-| Idle power | 27 W to 46 W. Known confounders: card variant, die temperature (leakage feedback) and whether a CUDA context holds a model resident (~+12 W) | One card, one host, idle draw logged at three controlled die temperatures with and without a resident context |
-| Long-term stability | Longest verified clean runs are 2-hour stress tests across four cards, a 10-minute cuBLAS run, and second-hand reports of 1-2 day LLM runs. A 24-hour and a 48-hour run were both started and never reported | Publish those results |
+| HBM 带宽 | 跨来源 **1305.86 到 1600 GB/s**。理论峰值是 1555.2 GB/s（1215 MHz DDR × 5120-bit） | 在同一会话里在一张 8 GB 到 64 GB 卡和一张 10 GB 到 40 GB 卡上跑一个工具 |
+| INT8 / INT4 | 44.1、50.5、276、约 280、约 300、320.2、335.6 TOPS 都被报告。INT4 测得*低于* INT8、而 Ampere 应约 2x | 在带记录时钟和解锁状态的一张卡上、在固定形状下跑一个 INT8 和一个 INT4 CUTLASS GEMM、带内核发布 |
+| TF32 | 跨七个工具 79 到 94 TFLOPS。TF32 在出厂卡上是否被节流有争议 | 一个会话里背靠背 torch GEMM、`gemm_probe.cu` 和 clpeak、加一张由 `0x00823818 != 0` 确认锁定的卡上的一次 TF32 运行 |
+| L2 缓存 | `deviceQuery` 打印 32768 KB；规格数据库说 8 MB；一个微基准测试独立找到 32 MB | 一条已发布的指针追逐延迟曲线、显示工作集在哪里掉下去 |
+| 着色器数 | `deviceQuery` 打印 8960 SPs 和 25.27 TFLOPS；算术偏好 4480 和 12.63 TFLOPS（工具应用 cc 8.6 的每 SM 128 个 FP32 通道、而非 GA100 的 64） | 已被算术有效解决；记录因为没有任何来源实验解决它 |
+| 显存时钟 | 304、364、432、864、1215、1458、1728 和 1890 MHz 都出现。不同工具用不同的时钟域和倍数、没人陈述转换 | 一张卡、一个会话：一起捕获 `nvidia-smi -q -d CLOCK`、mixbench 和带宽扫描、带 VBIOS 版本 |
+| `clocks.max.sm = 1935 MHz` | 一个报告字段、不是一个工作时钟。每次持续测量停在 1410 MHz（`-pl 300` 下 1470 MHz）、VBIOS 表最大是 1695 MHz | 在第二张卡上复查一次 |
+| 单卡 27B 解码 | vLLM 上 97、90、75 和 58.5 t/s、加 llama.cpp Q4_K_M 的 36.87 t/s、在后端、量化、MTP 状态、上下文长度和 vLLM 版本上不同。每个数字是单一报告 | 逐字跑一个已发布仓库配置并贴标志 |
+| PCIe 敏感性 | 位宽几乎不要紧（单卡 +2%）对比代数很要紧（3 卡流水线并行 prefill +44%） | 一机一模型上 {Gen1、Gen2} × {x4、x16} 的一个 2x2 矩阵 |
+| 空转功耗 | 27 W 到 46 W。已知混淆：卡变体、晶片温度（泄漏反馈）、和一个 CUDA 上下文是否持有驻留模型（约 +12 W） | 一张卡、一台主机、在三个受控晶片温度下、带和不带驻留上下文记录空转功耗 |
+| 长期稳定性 | 最长的验证干净运行是跨四张卡的两小时压力测试、一次 10 分钟 cuBLAS 运行、和 1-2 天 LLM 运行的二手报告。一个 24 小时和一个 48 小时运行都被启动、从未报告 | 发布那些结果 |
 
 ---
 
-## Physical questions needing an X-ray, a decap, or a caliper
+## 需要 X 光、去盖、或卡尺的物理问题
 
-- **How many HBM stacks does the package carry, and from which vendor?** A delidded 8 GB card
-  visibly showed six stacks with four of twelve FBPs swept off; a die-shot source claims two of the
-  six are dummies; a third reading is simply four stacks. All three predict the same measured
-  4096-bit bus, so bus width discriminates nothing. A circulating guide instead claims five stacks
-  of 16 GB, which would imply a 5120-bit bus and does not fit the measurement. The strong working
-  assumption (SK hynix on 8 GB, Samsung on 10 GB) has never been verified by package markings, X-ray, or a vendor ID readout. **Note the
-  geometry does not depend on it:** the CFG1 profile is the same either way.
-- **Where are R240/R241 (DEVID_SEL) on the board?** Wanted because the device ID is what the driver
-  keys geometry off, and `OPT_DEVID_SW_OVERRIDE_DIS = 1` closes every software route. The search
-  heuristic (a resistor with an empty pad next to it, in the 200-series designator region, on the
-  PCB side carrying sub-500 designators) is sound and untried at scale. Two researchers disagree
-  about whether the candidate area is near R986-R1005 or on the opposite side.
-- **Is the thermal pad 1.5 mm or 2 mm?** One measurement from an owner with the card open, one
-  "I think" from someone else. A caliper settles it.
-- **Is the unpopulated 4-pin shroud pad actually a fan header?** One report of 12 V and ground
-  present, no tach or PWM; a skeptic in the same thread said it does not look like a fan connector.
-  No photo-confirmed pinout, no working fan install.
+- **封装携带多少个 HBM 堆叠、来自哪个厂商？** 一张去盖的 8 GB 卡可见显示六个堆叠、十二个 FBP 中四个被扫掉；一份晶片照片来源声称六个中两个是假的；第三种读数就是四个堆叠。三个都预测同一个实测 4096-bit 总线、所以总线宽度什么都不能判别。一个流传指南反而声称五个 16 GB 堆叠、那会暗示一个 5120-bit 总线、不符合测量。强工作假设（8 GB 上 SK hynix、10 GB 上 Samsung）从没被封装标记、X 光或厂商 ID 读出验证。**注意几何布局不依赖它：** CFG1 档位无论哪种方式都相同。
+- **R240/R241（DEVID_SEL）在板上哪？** 想要因为设备 ID 是驱动据以键控几何布局的东西、`OPT_DEVID_SW_OVERRIDE_DIS = 1` 关闭每个软件路线。搜索启发式（一个紧挨空焊盘的电阻、在 200 系列设计编号区域、在携带 sub-500 设计编号的 PCB 侧）健全且未在规模上试。两位研究者关于候选区域是靠近 R986-R1005 还是在对面意见不合。
+- **导热垫是 1.5 mm 还是 2 mm？** 一次来自开卡拥有者的测量、一次别人的 "I think"（我觉得）。一把卡尺定论它。
+- **未贴装的 4-pin 导流罩焊盘真的是一个风扇接口吗？** 一次 12 V 和地存在的报告、无转速计或 PWM；同线程里一位怀疑者说它看起来不像风扇连接器。无照片确认引脚定义、无工作风扇安装。
 
-## Unanswerable from the record
+## 从记录无法回答
 
-- **Total production volume.** Estimates span 10k to hundreds of thousands. The published estimate
-  derives unit counts by dividing FY2022 CMP revenue by an assumed average selling price with no
-  per-model sales mix. Per-model shipment data does not exist publicly. The honest answer is that
-  no reliable figure exists.
-- **The 2026-07-05 message treating Gen2 as already unlocked**, three weeks before the reproduced
-  result and in direct conflict with a 2026-07-07 message saying "We still need something for
-  PCIe 2.0". Either an earlier independent result that never propagated, or a mis-attributed
-  timestamp. Only the original message metadata can settle it. The technical content of that
-  message (Gen3 is fuse-gated) is consistent with everything else and can be relied on; the date
-  cannot.
-- **Whether the shipping tool is clean by the clean room's own rules.** Every constant in the
-  shipping payload is independently derivable from dated public material that predates the leaked
-  artefact, and the clean room had shipped an equivalent chain days earlier. It is also true that
-  the shipping code appeared 70 minutes after the leaked artefact, with one hostile change removed
-  and one device-ID branch added. Derivability in principle is not derivation in fact. Nothing in
-  the record settles it; see [clean room and provenance](../history/clean-room-and-provenance.md).
-- **Whether the leaked package was leaked or independently reimplemented.** Both positions were held
-  by people close to the work, and the artefact is functionally equivalent either way.
+- **总产量。** 估计从 10k 到几十万。已发布估计通过把 FY2022 CMP 收入除以一个假设平均售价得出单元数、没有按型号销售组合。按型号发货数据不公开存在。诚实的答案是没有任何可靠数字。
+- **2026-07-05 把 Gen2 当作已解锁的消息**、比复现结果早三周、直接矛盾一条说 "We still need something for PCIe 2.0"（我们仍需要为 PCIe 2.0 做点什么）的 2026-07-07 消息。要么一个从未传播的更早独立结果、要么一个误归属时间戳。只有原始消息元数据能定论它。那条消息的技术内容（Gen3 是熔丝门控的）与其它一切一致、可以依赖；日期不能。
+- **出货工具是否按净室自己的规则干净。** 出货载荷里每个常量都能从先于泄露工件的、带日期的公开材料独立推导、净室在几天前已出货一条等价链。也真出货代码在泄露工件后 70 分钟出现、一个敌对改动被移除、一个设备 ID 分支被加。原则上可推导不等于事实上被推导。记录里没有任何东西定论它；见[净室与来源溯源](../history/clean-room-and-provenance.md)。
+- **泄露包是被泄露还是被独立重新实现。** 两个立场都被接近工作的人持有、工件无论哪种方式功能等价。
 
-## Related pages
+## 相关页面
 
-[Status board](status-board.md) ·
-[The 80 GB problem](80gb.md) ·
-[Gen3 and Gen4](pcie-gen3-gen4.md) ·
+[状态板](status-board.md) ·
+[80 GB 问题](80gb.md) ·
+[Gen3 和 Gen4](pcie-gen3-gen4.md) ·
 [NVLink](nvlink.md) ·
 [ECC](ecc.md) ·
 [P2P](p2p.md) ·
-[Dead ends](../history/dead-ends.md) ·
-[Register reference](../unlock/register-reference.md) ·
-[Glossary](../start/glossary.md)
+[死路](../history/dead-ends.md) ·
+[寄存器参考](../unlock/register-reference.md) ·
+[术语表](../start/glossary.md)

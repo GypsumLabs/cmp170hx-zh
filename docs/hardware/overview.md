@@ -1,390 +1,276 @@
-# Hardware overview: complete specification
+# 硬件概述：完整规格
 
-**What this page covers:** every established specification of the NVIDIA CMP 170HX, stock and
-unlocked, for both SKUs, side by side. Where a figure is disputed, varies per unit, or has
-never been measured, this page says so instead of choosing one quietly.
+**本页内容：** NVIDIA CMP 170HX 的每一条已确立规格，出厂与解锁后，两个 SKU 并排对比。凡某数值有争议、因部件而异或从未被测量，本页就明说，而不是悄悄选一个。
 
-The headline: the CMP 170HX is a **GA100** part, the same die as the A100, carrying 70 SMs and
-4480 CUDA cores at compute capability 8.0 on **both** SKUs. Its restrictions are four separate
-mechanisms with four separate stories: an OTP-fused SM issue-rate throttle (defeated in
-software), a strap-selected memory geometry (defeated in software), a PCIe **speed** cap
-(defeated in software, on unreleased branches only) and a PCIe **width** cap that is a PCB
-depopulation and can only be fixed with a soldering iron. NVLink and ECC are fused off with no
-known lever. Whether NVLink is additionally depopulated at board level is unresolved.
+要旨：CMP 170HX 是一个 **GA100** 部件，与 A100 同一颗晶片，在两个 **SKU** 上都携带 70 个 SM 和 4480 个 CUDA 核心、计算能力 8.0。它的限制是四个独立机制、四段独立故事：一个 OTP 熔丝的 SM 发射速率节流（已被软件击败）、一个跳线选择的显存几何布局（已被软件击败）、一个 PCIe **速度**上限（仅未发布分支上被软件击败）和一个 PCB 缺件的 PCIe **位宽**上限，只能用烙铁修复。NVLink 和 ECC 熔断关闭，没有已知开关。NVLink 是否在板级还额外缺件仍未解决。
 
 > [!NOTE]
-> **Corrections to the existing community wiki**
+> **对现有社区维基的更正**
 >
-> Three errors circulate widely and are corrected here with evidence.
+> 三条错误流传甚广，这里带证据更正。
 >
-> 1. **SM count.** Both the 8 GB and the 10 GB SKU expose exactly **70 SMs / 4480 CUDA
->    cores**. This was verified by a tester holding both SKUs, by an eight-device
->    enumeration reporting `cu: 70` on all eight, and by four independent topology reports.
->    Any table giving a different SM count for the 10 GB card, or disagreeing with its own
->    notes, is wrong.
-> 2. **"PCIe Gen 1 x4, firmware locked" is half right.** The *speed* cap is firmware and
->    fuse mediated and has been defeated in software. The *width* limit is not firmware at
->    all: 12 of the 16 lanes ship with their AC-coupling capacitors depopulated. The lane
->    fuses are clean (`OPT_PCIE_LANE_DISABLE` = `0x00000000`), and a stock unmodded card
->    running the Gen2 code reports `LnkCap: Speed 5GT/s, Width x16` while `LnkSta` still
->    reads `Width x4 (downgraded)`, which proves the limit is board-level. Note also that
->    Gen2 has never been reproduced under VM passthrough or over Thunderbolt.
-> 3. **"Unlocked FP64 is 6.44 TFLOPS" versus "11.6 TFLOPS"** is a non-tensor versus tensor
->    confusion, not a contradiction. Both numbers are real. See
->    [Compute throughput](#compute-throughput-measured).
+> 1. **SM 数量。** 8 GB 和 10 GB 两个 SKU 都恰好暴露 **70 个 SM / 4480 个 CUDA 核心**。这由一个同时持有两个 SKU 的测试者验证，由一份 8 设备枚举在所有 8 个设备上报告 `cu: 70` 验证，并由四份独立拓扑报告验证。任何给出 10 GB 卡不同 SM 数量、或与其自身备注不一致的表都是错的。
+> 2. **"PCIe Gen 1 x4，固件锁定"只对了一半。** *速度*上限由固件和熔丝介导，已被软件击败。*位宽*限制根本与固件无关：16 条通道中有 12 条出厂就缺交流耦合电容。通道熔丝是干净的（`OPT_PCIE_LANE_DISABLE` = `0x00000000`），一张运行 Gen2 代码的出厂未改装卡报告 `LnkCap: Speed 5GT/s, Width x16`，而 `LnkSta` 仍读 `Width x4 (downgraded)`，这证明限制在板级。还要注意 Gen2 从未在 VM 直通或 Thunderbolt 下复现过。
+> 3. **"解锁 FP64 是 6.44 TFLOPS" 与 "11.6 TFLOPS"** 是非张量与张量的混淆，不是矛盾。两个数值都真实。参见[算力吞吐（实测）](#compute-throughput-measured)。
 
-## Silicon
+## 硅片
 
-| Property | Value | Notes |
+| 属性 | 值 | 备注 |
 |---|---|---|
-| GPU | GA100 | Same die as the A100 |
-| ASIC marking | `GA100-105F-A1` | Cut-down GA100; GPU part number `20C2-105-A1` on 8 GB boards |
-| `PMC_BOOT_0` (`0x000000`) | `0x170000a1` | Reads identically on every valid GA100. GA10x control reads `0xb74000a1` |
-| Process | TSMC 7 nm | The die is described as sitting at the reticle limit for the node |
-| Die size | **826 mm²** | Quoted as "roughly 830 mm²" in one teardown; same die |
-| Transistors | 54.2 billion | NVIDIA's published GA100 figure. **No source in this project measures or independently verifies it** |
-| Compute capability | 8.0 (`sm_80`) | Reported by every tool after unlock |
-| GPCs (physical / active) | 8 / **5** | `PTOP_SCAL_NUM_GPCS` (`0x022430`) always reads `0x8` |
-| TPCs / SMs | 35 / **70** | 2 SM per TPC; identical on both SKUs |
-| CUDA cores | **4480** | 70 × 64 FP32 lanes per GA100 SM |
-| Tensor cores | **280**, 3rd generation | Functional after unlock; measured at 158.7-190 TFLOPS FP16 tensor and 164.4-192.7 TFLOPS BF16 tensor |
-| TMUs / ROPs | 280 / 128 | Specification database figure |
-| Full GA100 for reference | 128 SM / 8192 CUDA cores | The A100 PCIe and SXM SKUs shipped 108 SM / 6912 cores; the Drive A100 (PG199) ships 96 SM |
+| GPU | GA100 | 与 A100 同一颗晶片 |
+| ASIC 标记 | `GA100-105F-A1` | 缩减版 GA100；8 GB 板上 GPU 料号 `20C2-105-A1` |
+| `PMC_BOOT_0`（`0x000000`） | `0x170000a1` | 在每个有效的 GA100 上都相同。GA10x 对照读 `0xb74000a1` |
+| 工艺 | TSMC 7 nm | 晶片被描述为处于该工艺的掩模版极限 |
+| 晶片尺寸 | **826 mm²** | 一份拆解引述为 "roughly 830 mm²"；同一颗晶片 |
+| 晶体管 | 542 亿 | NVIDIA 发布的 GA100 数值。**本项目中没有来源测量或独立验证它** |
+| 计算能力 | 8.0（`sm_80`） | 解锁后每个工具都报告 |
+| GPC（物理 / 活动） | 8 / **5** | `PTOP_SCAL_NUM_GPCS`（`0x022430`）总是读 `0x8` |
+| TPC / SM | 35 / **70** | 每 TPC 2 个 SM；两个 SKU 相同 |
+| CUDA 核心 | **4480** | 70 × 64 个 FP32 通道每 GA100 SM |
+| 张量核 | **280**，第三代 | 解锁后可用；实测 FP16 张量 158.7-190 TFLOPS、BF16 张量 164.4-192.7 TFLOPS |
+| TMU / ROP | 280 / 128 | 规格数据库数值 |
+| 完整 GA100 供参考 | 128 SM / 8192 CUDA 核心 | A100 PCIe 和 SXM SKU 发布 108 SM / 6912 核心；Drive A100（PG199）发布 96 SM |
 
-### The SM harvest is per card, not per SKU
+### SM 收获按卡而异，不按 SKU
 
-Every surveyed 170HX enumerates 5 GPCs / 35 TPC / 70 SM, and 70 is already the fuse floor:
-`CTRL_OPT` costs a typical card nothing. Which GPCs are disabled varies per individual card
-and does not vary with driver version. Four cards read in one afternoon:
+每一张被调查的 170HX 都枚举 5 个 GPC / 35 TPC / 70 SM，而 70 已经是熔丝下限：`CTRL_OPT` 对典型卡不花任何代价。哪些 GPC 被禁用因单张卡而异，不随驱动版本变化。一个下午读的四张卡：
 
-| `OPT_GPC_DISABLE` (`0x820350`) | GPCs off | SKU |
+| `OPT_GPC_DISABLE`（`0x820350`） | 关闭的 GPC | SKU |
 |---|---|---|
 | `0x85` | 0, 2, 7 | 10 GB |
 | `0x45` | 0, 2, 6 | 8 GB |
 | `0x13` | 0, 1, 4 | 8 GB |
 | `0xa8` | 3, 5, 7 | 10 GB |
 
-`STATUS_OPT_GPC` (`0x820c1c`) always mirrors it. Crucially, `OPT_GPC_DEFECTIVE` (`0x8205c4`)
-reads `0x00000000` on several cards whose disable mask has three bits set, so those GPCs are
-physically good silicon that was disabled to hit a product spec. There is something to win
-there, but every write path found so far is latched: HS-privileged writes to `0x820350`,
-`0x820c1c`, `0x820768` and `0x820084` all read back unchanged, and forcing `gpcMask`
-(`0x408970`) three separate ways left it re-asserting to `0xdc` with `cuInit` segfaulting. One
-rare card in the wild was `CTRL_OPT`-swept below the fuse floor to 56 SM and had 6 SM clawed
-back. See [GA100 silicon](ga100-silicon.md) and [fuses and OTP](fuses-and-otp.md).
+`STATUS_OPT_GPC`（`0x820c1c`）总是镜像它。关键是，`OPT_GPC_DEFECTIVE`（`0x8205c4`）在几张禁用掩码置了三个位的卡上读 `0x00000000`，所以那些 GPC 是物理完好的硅片，被禁用是为了满足产品规格。那里有可赢的东西，但迄今为止找到的每条写入路径都被锁存：对 `0x820350`、`0x820c1c`、`0x820768` 和 `0x820084` 的 HS 特权写入全部回读不变，用三种方式强制 `gpcMask`（`0x408970`）都让它重新断言回 `0xdc` 并伴随 `cuInit` 段错误。野外有一张罕见的卡被 `CTRL_OPT` 扫到熔丝下限以下到 56 SM，并夺回了 6 个 SM。参见[GA100 硅片](ga100-silicon.md) 和[熔丝与 OTP](fuses-and-otp.md)。
 
-## Clocks
+## 时钟
 
-| Quantity | Value | Confidence / conditions |
+| 量 | 值 | 置信度 / 条件 |
 |---|---|---|
-| Base SM clock | 1140 MHz | Also the clock CPU-RM runs at, costing ~20% tensor throughput |
-| Sustained SM clock (stock) | **1410 MHz** | Every sustained measurement in the corpus; 1425 MHz on the tuning reference card at +0 offset |
-| Sustained SM clock at `-pl 300` | 1470 MHz | 8 GB card with the OC VBIOS |
-| VBIOS table max graphics clock | 1695 MHz | VBIOS 92.00.6D.00.0A |
-| Practical silicon ceiling | ~1604-1614 MHz | At +350 MHz offset, one reference card |
-| `clocks.max.sm` as reported | 1935 MHz | **Low confidence, reported field only, not an achievable clock.** Single report, never re-checked. Do not treat it as an operating clock |
-| Graphics clock steps | 100 steps, 1695 down to 210 MHz in 15 MHz decrements | `nvidia-smi -q` on 580.159.04 |
-| Core clock floor | 210 MHz | Will not go lower |
-| Memory clock, 10 GB SKU | **1215 MHz**, current = max | No headroom whatsoever; the memory-clock lock survives the unlock |
-| Memory clock, 8 GB SKU | **Disputed: 1458, 1592 or 1728 MHz** | See below |
-| Memory clock domain count | Exactly one | `Supported Clocks / Memory` lists a single entry; there is nothing to select |
-| NVML GPC clock VF offset | `[-1000 .. +1000]` MHz on the **8 GB** card; `[0 .. 0]` on the 10 GB card | Works on 8 GB only: the shipped 8 GB VBIOS permits the range (`freqDelta` ±1000 at `0x47177`/`0x47179`, `0` on the 10 GB and A100 images). **Not** a valid unlock test on a 10 GB card |
-| NVML MEM clock VF offset | `[0 .. 0]` | The driver refuses memory clock changes; `nvidia-smi -lmc` returns "not supported" |
+| 基础 SM 时钟 | 1140 MHz | 也是 CPU-RM 运行的时钟，代价约 20% 张量吞吐 |
+| 持续 SM 时钟（出厂） | **1410 MHz** | 语料库中每一次持续测量；调优参考卡 +0 偏移下 1425 MHz |
+| `-pl 300` 下的持续 SM 时钟 | 1470 MHz | 带 OC VBIOS 的 8 GB 卡 |
+| VBIOS 表最大图形时钟 | 1695 MHz | VBIOS 92.00.6D.00.0A |
+| 实际硅片上限 | 约 1604-1614 MHz | +350 MHz 偏移下，一张参考卡 |
+| 报告的 `clocks.max.sm` | 1935 MHz | **低置信度，仅报告字段，不是可达时钟。** 单一报告，从未复查。不要把它当作工作时钟 |
+| 图形时钟步进 | 100 步，1695 以 15 MHz 递减到 210 MHz | 580.159.04 上的 `nvidia-smi -q` |
+| 核心时钟下限 | 210 MHz | 不会更低 |
+| 显存时钟，10 GB SKU | **1215 MHz**，当前 = 最大 | 完全没有余量；显存时钟锁在解锁后依然存在 |
+| 显存时钟，8 GB SKU | **有争议：1458、1592 或 1728 MHz** | 见下 |
+| 显存时钟域数量 | 恰好一个 | `Supported Clocks / Memory` 只列一项；没有可选的 |
+| NVML GPC 时钟 VF 偏移 | **8 GB** 卡上 `[-1000 .. +1000]` MHz；10 GB 卡上 `[0 .. 0]` | 仅在 8 GB 上可用：发布的 8 GB VBIOS 允许这个范围（`0x47177`/`0x47179` 处 `freqDelta` ±1000，10 GB 和 A100 映像上为 `0`）。**不是** 10 GB 卡上的有效解锁测试 |
+| NVML MEM 时钟 VF 偏移 | `[0 .. 0]` | 驱动拒绝显存时钟改动；`nvidia-smi -lmc` 返回 "not supported" |
 
 > [!NOTE]
-> **Open problem: the 8 GB card's real HBM clock**
+> **未解问题：8 GB 卡的真实 HBM 时钟**
 >
-> Three conventions are in circulation and none has been reconciled. The specification
-> database and a 2023 `deviceQuery` say **1458 MHz** (reported as 729 MHz and doubled by
-> convention), implying a 1492.99 GB/s ceiling. A 2026-07-27 direct measurement says
-> **1728 MHz**, giving 3.456 Gbps/pin and a 1769 GB/s ceiling. A third account puts the
-> 8 GB card at 398 MHz against 304 MHz on the A100, which times four gives **1592** and
-> 1216 MHz. The measured 1679-1699 GB/s delivered read bandwidth rules out 1458 MHz for
-> that run but does not choose between 1592 and 1728. What would settle it: a raw FBPA PLL
-> register read with the divider chain published.
+> 有三种约定在流传，没有一个被调和。规格数据库和一次 2023 `deviceQuery` 说 **1458 MHz**（报告为 729 MHz，按约定加倍），意味着 1492.99 GB/s 上限。一次 2026-07-27 直接测量说 **1728 MHz**，给出 3.456 Gbps/pin 和 1769 GB/s 上限。第三个说法把 8 GB 卡放在 398 MHz、A100 放在 304 MHz，乘四得 **1592** 和 1216 MHz。实测的 1679-1699 GB/s 交付读取带宽排除了那次运行的 1458 MHz，但不能在 1592 和 1728 之间选择。什么能定论它：一次公布分频链的原始 FBPA PLL 寄存器读。
 
 > [!CAUTION]
-> **A run that completes is not evidence a clock offset is safe**
+> **一次完整运行的完成不是时钟偏移安全的证据**
 >
-> On the tuning reference card at a 1400 MHz ceiling, +250 MHz passed three full-VRAM
-> pattern sweeps with zero errors and +300 MHz passed four, but **+325 MHz silently
-> corrupted memory without crashing**: three sweeps returned 6 errors, then 3, then 0. The
-> safe window there is one 25 MHz step wide, and past it the failure mode is bad data rather
-> than a crash. Gate every candidate setting on four full-VRAM sweeps, not two, and note
-> that per-card silicon variance means a validated offset on one serial says nothing about
-> another. Details and the full fault matrix are in [Tuning](../operations/tuning.md).
+> 在 1400 MHz 上限的调优参考卡上，+250 MHz 通过三次全 VRAM 模式扫描零错误，+300 MHz 通过四次，但 **+325 MHz 静默损坏内存而没有崩溃**：三次扫描分别返回 6、3、0 个错误。那里的安全窗口只有一个 25 MHz 步宽，越过它故障模式是坏数据而非崩溃。把每个候选设置用四次全 VRAM 扫描把关，而不是两次，并注意按卡硅片差异意味着在一个序列号上验证过的偏移对另一个不说明任何事。细节和完整故障矩阵在[调优](../operations/tuning.md)。
 
-## Cache
+## 缓存
 
-| Level | Size | Notes |
+| 层级 | 大小 | 备注 |
 |---|---|---|
-| L2 | **32 MB** (`32768 KB`) | CUDA `deviceQuery`, `torch.cuda.get_device_properties().l2_cache_size` and an independent latency-spike microbenchmark all agree. TechPowerUp lists 8 MB; that figure is contradicted by three measurements. A full A100 has 40 MB |
-| L1 / shared per SM | 192 KB | Specification database figure |
+| L2 | **32 MB**（`32768 KB`） | CUDA `deviceQuery`、`torch.cuda.get_device_properties().l2_cache_size` 和一个独立的延迟尖峰微基准测试都一致。TechPowerUp 列为 8 MB；那个数值被三次测量反驳。完整 A100 有 40 MB |
+| 每 SM 的 L1 / 共享 | 192 KB | 规格数据库数值 |
 
-## Memory, per SKU, stock and unlocked
+## 显存，按 SKU，出厂与解锁后
 
-| Quantity | 8 GB SKU | 10 GB SKU |
+| 量 | 8 GB SKU | 10 GB SKU |
 |---|---|---|
-| PCI ID | `10de:20c2` (`0x20C2`) | `10de:2082` (`0x2082`) |
-| Memory type | HBM2e (SK Hynix) | HBM2 (Samsung). Vendor split inferred from clocks, stability and a GPU-Z read, not from package markings: see [board and variants](board-and-variants.md) |
-| Stock reported capacity | 8192 MiB (CUDA reports 7961 MB) | 10240 MiB |
-| **Unlocked capacity** | **65536 MiB (64 GB)** | **40960 MiB (40 GB)** |
-| Active FBPAs / FBPs | 16 / 8 | 20 / 10 |
-| Bus width | **4096-bit** | **5120-bit** |
-| Stock CFG1 `0x009a0204` | `0x02449000` | `0x02449000` (identical on both SKUs) |
-| Unlocked CFG1 | `0x02779000` | `0x02669000` |
-| Stock LMR `0x00100ce0` | `0x00000208` | `0x00000288` |
-| Unlocked LMR | `0x0000020B` | `0x0000028A` |
-| `targetFbBytes` / `fb_length` | `0x0000001000000000` (64 GiB) | `0x0000000A00000000` (40 GiB) |
-| Stock `CSTATUS_RAMAMOUNT` | `0x200` (512 MiB per FBPA) | `0x200` |
-| Unlocked `CSTATUS_RAMAMOUNT` | `0x1000` (4096 MiB per FBPA) | `0x800` (2048 MiB per FBPA) |
-| Floorswept FB units | 2 FBPs defective, 2 disabled (one card examined) | `OPT_FBPA_DISABLE` = `0xc3`; fbpa00/01/06/07 off |
-| ECC | Fused off | Fused off |
+| PCI ID | `10de:20c2`（`0x20C2`） | `10de:2082`（`0x2082`） |
+| 显存类型 | HBM2e（SK Hynix） | HBM2（Samsung）。厂商划分由时钟、稳定性和一次 GPU-Z 读取推断，不由封装标记：参见[板卡与变体](board-and-variants.md) |
+| 出厂报告容量 | 8192 MiB（CUDA 报告 7961 MB） | 10240 MiB |
+| **解锁容量** | **65536 MiB（64 GB）** | **40960 MiB（40 GB）** |
+| 活动 FBPA / FBP | 16 / 8 | 20 / 10 |
+| 总线宽度 | **4096-bit** | **5120-bit** |
+| 出厂 CFG1 `0x009a0204` | `0x02449000` | `0x02449000`（两个 SKU 相同） |
+| 解锁 CFG1 | `0x02779000` | `0x02669000` |
+| 出厂 LMR `0x00100ce0` | `0x00000208` | `0x00000288` |
+| 解锁 LMR | `0x0000020B` | `0x0000028A` |
+| `targetFbBytes` / `fb_length` | `0x0000001000000000`（64 GiB） | `0x0000000A00000000`（40 GiB） |
+| 出厂 `CSTATUS_RAMAMOUNT` | `0x200`（每 FBPA 512 MiB） | `0x200` |
+| 解锁 `CSTATUS_RAMAMOUNT` | `0x1000`（每 FBPA 4096 MiB） | `0x800`（每 FBPA 2048 MiB） |
+| 被地板清扫的 FB 单元 | 2 个 FBP 有缺陷，2 个禁用（检查过一张卡） | `OPT_FBPA_DISABLE` = `0xc3`；fbpa00/01/06/07 关闭 |
+| ECC | 熔断关闭 | 熔断关闭 |
 
-The unlocked constants are not invented: `0x02779000` is literally the stock CFG1 word of an
-A100 PCIe 80 GB, and `0x02669000` is the stock word of an A100 PCIe 40 GB and A100 SXM4 40 GB.
-The unlock restores genuine A100 geometry. LMR encodes total framebuffer size as
-`MiB = MAG[9:4] << SCALE[3:0]`, and per-FBPA capacity follows as `2^(SCALE+1)` MiB. Full
-treatment in [memory geometry](../unlock/memory-geometry.md) and
-[the memory subsystem](memory-subsystem.md).
+解锁常量不是杜撰的：`0x02779000` 字面上就是一张 A100 PCIe 80 GB 的出厂 CFG1 字，`0x02669000` 是 A100 PCIe 40 GB 和 A100 SXM4 40 GB 的出厂字。解锁恢复了真正的 A100 几何布局。LMR 把总帧缓冲大小编码为 `MiB = MAG[9:4] << SCALE[3:0]`，每-FBPA 容量随之为 `2^(SCALE+1)` MiB。完整处理在[显存几何布局](../unlock/memory-geometry.md) 和[显存子系统](memory-subsystem.md)。
 
 > [!NOTE]
-> **The memory geometry does not survive FLR or a power cycle; the compute unlock does**
+> **显存几何布局不能挺过 FLR 或断电；算力解锁可以**
 >
-> SS0, SS1 and `0x00823804` survive FLR; the CFG1/LMR geometry rewrite does not. This
-> asymmetry is why compute shipped before memory, and it is why "no FLR" appears as a stated
-> condition on the DtoD bandwidth rows below.
+> SS0、SS1 和 `0x00823804` 挺过 FLR；CFG1/LMR 几何布局重写不能。这种不对称就是算力先于显存发布的原因，也是 "no FLR" 作为下文 DtoD 带宽行的既定条件出现的原因。
 
 > [!WARNING]
-> **The 80 GB configuration is not a third option**
+> **80 GB 配置不是第三种选择**
 >
-> The experimental `80` branch is presented as working in its own README and is not. It
-> programs CFG1 `0x02779000` with LMR `0x0000028A` and `fb_length` `0x0000001400000000`, a
-> three-way disagreement between the three layers that is the best explanation for its fold at
-> exactly 40 GiB (`constants.yaml`'s `0x0000028B` / `81920` is inert metadata that `build.sh`
-> never reads). A clean-room script firing the coherent `LMR 0x0000028B` removes the fold, but
-> it is unshipped and still loses the device after about one CUDA context. Cards report
-> ~81920 MiB and a 77 GiB dense fill passes, but kernels touching
-> more than roughly 40 GB cause fatal GPU loss, independent of power limit. Reported Xid codes
-> include Xid 31 (described as harmless) and Xid 154 after CUDA memory tests; the dominant
-> reported symptom is hangs. Xid 31 alone was suggested by a bystander and was not corroborated
-> as *the* signature by the operator with the failing card. Only one CUDA context is available
-> per fire. See
-> [the 80 GB frontier page](../frontier/80gb.md).
+> 实验性 `80` 分支在自己的 README 里被描述为可工作，但并非如此。它编程 CFG1 `0x02779000` 配 LMR `0x0000028A` 和 `fb_length` `0x0000001400000000`，三个层之间三处不一致，这是它在恰好 40 GiB 处折叠的最佳解释（`constants.yaml` 的 `0x0000028B` / `81920` 是 `build.sh` 从不读取的惰性元数据）。一个净室脚本触发连贯的 `LMR 0x0000028B` 会去掉折叠，但它未发布，而且大约一个 CUDA 上下文后就丢失设备。卡报告约 81920 MiB，77 GiB 稠密填充通过，但触碰超过约 40 GB 的内核会独立于功耗上限造成致命 GPU 丢失。报告的错误码包括 Xid 31（被描述为无害）和 CUDA 内存测试后的 Xid 154；主导报告症状是挂起。Xid 31 单独是旁观者提出的，并未被有故障卡的操作者佐证为*那个*标志。每次触发只有一个 CUDA 上下文可用。参见[80 GB 前沿页](../frontier/80gb.md)。
 
-## Memory bandwidth
+## 显存带宽
 
-| Quantity | Value | Basis |
+| 量 | 值 | 依据 |
 |---|---|---|
-| Theoretical peak, 10 GB SKU | 1555.2 GB/s = **1448.4 GiB/s** | 1215 MHz DDR × 5120-bit. These are the same number in different units, not two competing figures |
-| Theoretical peak, 8 GB SKU | 1492.99 GB/s at 1458 MHz, or 1769 GB/s at 1728 MHz | Depends on which memory clock is correct (see above) |
-| **Measured, unlocked** | **1305.86 - 1600 GB/s, a range** | No single canonical figure: the value depends on tool and access pattern. Do not quote a point estimate |
-| Eight-card rental mean | ~1600 GB/s | Eight unlocked 64 GB cards, one methodology |
-| HBM read, 8 GB unlocked | 1679.1 - 1699.3 GB/s | 24 GiB stream |
-| DtoD, 10 GB at 40 GB | 1390 GB/s | Clean 610.43.03, no FLR |
-| OpenCL coalesced read / write, 10 GB at 40 GB | 1305.86 / 1521.62 GB/s | Misaligned: 789.82 / 161.76 GB/s |
-| Effect of the unlock on bandwidth | **None**: 1592 to 1599 GB/s | Same-card A/B control row, in the same table where FP32 moves 30.7x |
-| mixbench "1769.47 GB/sec" | **Not a measurement** | Tool-computed theoretical peak: 864 MHz × 4 × 4096 bits / 8 = 1769.472 GB/s exactly |
+| 理论峰值，10 GB SKU | 1555.2 GB/s = **1448.4 GiB/s** | 1215 MHz DDR × 5120-bit。这些是不同单位下的同一个数，不是两个竞争数值 |
+| 理论峰值，8 GB SKU | 1458 MHz 下 1492.99 GB/s，或 1728 MHz 下 1769 GB/s | 取决于哪个显存时钟正确（见上） |
+| **实测，解锁后** | **1305.86 - 1600 GB/s，一个范围** | 没有单一规范数值：值取决于工具和访问模式。不要引用点估计 |
+| 八卡租用均值 | 约 1600 GB/s | 八张解锁的 64 GB 卡，同一方法论 |
+| HBM 读取，8 GB 解锁 | 1679.1 - 1699.3 GB/s | 24 GiB 流 |
+| DtoD，10 GB 在 40 GB | 1390 GB/s | 干净 610.43.03，无 FLR |
+| OpenCL 合并读 / 写，10 GB 在 40 GB | 1305.86 / 1521.62 GB/s | 未对齐：789.82 / 161.76 GB/s |
+| 解锁对带宽的影响 | **无**：1592 到 1599 GB/s | 同卡 A/B 对照行，在同一张表里 FP32 移动 30.7x |
+| mixbench "1769.47 GB/sec" | **不是测量** | 工具计算的理论峰值：864 MHz × 4 × 4096 bits / 8 = 1769.472 GB/s 精确 |
 
-## Compute throughput, measured
+## 算力吞吐，实测
 
-Locked and unlocked, at stock clocks. The unlock is a register write and changes no clock, so
-every figure below is a stock-clock figure unless it says otherwise.
+锁定与解锁，出厂时钟。解锁是一次寄存器写入，不改任何时钟，所以除非另有说明，下文每个数值都是出厂时钟数值。
 
-| Datatype / path | Locked | Unlocked | Gain |
+| 数据类型 / 路径 | 锁定 | 解锁 | 增益 |
 |---|---|---|---|
-| FP32 non-tensor (FFMA) | 0.30 - 0.41 TFLOPS | **12.2 - 12.8 TFLOPS** | 26x - 32x |
-| FP32 theoretical | n/a | 12.63 TFLOPS (4480 × 2 × 1410 MHz) | Cards achieve ~99% of it |
-| FP32 non-FMA (control) | 4.31 - 6.29 TFLOPS | unchanged | Never throttled |
-| FP64 non-tensor | ~0.20 TF/s | **6.2 - 6.3 TFLOPS** | 1/2 of FP32, the full GA100 rate |
-| FP64 tensor | n/a | **11.6 - 12.9 TFLOPS** | Roughly 2x the non-tensor rate |
-| TF32 tensor | 2.96 - 3.21 TFLOPS | **79 - 94 TFLOPS** | 15x - 28x; widest spread of any datatype |
-| FP16 tensor | 6.52 TF/s | **158.7 - 190 TFLOPS** | Higher figures use fp16 accumulate |
-| BF16 tensor | 6.40 TF/s | **164.4 - 192.7 TFLOPS** | Ceiling is 2048 × 70 × 1410 MHz = 202.1 TFLOPS |
-| FP16 scalar (non-tensor) | ~42 - 50 TFLOPS | unchanged | **Never throttled**, even on a locked card. GA100 runs 16-bit hfma at 4x its FP32 rate |
-| INT32 | ~12.5 TIOPS | unchanged | ~62.5% of an A100's 20 TIOPS |
-| INT8, tensor MMA microbenchmark | 1.60 TOPS | 335.0 - 335.6 TOPS | Direct `mma.s8s8s32` |
-| INT8, library / serving path | 1.63 TOP/s | **44.1 TOPS, still gated** | ~3.7x *slower* than FP16, where an A100 is ~2x faster |
-| INT4 tensor MMA | 11.55 TOP/s | 320.2 TOPS | |
-| INT1 | 46.16 TOP/s | ~1039 TOP/s | Over one PetaOP/s |
-| FP8 / FP6 / FP4 | n/a | **Not supported in hardware** | Expected for `sm_80`; the MMA sweep enumerates each as unsupported |
+| FP32 非张量（FFMA） | 0.30 - 0.41 TFLOPS | **12.2 - 12.8 TFLOPS** | 26x - 32x |
+| FP32 理论 | n/a | 12.63 TFLOPS（4480 × 2 × 1410 MHz） | 卡达到它的约 99% |
+| FP32 非 FMA（对照） | 4.31 - 6.29 TFLOPS | 不变 | 从不受节流 |
+| FP64 非张量 | 约 0.20 TF/s | **6.2 - 6.3 TFLOPS** | FP32 的 1/2，完整 GA100 速率 |
+| FP64 张量 | n/a | **11.6 - 12.9 TFLOPS** | 约为非张量速率的两倍 |
+| TF32 张量 | 2.96 - 3.21 TFLOPS | **79 - 94 TFLOPS** | 15x - 28x；任何数据类型中最宽的分叉 |
+| FP16 张量 | 6.52 TF/s | **158.7 - 190 TFLOPS** | 更高的数值使用 fp16 累加 |
+| BF16 张量 | 6.40 TF/s | **164.4 - 192.7 TFLOPS** | 上限是 2048 × 70 × 1410 MHz = 202.1 TFLOPS |
+| FP16 标量（非张量） | 约 42 - 50 TFLOPS | 不变 | **从不受节流**，即使在锁定卡上也如此。GA100 以 4x 其 FP32 速率运行 16 位 hfma |
+| INT32 | 约 12.5 TIOPS | 不变 | 约 A100 的 20 TIOPS 的 62.5% |
+| INT8，张量 MMA 微基准 | 1.60 TOPS | 335.0 - 335.6 TOPS | 直接 `mma.s8s8s32` |
+| INT8，库 / 服务路径 | 1.63 TOP/s | **44.1 TOPS，仍被门控** | 比 FP16 *慢*约 3.7x，而 A100 快约 2x |
+| INT4 张量 MMA | 11.55 TOP/s | 320.2 TOPS | |
+| INT1 | 46.16 TOP/s | 约 1039 TOP/s | 超过一 PetaOP/s |
+| FP8 / FP6 / FP4 | n/a | **硬件不支持** | `sm_80` 的预期；MMA 扫描把每个枚举为不支持 |
 
-The practical consequence of the INT8 result is worth stating plainly: for inference, use
-W4A16 (AWQ or GPTQ, INT4 weights with BF16 activations) and avoid W8A8 entirely; KV cache must
-be BF16 because FP8 KV is unsupported on `sm_80`. See
-[LLM inference](../operations/llm-inference.md) and
-[performance](../operations/performance.md).
+INT8 结果的实际后果值得直说：推理时，使用 W4A16（AWQ 或 GPTQ，INT4 权重配 BF16 激活），完全避开 W8A8；KV 缓存必须是 BF16，因为 FP8 KV 在 `sm_80` 上不支持。参见[LLM 推理](../operations/llm-inference.md) 和[性能](../operations/performance.md)。
 
 > [!NOTE]
-> **The `deviceQuery` 8960-core and 25.27 TFLOPS figures are wrong**
+> **`deviceQuery` 的 8960 核心和 25.27 TFLOPS 数值是错的**
 >
-> `deviceQuery` prints `Total SPs: 8960 (70 MPs x 128 SPs/MP)` and 25267.20 GFlops. The
-> discrepancy is exactly 2x and is consistent with the tool applying the compute-capability
-> 8.6 figure of 128 FP32 lanes per SM instead of GA100's 64. The arithmetic and every
-> measured result favour 4480 cores and ~12.6 TFLOPS.
+> `deviceQuery` 打印 `Total SPs: 8960 (70 MPs x 128 SPs/MP)` 和 25267.20 GFlops。差异恰好是 2x，与工具应用计算能力 8.6 的每 SM 128 个 FP32 通道、而非 GA100 的 64 个一致。算术和每个实测结果都偏向 4480 核心和约 12.6 TFLOPS。
 
 ## PCIe
 
-The two restrictions are independent and must never be conflated.
+两个限制是独立的，绝不能混为一谈。
 
-| Quantity | Stock, no unlock | With the unlocker | With the capacitor mod |
+| 量 | 出厂，无解锁 | 带解锁器 | 带电容改装 |
 |---|---|---|---|
-| Link speed | Gen1, 2.5 GT/s | **Gen2, 5 GT/s** | unchanged by the mod |
-| Link width trained | x4 (of x16 wired) | x4 | **x16** (or x8 if the solder work is incomplete) |
+| 链路速度 | Gen1，2.5 GT/s | **Gen2，5 GT/s** | 改装不改 |
+| 训练的链路位宽 | x4（接线 x16） | x4 | **x16**（若焊接不完整则 x8） |
 | `LnkCap` | `0x00456101` | `0x00456102` | n/a |
-| `LnkCap2` | `0x00000002` (2.5 GT/s only) | `0x00000006` (2.5 and 5.0) | n/a |
-| `LnkCtl2` target | n/a | `0x0002` | n/a |
+| `LnkCap2` | `0x00000002`（仅 2.5 GT/s） | `0x00000006`（2.5 和 5.0） | n/a |
+| `LnkCtl2` 目标 | n/a | `0x0002` | n/a |
 | `LnkSta` | `0x1041` | `0x1042` | n/a |
-| `nvidia-smi` cur / max / width | `1, 1, 4` | `2, 2, 4` | width follows the solder |
-| De-emphasis | −6 dB | −3.5 dB | n/a |
+| `nvidia-smi` 当前 / 最大 / 位宽 | `1, 1, 4` | `2, 2, 4` | 位宽跟随焊锡 |
+| 去加重 | −6 dB | −3.5 dB | n/a |
 
-**Measured host bandwidth:**
+**实测主机带宽：**
 
-| Configuration | Bandwidth | Confidence |
+| 配置 | 带宽 | 置信度 |
 |---|---|---|
-| Gen1 x4 (stock) | ~0.80 - 0.85 GB/s | high |
-| Gen2 x4 | 1.68 - 1.71 GB/s | medium; one archived OpenCL-Benchmark screenshot, one unmodded card |
-| Gen1 x16 (cap mod only) | 2.88 GB/s flat, error free | medium; nominal ~4 GB/s, the gap attributed to PCIe 1.1 signalling overhead |
-| Gen2 x16 | 6.63 - 6.67 GB/s | **medium: one rig, one day (2026-07-26), one capture.** Stability at Gen2 x16 is unestablished |
+| Gen1 x4（出厂） | 约 0.80 - 0.85 GB/s | 高 |
+| Gen2 x4 | 1.68 - 1.71 GB/s | 中等；一张归档的 OpenCL-Benchmark 截图、一张未改装卡 |
+| Gen1 x16（仅电容改装） | 2.88 GB/s 平坦，无错误 | 中等；标称约 4 GB/s，差距归因于 PCIe 1.1 信令开销 |
+| Gen2 x16 | 6.63 - 6.67 GB/s | **中等：一台机器、一天（2026-07-26）、一份捕获。** Gen2 x16 的稳定性未确立 |
 
-**Why the width is x4:** 12 of the 16 lanes (lanes 4-15) ship with their AC-coupling
-capacitors omitted, 2 per differential pair, so 24 parts in total, in the `C1100`-`C1350`
-designator range. The specification is **0402, 220 nF (0.22 µF), X7R, 16 V or better**,
-sourced from the NVIDIA A100 GA100-883 reference schematic P1001-B02 page 3 ("IO: PCIe
-CONNECTOR"); the confirmed working part is Samsung `CL05B224KO5NNNC`. (The dielectric is
-X7R. "XR7" is a common transposition.) Populating only 12 of the 24 yields x8, because PCIe
-width negotiation falls back to the next legal width; an x8 result after a mod means
-incomplete or bridged solder work, not a distinct hardware limit. The lane fuses are clean, so
-nothing about the width is programmable. See [physical mods](../operations/physical-mods.md).
+**为什么位宽是 x4：** 16 条通道中的 12 条（通道 4-15）出厂省略交流耦合电容，每个差分对 2 颗，共 24 个部件，在 `C1100`-`C1350` 位号范围。规格是 **0402、220 nF（0.22 µF）、X7R、16 V 或更好**，取自 NVIDIA A100 GA100-883 参考原理图 P1001-B02 第 3 页（"IO: PCIe CONNECTOR"）；确认可工作的部件是 Samsung `CL05B224KO5NNNC`。（介质是 X7R。"XR7" 是常见的换位错误。）只装 24 颗中的 12 颗会得到 x8，因为 PCIe 位宽协商会回退到下一个合法位宽；改装后 x8 结果意味着焊接不完整或桥接，而非一个不同的硬件限制。通道熔丝干净，所以位宽没有任何可编程的部分。参见[物理改装](../operations/physical-mods.md)。
 
-**Why the speed is Gen1:** two fuse shadows read blown on both 170HX SKUs and clear on
-twelve other Ampere parts probed: `FUSE_PCIE_GEN23_DIS` (`0x0082057c`) = `0x00000001` and
-`FUSE_PCIE_GEN3_DIS` (`0x00820580`) = `0x00000001`. `FUSE_PCIE_MAGIC_D` (`0x00820520`) reads
-`0x16680000` with bit 25 (`GEN4_SPEED_DISABLED`) set, against `0x00200000` on a DRIVE GA100
-reference part. Notably the Gen2 unlock works **despite** `OPT_GEN23` never being cleared:
-every attempt to write it fails on silicon, and the lever turns out to be the
-CYA_0 / LINK_CONFIG_0 / XP3G / PRIV_MISC_1 overrides instead. Gen3 and Gen4 remain unachieved:
-Gen3 *advertisement* has been made to work, but `LnkSta` never left 2.5 GT/s. See
-[the PCIe subsystem](pcie-subsystem.md), [Gen2](../unlock/pcie-gen2.md) and
-[Gen3/Gen4](../frontier/pcie-gen3-gen4.md).
+**为什么速度是 Gen1：** 两个熔丝影子在 170HX 的两个 SKU 上都读为已烧断、在探测的另外十二个 Ampere 部件上干净：`FUSE_PCIE_GEN23_DIS`（`0x0082057c`）= `0x00000001` 和 `FUSE_PCIE_GEN3_DIS`（`0x00820580`）= `0x00000001`。`FUSE_PCIE_MAGIC_D`（`0x00820520`）读 `0x16680000`，位 25（`GEN4_SPEED_DISABLED`）置位，而 DRIVE GA100 参考部件是 `0x00200000`。值得注意的是 Gen2 解锁**尽管** `OPT_GEN23` 从未被清除仍然工作：对它写入的每次尝试都在硅片上失败，开关结果证明是 CYA_0 / LINK_CONFIG_0 / XP3G / PRIV_MISC_1 覆盖。Gen3 和 Gen4 仍未达成：Gen3 *声明*已能工作，但 `LnkSta` 从未离开 2.5 GT/s。参见[PCIe 子系统](pcie-subsystem.md)、[Gen2](../unlock/pcie-gen2.md) 和[Gen3/Gen4](../frontier/pcie-gen3-gen4.md)。
 
 > [!WARNING]
-> **Experimental: Gen2 is not in the shipping product**
+> **实验性：Gen2 不在发布产品里**
 >
-> Shipping `master` contains patches `0001` through `0006` only, has no `pcie:` block in
-> `constants.yaml`, and its "What Gets Unlocked" table has three rows with no PCIe entry.
-> `0007-pcie-gen2.patch` exists on branches `debug-gen2`, `Gen2`, `far` and `deced`;
-> `0008-pcie-gen2-probe-retrain.patch` on `Gen2`, `far` and `deced`. None has been merged.
-> Gen2 is also not deterministic in the field, does not work under VM passthrough, and fails
-> entirely over Thunderbolt 3 enclosures (Oculink works, because it is essentially a direct
-> riser).
+> 发布的 `master` 只含补丁 `0001` 到 `0006`，`constants.yaml` 里没有 `pcie:` 块，它的 "What Gets Unlocked" 表有三行、没有 PCIe 条目。`0007-pcie-gen2.patch` 存在于 `debug-gen2`、`Gen2`、`far` 和 `deced` 分支；`0008-pcie-gen2-probe-retrain.patch` 在 `Gen2`、`far` 和 `deced`。没有一个被合并。Gen2 在野外也不确定，在 VM 直通下不工作，在 Thunderbolt 3 坞上完全失败（Oculink 可以，因为它本质上是一个直连转接卡）。
 
-## NVLink, P2P and other absent features
+## NVLink、P2P 和其它缺失功能
 
-| Feature | Status | Why |
+| 功能 | 状态 | 为什么 |
 |---|---|---|
-| NVLink | **Fuse-disabled** | `FUSE_NVLINK_DIS` `0x00820684` = `0x00000007`, `STATUS_OPT_NVLINK` `0x00820DB8` = `0x00000007`, matching the Drive A100 parts. That alone closes the door. Whether the board-side NVLink components are populated is **unresolved**: direct evidence exists on both sides; see [NVLink hardware](nvlink-hardware.md). There is no NVLink register in the `0x00823800`-`0x0082382C` block and no NVLink code in any branch |
-| Peer-to-peer (P2P) | Absent on this card | Never demonstrated; no fused-versus-driver-gated determination has been made |
-| ECC | Fused off | `FBPA_ECC_CTRL` (`0x009a0470`) = 0 with `MASTER_EN` read-only; no telemetry; the branch named `ecc` contains no ECC code at all |
-| NVENC | Unavailable | Whether fused off or fuse-gated is unknown; no NVENC session has been reported working |
-| MIG | **Enables, but cannot partition** | Bit 0 of `0x00820840` turns it on and it is reported persistent, but only one profile (`1g.64gb`, 63.00 GiB, 70 SMs, P2P No) is exposed, so the GPU cannot actually be subdivided; `-cgi 9,3g.20gb -C` returns `Invalid Argument`. Not in the shipping tree |
-| Resizable BAR | **Advertised but inert** | Capability present at `[bb0 v1]`; each BAR advertises exactly one supported size, and BAR1 stays at 64 MiB regardless of reported framebuffer size. The "ReBAR needs Gen3" objection has been rebutted. Untested on a Gen2-trained card |
+| NVLink | **熔丝禁用** | `FUSE_NVLINK_DIS` `0x00820684` = `0x00000007`，`STATUS_OPT_NVLINK` `0x00820DB8` = `0x00000007`，与 Drive A100 部件匹配。仅此就关了门。板侧 NVLink 组件是否贴装**未解决**：两边都有直接证据；参见[NVLink 硬件](nvlink-hardware.md)。`0x00823800`-`0x0082382C` 块里没有 NVLink 寄存器，任何分支里也没有 NVLink 代码 |
+| 点对点（P2P） | 这块卡上缺失 | 从未被演示；未做熔断与驱动门控的裁决 |
+| ECC | 熔断关闭 | `FBPA_ECC_CTRL`（`0x009a0470`）= 0 且 `MASTER_EN` 只读；无遥测；名为 `ecc` 的分支里根本没有任何 ECC 代码 |
+| NVENC | 不可用 | 是熔断关闭还是熔丝门控未知；没有 NVENC 会话被报告工作 |
+| MIG | **能启用，但无法分区** | `0x00820840` 的位 0 打开它且被报告为持久，但只暴露一个档位（`1g.64gb`、63.00 GiB、70 个 SM、P2P No），所以 GPU 实际上无法被细分；`-cgi 9,3g.20gb -C` 返回 `Invalid Argument`。不在发布树里 |
+| Resizable BAR | **声明但惰性** | 能力存在于 `[bb0 v1]`；每个 BAR 恰好声明一个受支持大小，BAR1 无论报告的帧缓冲大小都保持 64 MiB。"ReBAR needs Gen3" 的反对已被反驳。在 Gen2 训练的卡上未测试 |
 
-## Power and electrical
+## 供电与电气
 
-| Quantity | Value |
+| 量 | 值 |
 |---|---|
-| TDP / default power limit | **250 W** (stock VBIOS: default = maximum) |
-| Power limit range, stock VBIOS | 100 W minimum to 250 W maximum. `nvidia-smi -pl` works; there is simply no headroom above stock |
-| Power limit with the 300 W OC VBIOS | 300 W maximum; a 30-minute `gpu_burn` logged `POW 278 / 300 W`. Applies to the **8 GB** SKU; nobody in this corpus has verified it combined with the unlock on a 10 GB card |
-| Slot power limit (`DevCap`) | **75 W**; everything above that comes from the auxiliary connector |
-| External connector | **One 8-pin EPS (CPU-style)** socket carrying two internal 12 V rails, `12V_EXT1` and `12V_EXT2`. Rated 300 W. Cards ship with a dual 8-pin PCIe to 8-pin EPS Y adapter |
-| Idle draw | 27 - 46 W, strongly temperature- and residency-dependent. A resident CUDA context pushes it from ~33 W to ~45 W |
-| Performance states | **P0 only.** `nvidia-pstated` returns `NVAPI_ERROR`; the two-P-state fork produces no change |
-| Rails | `3V3_PEX` (to 1.8 V by LDO), `12V_PEX` (to 5 V via MP1475, 1.35 V and PEXVDD via MP2988, HBMVPP 2.5 V via a second MP1475), `12V_EXT1`/`12V_EXT2` (NVVDD 1.0 V core and HBMVDD via MP2988 multiphase) |
-| VRM population | **Depopulated relative to the A100.** Three power MOSFETs and coils absent per side, versus one per side on an A100 40 GB and none on an A100 80 GB; a second comparison put it at roughly 6 of about 20 phases. The 8 GB 64 GB unlock was reported to need no VRM work |
+| TDP / 默认功耗上限 | **250 W**（出厂 VBIOS：默认 = 最大） |
+| 功耗上限范围，出厂 VBIOS | 最小 100 W 到最大 250 W。`nvidia-smi -pl` 工作；只是没有高于出厂的余量 |
+| 带 300 W OC VBIOS 的功耗上限 | 最大 300 W；一次 30 分钟 `gpu_burn` 记录 `POW 278 / 300 W`。适用于 **8 GB** SKU；本语料库中没人验证过它与 10 GB 卡上的解锁结合 |
+| 插槽功耗上限（`DevCap`） | **75 W**；之上的一切都来自辅助接口 |
+| 外部接口 | **一个 8-pin EPS（CPU 式）** 插座，携带两条内部 12 V 轨 `12V_EXT1` 和 `12V_EXT2`。额定 300 W。卡出厂带一条双 8-pin PCIe 到 8-pin EPS 的 Y 转接线 |
+| 空转功耗 | 27 - 46 W，强烈依赖温度和驻留。一个驻留的 CUDA 上下文把它从约 33 W 推到约 45 W |
+| 性能状态 | **仅 P0。** `nvidia-pstated` 返回 `NVAPI_ERROR`；双 P 状态分支不产生任何变化 |
+| 电源轨 | `3V3_PEX`（经 LDO 到 1.8 V）、`12V_PEX`（经 MP1475 到 5 V、经 MP2988 到 1.35 V 和 PEXVDD、经第二个 MP1475 到 HBMVPP 2.5 V）、`12V_EXT1`/`12V_EXT2`（经 MP2988 多相到 NVVDD 1.0 V 核心和 HBMVDD） |
+| VRM 贴装 | **相对 A100 缺件。** 每侧缺三个功率 MOSFET 和电感，而 A100 40 GB 每侧一个、A100 80 GB 无；第二次对比把它放在约 20 相中的 6 相。报告说 8 GB 的 64 GB 解锁不需要任何 VRM 工作 |
 
 > [!CAUTION]
-> **The 8-pin socket is EPS, not PCIe**
+> **8-pin 插座是 EPS，不是 PCIe**
 >
-> An 8-pin PCIe cable is keyed differently from the card's EPS socket and can only be forced
-> in, and the 12 V and ground lines are swapped on some pins between the two connector types.
-> Forcing one in **will damage the card**. Use the supplied adapter: one leg for 150 W of
-> budget, both legs for 300 W.
-> Modular PSU cables are also vendor-specific with no standard modular-side pinout; reusing
-> one across brands can destroy hardware.
+> 8-pin PCIe 线与卡的 EPS 插座键位不同，只能硬塞进去，而两种接口类型在部分引脚上 12 V 和地线是调换的。硬塞进去**必然损坏卡片**。使用附带的转接线：一条腿 150 W 预算，两条腿 300 W。
+> 模组 PSU 线也是厂商专用的，没有标准的模组侧引脚定义；跨品牌复用一条可能毁掉硬件。
 
-Real measured draw by workload is much lower than the label suggests, and this is a
-characteristic of the part rather than a fault: conventional FP32 burn-in reaches only about
-60 W and tensor `gpu_burn` about 75 W, while integer and memory-bound workloads reach 160+ W
-and sustained real loads land at 200-280 W. **Never validate stability or cooling with an FP32
-burn-in on this card.** Raising the limit from 250 W to 300 W measured **+2.8%** on BF16 with
-core and memory both below 65 C. Full detail in [power delivery](power-delivery.md) and
-[power and PSUs](../operations/power-and-psu.md).
+按工作负载实测的真实功耗远低于标签所暗示的，这是部件的特性而非故障：常规 FP32 老化测试只到约 60 W，张量 `gpu_burn` 约 75 W，而整数和显存密集型工作负载达到 160+ W，持续的真实负载落在 200-280 W。**在这块卡上绝不要用 FP32 老化测试验证稳定性或散热。** 把上限从 250 W 提到 300 W，在核心和显存都低于 65 C 时测得 BF16 **+2.8%**。完整细节在[板载供电](power-delivery.md) 和[供电与 PSU](../operations/power-and-psu.md)。
 
-## Form factor, cooling and thermal limits
+## 外形、散热与热限制
 
-| Property | Value |
+| 属性 | 值 |
 |---|---|
-| Form factor | Full-length dual-slot PCIe add-in card |
-| Thickness | ~40 mm / 1.57 in (dual-slot); the body clears the PCIe edge connector by roughly 5-6 mm |
-| PCB | Nearly, if not completely, identical to the A100 40 GiB board. A100 waterblocks and A100 shrouds physically fit |
-| Cooler | **Fully passive**: a bare heatsink with no fan, designed for forced air from high-RPM server chassis fans. `nvidia-smi` reports `Fan Speed : N/A` on every capture |
-| Published CFM / static pressure / dBA / fin pitch | **None exists.** Any airflow number must come from community measurement |
-| GPU shutdown temperature | 98 C |
-| GPU slowdown temperature | 95 C |
-| GPU max operating temperature | 85 C |
-| Memory max operating temperature | 95 C |
-| Practical throttle onset | ~80 C (one tester's telemetry; community design targets settled at 70 C core / 75-76 C memory hotspot) |
+| 外形 | 全长双槽 PCIe 附加卡 |
+| 厚度 | 约 40 mm / 1.57 in（双槽）；本体与 PCIe 边缘连接器净距约 5-6 mm |
+| PCB | 几乎、若非完全、与 A100 40 GiB 板相同。A100 水冷头和 A100 导流罩物理上能装上 |
+| 散热器 | **全被动**：一个裸散热片，没有风扇，设计用于高转速服务器机箱风扇的强制风。`nvidia-smi` 在每次捕获上都报告 `Fan Speed : N/A` |
+| 发布的 CFM / 静压 / dBA / 鳍片间距 | **不存在。** 任何气流数值都必须来自社区测量 |
+| GPU 关机温度 | 98 C |
+| GPU 降速温度 | 95 C |
+| GPU 最大工作温度 | 85 C |
+| 显存最大工作温度 | 95 C |
+| 实际节流起始 | 约 80 C（一位测试者的遥测；社区设计目标定在核心 70 C / 显存热点 75-76 C） |
 
 > [!CAUTION]
-> **GA100 exhibits leakage-driven thermal runaway**
+> **GA100 表现出泄漏驱动热失控**
 >
-> Higher junction temperature raises CMOS leakage, which raises power, which raises
-> temperature. Observed first-hand on a card dry-run with a waterblock fitted but no
-> coolant: idle draw rose from **40 W to 60 W at 80 C and was still climbing**. If cooling
-> fails outright, the part does not settle at its throttle point, it climbs past it. If you
-> ever dry-run this card without coolant, power off within five minutes. Cooling solutions
-> with measured results are compared in [cooling](../operations/cooling.md).
+> 更高的结温提高 CMOS 泄漏，提高功耗，又提高温度。一手观察于一张装好水冷头但无冷却液的干跑卡：空转功耗从 **40 W 升到 80 C 时的 60 W 且仍在上升**。如果散热彻底失效，部件不会稳定在它的节流点，它会越过它继续攀升。如果你曾干跑这张卡却无冷却液，5 分钟内断电。带实测结果的散热方案对比见[散热](../operations/cooling.md)。
 
-## Firmware, identification and APIs
+## 固件、识别与 API
 
-| Property | Value |
+| 属性 | 值 |
 |---|---|
-| Detected PCI IDs | `10de:20c2` (8 GB), `10de:2082` (10 GB), `10de:20b0` (detected by the installer, **not** unlocked) |
-| Unlock device gate | `_kgspSec2PostblTimingEnabled()` accepts `0x20C2` and `0x2082` only. A `20b0` card installs cleanly and simply does not unlock |
-| VBIOS on Gen2-confirmed and OC cards | `92.00.6D.00.0A` (300 W ROM), BoardPN `900-11001-0108-000`, GPUPN `20C2-105-A1`, subsystem `0x158510DE` |
-| Supported drivers (shipping `master`) | `610.43.03` (default) and `610.43.02`, exact match, build dies otherwise |
-| Driver model | nvidia-open kernel modules, patched. Secure Boot must be off |
-| CUDA | Compute capability 8.0 (`sm_80`). Build with `-DCMAKE_CUDA_ARCHITECTURES=80` |
-| OpenCL | Works; OpenCL-Benchmark is the community's evidentiary standard for a claimed unlock |
-| SYCL, PyTorch, cuBLAS, CUTLASS | All exercised in the corpus |
-| Graphics | Functional but poor even after unlocking, and PCIe is the reason: BeamNG.drive measured 15 fps at Gen1 x16 and 5 fps at x4. This is not a gaming card |
+| 检测到的 PCI ID | `10de:20c2`（8 GB）、`10de:2082`（10 GB）、`10de:20b0`（安装器检测到，**不**解锁） |
+| 解锁设备门 | `_kgspSec2PostblTimingEnabled()` 只接受 `0x20C2` 和 `0x2082`。`20b0` 卡干净安装然后干脆不解锁 |
+| Gen2 确认卡和 OC 卡上的 VBIOS | `92.00.6D.00.0A`（300 W ROM），BoardPN `900-11001-0108-000`，GPUPN `20C2-105-A1`，子系统 `0x158510DE` |
+| 受支持驱动（发布 `master`） | `610.43.03`（默认）和 `610.43.02`，精确匹配，否则构建死掉 |
+| 驱动模型 | nvidia-open 内核模块，已补丁。安全启动必须关闭 |
+| CUDA | 计算能力 8.0（`sm_80`）。用 `-DCMAKE_CUDA_ARCHITECTURES=80` 构建 |
+| OpenCL | 可用；OpenCL-Benchmark 是社区对声称解锁的证据标准 |
+| SYCL、PyTorch、cuBLAS、CUTLASS | 全部在语料库中演练过 |
+| 图形 | 可用但即使解锁后也很差，而且原因是 PCIe：BeamNG.drive 在 Gen1 x16 下实测 15 fps、x4 下 5 fps。这不是游戏卡 |
 
-## Comparison anchors
+## 对比锚点
 
-| Part | SMs / cores | Memory | Bus | Notes |
+| 部件 | SM / 核心 | 显存 | 总线 | 备注 |
 |---|---|---|---|---|
-| CMP 170HX 8 GB, unlocked | 70 / 4480 | 64 GB HBM2e | 4096-bit | This card |
-| CMP 170HX 10 GB, unlocked | 70 / 4480 | 40 GB HBM2 | 5120-bit | Same silicon, different harvest |
-| A100 PCIe 40 GB | 108 / 6912 | 40 GB | 5120-bit | Stock CFG1 `0x02669000` |
-| A100 PCIe 80 GB | 108 / 6912 | 80 GB | 5120-bit | Stock CFG1 `0x02779000`, LMR `0x0000028b` |
-| A100 32 GB Drive (PG199) | 96 | 32 GB | 4096-bit | All nine speed-select fuses read 0; shares the 170HX's NVLink kill |
-| CMP 90HX | GA102, GDDR6X | n/a | n/a | Different die entirely; no hidden VRAM, no NVLink fingers |
+| CMP 170HX 8 GB，解锁 | 70 / 4480 | 64 GB HBM2e | 4096-bit | 本卡 |
+| CMP 170HX 10 GB，解锁 | 70 / 4480 | 40 GB HBM2 | 5120-bit | 同一颗硅片，不同的收获 |
+| A100 PCIe 40 GB | 108 / 6912 | 40 GB | 5120-bit | 出厂 CFG1 `0x02669000` |
+| A100 PCIe 80 GB | 108 / 6912 | 80 GB | 5120-bit | 出厂 CFG1 `0x02779000`，LMR `0x0000028b` |
+| A100 32 GB Drive（PG199） | 96 | 32 GB | 4096-bit | 九个速度选择熔丝全读 0；共享 170HX 的 NVLink 关闭 |
+| CMP 90HX | GA102，GDDR6X | n/a | n/a | 完全不同的晶片；没有隐藏 VRAM，没有 NVLink 金手指 |
 
-Where the unlocked card lands against an A100 has never been settled with matched benchmarks
-on both parts. Estimates in circulation cluster at 70-75%, roughly consistent with the 70/108
-SM ratio, with outliers in both directions. Spec-wise the unlocked 64 GB card is comparable to
-an AMD Instinct MI210 on bandwidth, capacity and BF16/FP16 throughput, with the interconnect
-being the clear point in AMD's favour.
+解锁卡相对 A100 落在哪里，从未在两块部件上用匹配基准测试定论过。流传的估计聚在 70-75%，大致与 70/108 的 SM 比例一致，两边都有离群值。按规格看，解锁的 64 GB 卡在带宽、容量和 BF16/FP16 吞吐上可比 AMD Instinct MI210，互连是明确站在 AMD 一边的点。
 
-## Related pages
+## 相关页面
 
-- [What is this card](../start/what-is-this-card.md) for the plain-language introduction
-- [GA100 silicon](ga100-silicon.md), [fuses and OTP](fuses-and-otp.md),
-  [board and variants](board-and-variants.md)
-- [Memory subsystem](memory-subsystem.md), [PCIe subsystem](pcie-subsystem.md),
-  [power delivery](power-delivery.md), [thermals](thermals.md), [VBIOS](vbios.md)
-- [The unlock, in overview](../unlock/overview.md) and the
-  [register reference](../unlock/register-reference.md)
-- [Glossary](../start/glossary.md) for any term above that is new to you
+- [这是什么卡](../start/what-is-this-card.md)，面向白话介绍
+- [GA100 硅片](ga100-silicon.md)、[熔丝与 OTP](fuses-and-otp.md)、[板卡与变体](board-and-variants.md)
+- [显存子系统](memory-subsystem.md)、[PCIe 子系统](pcie-subsystem.md)、[板载供电](power-delivery.md)、[热设计](thermals.md)、[VBIOS](vbios.md)
+- [解锁，概述](../unlock/overview.md) 和[寄存器参考](../unlock/register-reference.md)
+- [术语表](../start/glossary.md)，用于上文任何你陌生术语

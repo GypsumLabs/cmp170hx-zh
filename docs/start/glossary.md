@@ -1,631 +1,398 @@
-# Glossary
+# 术语表
 
-**What this page covers.** Every acronym, register nickname, tool name and piece of jargon
-used anywhere in this wiki, with an accurate expansion and a short explanation. It also
-flags the acronym expansions that the project's own documentation branch invented, which
-are wrong and are still being copied into third-party guides.
+**本页覆盖内容。** 本维基中任何地方用到的每个缩写、寄存器昵称、工具名和行话术语，附准确的展开和简短解释。它还标出项目自己的文档分支杜撰的缩写展开——这些是错的，却仍被复制进第三方指南。
 
-Two conventions apply throughout. Where NVIDIA has never published an expansion for an
-internal block name, this page says so rather than guessing. Where two names exist for the
-same register, both are listed on one entry rather than as two entries.
+全篇适用两条约定。凡是 NVIDIA 从没为某个内部块名发布过展开，本页就说没有，而不是去猜。凡是同一寄存器存在两个名字，两条都列在同一个条目里，而不是作为两个条目。
 
 ---
 
-## Corrected expansions: do not repeat these
+## 已更正的展开：不要复述这些
 
-The `docs` branch of `cmpunlocker` (`docs/docs/ARCHITECTURE.md`) contains five acronym
-expansions that appear nowhere in the shipping source, in any branch snapshot, or in any
-NVIDIA-published header. They are inventions. They have propagated into downstream guides.
+`cmpunlocker` 的 `docs` 分支（`docs/docs/ARCHITECTURE.md`）包含五个缩写展开，它们在发布的源码、任何分支快照或任何 NVIDIA 发布的头文件中都不存在。它们是杜撰。它们已经传播进了下游指南。
 
 > [!WARNING]
-> **Wrong expansions in circulation**
+> **流传的错误展开**
 >
 >
-> | Term | Wrong expansion (and where) | Correct |
+> | 术语 | 错误展开（以及出处） | 正确 |
 > |---|---|---|
-> | PLM | "Program Logic Modules" (`ARCHITECTURE.md` line 38) | **Privilege Level Mask**, a per-register access-control mask |
-> | PMA | "Power Management Array" (line 30) | **Physical Memory Allocator**, an RM memory-manager object |
-> | SS0 / SS1 | "Suspension State" registers (line 29) | `FEATURE_OVERRIDE_SM_SPEED_SELECT` (`0x0082381c`) and `..._SM_SPEED_SELECT_1` (`0x00823820`) |
-> | LMR | "LM Request" / "LM (Local Memory) Request register" (line 28) | `NV_PFB_PRI_MMU_LOCAL_MEMORY_RANGE`, Local Memory **Range** |
-> | PMM | "the PMM (Permute Mask Model)" (line 41) | No such block exists in the code. The term is fabricated. |
+> | PLM | "Program Logic Modules"（`ARCHITECTURE.md` 第 38 行） | **权限级别掩码**，一个按寄存器控制的访问控制掩码 |
+> | PMA | "Power Management Array"（第 30 行） | **物理内存分配器**，一个 RM 内存管理对象 |
+> | SS0 / SS1 | "Suspension State" 寄存器（第 29 行） | `FEATURE_OVERRIDE_SM_SPEED_SELECT`（`0x0082381c`）和 `..._SM_SPEED_SELECT_1`（`0x00823820`） |
+> | LMR | "LM Request" / "LM (Local Memory) Request register"（第 28 行） | `NV_PFB_PRI_MMU_LOCAL_MEMORY_RANGE`，本地显存**范围** |
+> | PMM | "the PMM (Permute Mask Model)"（第 41 行） | 代码中不存在这样的块。该术语是捏造的。 |
 >
-> Two related factual errors travel with them: the same file states that SS0 and SS1 are
-> both written to `0xffffffff` (the shipping patch writes `0x88888888` and `0x00000008`),
-> and that the unlock works by "injecting custom PLM sequences" (it opens four named
-> privilege-level-mask registers by re-running Booter Load with an oversized signature
-> buffer). See [Compute throttle](../unlock/compute-throttle.md) and
-> [Privilege level masks](../unlock/privilege-level-masks.md).
+> 两个相关的事实错误随之流传：同一文件声称 SS0 和 SS1 都写入 `0xffffffff`（发布的补丁写入的是 `0x88888888` 和 `0x00000008`），并声称解锁靠"注入自定义 PLM 序列"工作（它实际是通过用超大签名缓冲区重跑 Booter Load 来打开四个具名的权限级别掩码寄存器）。参见[算力节流](../unlock/compute-throttle.md) 和[权限级别掩码](../unlock/privilege-level-masks.md)。
 
-Two further terminology traps, unrelated to that branch:
+还有两个与那个分支无关的术语陷阱：
 
-- **ROP.** In ordinary GPU vocabulary ROP means *Raster Operations Pipeline*. Everywhere in
-  this wiki it means **Return-Oriented Programming**, the exploitation technique used to
-  drive the SEC2 Booter. See [ROP chain](../unlock/rop-chain.md).
-- **XR7.** Several mod write-ups (and an earlier draft of this project's own brief) say the
-  PCIe coupling capacitors are "XR7". The dielectric code is **X7R**. See
-  [Physical mods](../operations/physical-mods.md).
+- **ROP。** 在普通 GPU 词汇里 ROP 指 *Raster Operations Pipeline*（光栅操作流水线）。在本维基的任何地方它都指 **Return-Oriented Programming（面向返回编程）**，即用来驱动 SEC2 Booter 的利用技术。参见[ROP 链](../unlock/rop-chain.md)。
+- **XR7。** 几篇改装文章（以及本项目自己简报的早期草稿）说 PCIe 耦合电容是 "XR7"。介质代码是 **X7R**。参见[物理改装](../operations/physical-mods.md)。
 
 ---
 
 ## A
 
 **A100D**
-:   Informal name for the NVIDIA DRIVE A100 (`10DE:20BB`, board code PG199), a 32 GB GA100
-    part that appears in this corpus only as a comparison device. Booter status `0x54` was
-    observed on it and has never been decoded. The `cmpunlocker` branch named `PG199`
-    contains no A100D support.
+::   NVIDIA DRIVE A100（`10DE:20BB`，板卡代码 PG199）的非正式名称，一个 32 GB 的 GA100 部件，在本语料库中只作为对比设备出现。Booter 状态 `0x54` 曾在它上面观察到，从未被解码。名为 `PG199` 的 `cmpunlocker` 分支不含任何 A100D 支持。
 
 **ACR**
-:   Access Control Region. NVIDIA's signed secure-boot framework for GPU microcontrollers,
-    responsible for carving the write-protected regions in framebuffer and for the mutex
-    that serialises secure engine access. A held ACR mutex is one of the recurring
-    explanations offered for a stuck SEC2 mailbox.
+::   访问控制区域。NVIDIA 面向 GPU 微控制器的签名安全启动框架，负责在帧缓冲中划出写保护区域，并负责那个串行化安全引擎访问的互斥锁。一个被持有的 ACR 互斥锁是解释 SEC2 邮箱卡死的反复出现的说法之一。
 
 **AER**
-:   Advanced Error Reporting, the standard PCIe error-logging capability. On a healthy
-    170HX `lspci -vvv` shows AER at capability offset `[420]` with all UESta/CESta bits
-    clear. AER counters are the correct instrument for judging whether a Gen2 or
-    capacitor-modded link is actually clean.
+::   Advanced Error Reporting（高级错误报告），标准的 PCIe 错误记录能力。在健康的 170HX 上，`lspci -vvv` 在能力偏移量 `[420]` 处显示 AER，所有 UESta/CESta 位清零。AER 计数器是判断一条 Gen2 或改装过电容的链路是否真正干净的正确工具。
 
-**AON island** (also **always-on island**, **GC6 island**, **PGC6**)
-:   The always-powered domain of the GPU that stays alive across engine resets. Registers
-    inside it survive [FLR](#f); registers outside it do not. This asymmetry is the single
-    most important structural fact about the unlock: `FEAT_OVR_PLM` (`0x00823804`), SS0 and
-    SS1 are AON and survive FLR, while CFG1, per-FBPA CFG1, CSTATUS, LMR, the FB-geometry
-    PLMs and the AON LMR shadow `0x001180f0` do not. It is why the compute unlock shipped
-    before the memory unlock. The mechanism description itself (that `SECURE_SCRATCH_14`
-    lives in a PGC6 domain marked RW-4R) is medium confidence.
+**AON island**（也作 **always-on island**、**GC6 island**、**PGC6**）
+::   GPU 的常电域，跨引擎复位仍保持存活。它内部的寄存器能挺过 [FLR](#f)；它外部的不能。这种不对称是整个解锁最重要的结构事实：`FEAT_OVR_PLM`（`0x00823804`）、SS0 和 SS1 是 AON 的并能挺过 FLR，而 CFG1、每-FBPA CFG1、CSTATUS、LMR、FB 几何 PLM 和 AON LMR 影子 `0x001180f0` 则不能。这就是算力解锁先于显存解锁发布的原因。机制描述本身（`SECURE_SCRATCH_14` 住在标为 RW-4R 的 PGC6 域里）是中等置信度。
 
 ---
 
 ## B
 
 **BAR0**
-:   Base Address Register 0. The 16 MB memory-mapped register aperture through which almost
-    every register in this wiki is read and written. Tools reach it by mmap-ing
-    `/sys/bus/pci/devices/<BDF>/resource0`. A BAR0 that reads all `0xffffffff` means the
-    card has fallen off the bus.
+::   Base Address Register 0（基址寄存器 0）。16 MB 的内存映射寄存器孔径，本维基里几乎所有寄存器都通过它读写。工具通过 mmap `/sys/bus/pci/devices/<BDF>/resource0` 到达它。一个全部读 `0xffffffff` 的 BAR0 意味着卡已掉下总线。
 
 **BAR1 / Resizable BAR**
-:   BAR1 is the framebuffer aperture exposed to the host. The 170HX advertises a Physical
-    Resizable BAR capability at `[bb0]` but the window is limited to 64 MiB, so large-BAR
-    tricks are not available.
+::   BAR1 是暴露给主机的帧缓冲孔径。170HX 在 `[bb0]` 声明一个 Physical Resizable BAR 能力，但窗口被限制到 64 MiB，所以大 BAR 的技巧不可用。
 
 **BAR2**
-:   The MMU-translated aperture used by the driver's own `kbusVerifyBar2` self-test.
-    Failures decoding to `NV_ERR_MEMORY_ERROR` (`0x72`) with the journal string
-    `"BAR 0/BAR 2 failed."` come from this test hitting a booter-carved WPR2 region, not
-    from damaged memory.
+::   由驱动自己的 `kbusVerifyBar2` 自检使用的 MMU 翻译孔径。解码到 `NV_ERR_MEMORY_ERROR`（`0x72`）并带日志字符串 `"BAR 0/BAR 2 failed."` 的失败，来自该测试命中一个 booter 划出的 WPR2 区域，而非来自损坏的显存。
 
 **BDF**
-:   Bus:Device.Function, the PCI address of the card, for example `0000:0a:00.0`. A
-    hardcoded BDF of `0a:00.0` in the userspace helper `tools/retrain.sh` was the root
-    cause of the machine-dependent PCIe Gen2 failures.
+::   Bus:Device.Function（总线:设备.功能），卡的 PCI 地址，例如 `0000:0a:00.0`。用户态辅助 `tools/retrain.sh` 中硬编码的 `0a:00.0` 是那些依赖机器的 PCIe Gen2 失败的根因。
 
 **Booter / Booter Load**
-:   The NVIDIA-signed ACR bootloader ucode that the driver runs on the [SEC2](#s) Falcon to
-    authenticate and launch [GSP-RM](#g). The unlock works by handing Booter Load a
-    deliberately oversized signature buffer so that a controlled overflow executes a
-    [ROP chain](../unlock/rop-chain.md) inside the Booter's own privilege context. Booter
-    reports `0xffff` on every run in the shipping flow, success or not, so a register
-    readback is the only real verdict.
+::   NVIDIA 签名的 ACR 引导加载器 ucode，驱动把它运行在 [SEC2](#s) Falcon 上以认证并启动 [GSP-RM](#g)。解锁靠给 Booter Load 一个刻意超大的签名缓冲区，使一次受控溢出在 Booter 自己的权限上下文内执行一个 [ROP 链](../unlock/rop-chain.md)。Booter 在发布流程的每次运行中都报告 `0xffff`，无论成败，所以寄存器回读是唯一真正的裁决。
 
 **BSI scratch**
-:   The `0x001180xx` secure-scratch block (for example `SECURE_SCRATCH_14` at `0x001180f8`,
-    and the AON LMR shadow at `0x001180f0`). Read from PL0 these return `0xbadf5108`. The
-    expansion of "BSI" is not established in this corpus.
+::   `0x001180xx` 安全临时块（例如 `SECURE_SCRATCH_14` 在 `0x001180f8`，以及 AON LMR 影子在 `0x001180f0`）。从 PL0 读它们返回 `0xbadf5108`。"BSI" 的展开在本语料库中未确定。
 
 ---
 
 ## C
 
 **Canary**
-:   A stack canary: a random per-boot value the Booter stores below its saved return
-    address and re-checks before returning, so that a naive buffer overflow is detected.
-    The 170HX Booter loads its canary from DMEM `0x6340`. A mismatch panics with SEC2
-    mailbox `0x47`. The shipping payload writes a **fake canary** value of `0xc0deca7e` at
-    several offsets in the crafted signature buffer.
+::   一个栈金丝雀：一个随启动随机的值，Booter 把它存在保存的返回地址下方并在返回前重新检查，从而检测出幼稚的缓冲区溢出。170HX Booter 从 DMEM `0x6340` 加载它的金丝雀。不匹配会以 SEC2 邮箱 `0x47` panic。发布的载荷在构造的签名缓冲区里几个偏移量处写入一个值为 `0xc0deca7e` 的**假金丝雀**。
 
 **CE**
-:   Copy Engine. The GPU's DMA engines. Relevant twice: shipping patch 0005 disables the
-    VAS-based CE scrubber path on these cards, and an Xid 31 capture names
-    `ENGINE CE2 HUBCLIENT_HSCE2` as the faulting client at the top of the 64 GB window.
+::   Copy Engine（复制引擎）。GPU 的 DMA 引擎。两次相关：发布补丁 0005 在这些卡上禁用基于 VAS 的 CE 清理路径，以及一份 Xid 31 捕获把 `ENGINE CE2 HUBCLIENT_HSCE2` 命名为 64 GB 窗口顶端处的故障客户端。
 
 **CFG0 / CFG1**
-:   `NV_PFB_FBPA_CFG0` and `NV_PFB_FBPA_CFG1`, the memory-controller configuration
-    registers. CFG1 is the register that defines addressing depth per partition and is the
-    primary memory-unlock target. Broadcast CFG1 is `0x009a0204`; the per-FBPA unicast copy
-    is `0x00900204 + n*0x4000` for n = 0..23. Stock CFG1 is `0x02449000` on **both** SKUs;
-    unlocked it is `0x02779000` (8 GB card) or `0x02669000` (10 GB card). Byte [23:16] is
-    the tier: `0x44` stock, `0x66` = 2048 MiB per FBPA, `0x77` = 4096 MiB per FBPA. Live
-    per-FBPA CFG0 reads `0x07981800` on every active partition of both cards.
+::   `NV_PFB_FBPA_CFG0` 和 `NV_PFB_FBPA_CFG1`，内存控制器配置寄存器。CFG1 是定义每个分区寻址深度的寄存器，也是显存解锁的主要目标。广播 CFG1 是 `0x009a0204`；每-FBPA 的单播副本是 `0x00900204 + n*0x4000`，n = 0..23。出厂 CFG1 在两个 SKU 上都是 `0x02449000`；解锁后是 `0x02779000`（8 GB 卡）或 `0x02669000`（10 GB 卡）。字节 [23:16] 是层：出厂 `0x44`，`0x66` = 每 FBPA 2048 MiB，`0x77` = 每 FBPA 4096 MiB。两张卡每个活动分区上活着的每-FBPA CFG0 读 `0x07981800`。
 
 **CMP**
-:   Cryptocurrency Mining Processor, NVIDIA's product line for compute-restricted mining
-    parts. The CMP 170HX is the GA100-based member of that line, released 1 September 2021.
+::   Cryptocurrency Mining Processor（加密货币矿卡处理器），NVIDIA 面向计算受限挖矿部件的产品线。CMP 170HX 是那条线里基于 GA100 的成员，2021 年 9 月 1 日发布。
 
 **CSTATUS_RAMAMOUNT**
-:   The per-partition capacity readback register, at `0x0090020C + n*0x4000`. Stock it
-    reads `0x200` (512 MiB per FBPA) on both SKUs. A `0xbadf20NN` value here means that
-    partition is floorswept, with the low byte encoding the instance.
+::   每分区容量回读寄存器，位于 `0x0090020C + n*0x4000`。出厂时在两个 SKU 上都读 `0x200`（每 FBPA 512 MiB）。这里出现 `0xbadf20NN` 值意味着那个分区被地板清扫，低字节编码实例号。
 
 **CPU-RM**
-:   The monolithic driver mode in which the resource manager runs on the host CPU rather
-    than on the GSP, selected with `NVreg_EnableGpuFirmware=0`. It clocks the SM at the
-    1140 MHz base rather than the 1410 MHz GSP-RM locks in.
+::   资源管理器运行在主机 CPU 上而非 GSP 上的整体式驱动模式，用 `NVreg_EnableGpuFirmware=0` 选择。它把 SM 时钟在 1140 MHz 基频上，而不是 GSP-RM 锁定的 1410 MHz。
 
 **CYA_0**
-:   BAR0 `0x0008c2c0`. Bit 2 is `DIS_G2`, the Gen2 disable. The Gen2 branches clear it.
+::   BAR0 `0x0008c2c0`。位 2 是 `DIS_G2`，即 Gen2 禁用。Gen2 分支会清除它。
 
 ---
 
 ## D
 
 **DEVINIT**
-:   The device-initialisation script embedded in the VBIOS and executed before any firmware
-    runs. Several unresolved limits (ECC, NVLink, possibly PCIe Gen3) are believed to be
-    established at DEVINIT time, which is why register-level overrides after boot do not
-    reach them.
+::   嵌入 VBIOS、在任何固件运行前执行的设备初始化脚本。几个未解决的限制（ECC、NVLink、可能还有 PCIe Gen3）被认为在 DEVINIT 时确立，这就是为什么启动后的寄存器级覆盖碰不到它们。
 
 **DKMS / srcversion**
-:   DKMS rebuilds out-of-tree kernel modules per kernel. `srcversion` is the module's
-    source hash; comparing `/sys/module/nvidia/srcversion` against the srcversion of
-    `/lib/modules/$(uname -r)/updates/cmpunlocker/nvidia.ko` is the definitive test for
-    whether the patched module or the stock one is actually running.
+::   DKMS 为每个内核重建树外内核模块。`srcversion` 是模块的源码哈希；比较 `/sys/module/nvidia/srcversion` 与 `/lib/modules/$(uname -r)/updates/cmpunlocker/nvidia.ko` 的 srcversion，是判断实际运行的是补丁模块还是出厂模块的确定性测试。
 
 **DIO**
-:   The Falcon's secondary data-I/O sideband interface, used by the Booter to reach the
-    always-on scratch registers. The letters are not expanded in any public NVIDIA
-    document. A poisoned DIO read of `0x1180f8` returns `0xdead5ec1`.
+::   Falcon 的次级数据 I/O 带外接口，Booter 用它到达常电临时寄存器。这些字母在任何公开 NVIDIA 文档中都没展开。一次对 `0x1180f8` 的下毒 DIO 读返回 `0xdead5ec1`。
 
 **DLLLA**
-:   Data Link Layer Link Active, bit 13 (`0x2000`) of the PCIe Link Status register. The
-    GPU always reports LnkSta `0x1042` with DLLLA clear, even on a trained Gen2 x4 link, so
-    patch `0008`'s success predicate never fires and the "retrain completed without Gen2 link"
-    line is a **false negative on every host**. `0x7042` is the *upstream root port's* LnkSta in
-    the same capture, not a different class of host; `0008` reads the GPU's.
+::   Data Link Layer Link Active（数据链路层链路活跃），PCIe Link Status 寄存器的位 13（`0x2000`）。GPU 总是报告 LnkSta `0x1042` 且 DLLLA 清零，即使在已训练好的 Gen2 x4 链路上也如此，所以补丁 `0008` 的成功谓词从不触发，而 "retrain completed without Gen2 link" 那行在**每台主机上都是假阴性**。`0x7042` 是同一份捕获中*上游根端口*的 LnkSta，不是不同类别的主机；`0008` 读的是 GPU 的。
 
 **DMEM / IMEM**
-:   Falcon data memory and instruction memory. The standalone tooling loaded 63,232 bytes at
-    DMEM `0x0900` and 45,824 bytes at IMEM `0x0000`. IMEM is 256-byte block aligned. Once
-    the Falcon is in [HS mode](#h), DMEM can be neither read nor written: writes are
-    silently dropped and `DMEM_PRIV_LEVEL_MASK` (`0x00840284`) shows `wr_prot == 0`.
+::   Falcon 数据内存和指令内存。独立工具在 DMEM `0x0900` 加载 63,232 字节、在 IMEM `0x0000` 加载 45,824 字节。IMEM 按 256 字节块对齐。一旦 Falcon 进入 [HS 模式](#h)，DMEM 既不能读也不能写：写入被静默丢弃，`DMEM_PRIV_LEVEL_MASK`（`0x00840284`）显示 `wr_prot == 0`。
 
 **`dmem.bin`**
-:   The optional external payload override at
-    `/lib/firmware/nvidia/ga100/gsp/dmem.bin`. It is a development hook. Its absence is
-    reported as status `0x59` and is the normal, healthy path.
+::   `/lib/firmware/nvidia/ga100/gsp/dmem.bin` 处的可选外部载荷覆盖。它是一个开发钩子。它的缺失以状态 `0x59` 报告，是正常、健康的路径。
 
 ---
 
 ## E
 
 **ECC**
-:   Error-Correcting Code memory. Fused off on the 170HX (`FUSE_ECC_EN = 0x0`), with no
-    known lever and no telemetry: `nvidia-smi -q` reports every ECC field as `N/A`. The
-    branch named `ecc` contains no ECC code at all. See [ECC](../frontier/ecc.md).
+::   Error-Correcting Code（纠错码）内存。在 170HX 上熔断关闭（`FUSE_ECC_EN = 0x0`），没有已知开关也没有遥测：`nvidia-smi -q` 把每个 ECC 字段报告为 `N/A`。名为 `ecc` 的分支里面根本没有任何 ECC 代码。参见[ECC](../frontier/ecc.md)。
 
 **EPS 8-pin**
-:   The CPU-style 8-pin power connector the card actually uses, rated 300 W and internally
-    carrying two separate 12 V rails. It is **not** a PCIe 8-pin (rated 150 W), and the
-    12 V and ground pin assignments differ between the two. See [Risks](risks.md).
+::   卡实际使用的 CPU 式 8-pin 电源接口，额定 300 W，内部携带两条独立的 12 V 轨。它**不是** PCIe 8-pin（额定 150 W），两者在部分引脚上的 12 V 和地线排布不同。参见[Risks](risks.md)。
 
 ---
 
 ## F
 
 **Falcon**
-:   NVIDIA's family of small embedded microcontrollers, commonly expanded as *FAst Logic
-    CONtroller*, present as SEC2, GSP's boot core, FECS and others. Falcons have their own
-    IMEM/DMEM, a crypto co-processor, and hardware-enforced security modes.
+::   NVIDIA 的一族小型嵌入式微控制器，常展开为 *FAst Logic CONtroller*，以 SEC2、GSP 的启动核、FECS 等形态出现。Falcon 有自己的 IMEM/DMEM、一个加密协处理器，以及硬件强制的安全模式。
 
 **FBHUB**
-:   The framebuffer hub, the crossbar between engine clients and the framebuffer
-    partitions. `FBHUB_NUM_ACTIVE_LTCS` at `0x00100800` reads `0x10` (16) on the 8 GB card
-    and `0x14` (20) on the 10 GB card.
+::   帧缓冲枢纽，引擎客户端与帧缓冲分区之间的交叉开关。`FBHUB_NUM_ACTIVE_LTCS` 在 `0x00100800` 处，8 GB 卡读 `0x10`（16），10 GB 卡读 `0x14`（20）。
 
 **FBP / FBPA**
-:   FBP is a framebuffer partition, the memory-subsystem slice that contains the L2 slices
-    and two FBPAs. FBPA (commonly expanded *frame buffer partition adapter*) is the DRAM
-    controller itself. The 8 GB card has 16 active FBPAs across 8 FBPs, a 4096-bit bus; the
-    10 GB card has 20 FBPAs across 10 FBPs, a 5120-bit bus. Probe tooling walks 24 FBPA
-    slots because the full GA100 has 24.
+::   FBP 是一个帧缓冲分区，即包含 L2 切片和两个 FBPA 的显存子系统切片。FBPA（常展开为 *frame buffer partition adapter*，帧缓冲分区适配器）就是 DRAM 控制器本身。8 GB 卡在 8 个 FBP 上有 16 个活动 FBPA，4096-bit 总线；10 GB 卡在 10 个 FBP 上有 20 个 FBPA，5120-bit 总线。探测工具走 24 个 FBPA 槽位，因为完整 GA100 有 24 个。
 
 **FECS**
-:   The FrontEnd Context Switch microcontroller in the graphics pipeline.
-    `FECS_FEAT_OVERRIDE` (`0x00409664`) and `FECS_FEAT_READOUT_1` (`0x00409668`) mirror the
-    PRI feature-override state and read `0xbadf5040` from an unprivileged context.
+::   图形流水线中的前端上下文切换微控制器。`FECS_FEAT_OVERRIDE`（`0x00409664`）和 `FECS_FEAT_READOUT_1`（`0x00409668`）镜像 PRI 功能覆盖状态，从未特权上下文读返回 `0xbadf5040`。
 
 **Floorsweeping**
-:   Permanently disabling defective or surplus units (GPCs, TPCs, FBPAs, NVLinks) via fuses
-    at manufacture, to salvage partially defective die. Floorsweep masks are **per die**,
-    not per SKU: four 170HX cards read `OPT_GPC_DISABLE` values of `0x85`, `0x45`, `0x13`
-    and `0xa8` while all four still enumerated 70 SMs. Never hard-code a floorsweep value.
+::   制造时通过熔丝永久禁用有缺陷或多余的单元（GPC、TPC、FBPA、NVLink），以挽救部分有缺陷的晶片。地板清扫掩码**按晶片**而非按 SKU：四张 170HX 卡读出的 `OPT_GPC_DISABLE` 值分别是 `0x85`、`0x45`、`0x13` 和 `0xa8`，而四张仍全部枚举 70 个 SM。绝不硬编码一个地板清扫值。
 
 **FLR**
-:   Function Level Reset, the PCIe per-function reset triggered by
-    `echo 1 > /sys/bus/pci/devices/<BDF>/reset`. The 170HX advertises `FLReset+` in DevCap,
-    which is what makes the unlock harnesses possible. A successful FLR **does** clear WPR2
-    and does clear the SEC2 reset-PLM taint (`0x8f` back to `0xff`), but it does not reset
-    the [AON island](#a).
+::   Function Level Reset（功能级复位），由 `echo 1 > /sys/bus/pci/devices/<BDF>/reset` 触发的 PCIe 每功能复位。170HX 在 DevCap 里声明 `FLReset+`，这正是解锁装置可行的原因。一次成功的 FLR **确实**清除 WPR2，也确实清除 SEC2 复位-PLM 污染（`0x8f` 回到 `0xff`），但它不复位 [AON island](#a)。
 
 **FRTS**
-:   The FWSEC command that establishes the firmware-resident region in framebuffer before
-    GSP boot, invoked from `kgspPrepareForBootstrap`. No expansion of the acronym is
-    established anywhere in this corpus.
+::   在 GSP 启动前于帧缓冲中建立固件驻留区域的 FWSEC 命令，从 `kgspPrepareForBootstrap` 调用。该缩写的展开在本语料库的任何地方都没确定。
 
 **FWSEC / FWSECLIC**
-:   The VBIOS-resident firmware-security ucode that runs on a Falcon early in boot and
-    performs, among other things, the FRTS carve. Shipping patch 0002 exists largely to
-    make FWSEC failures diagnosable, converting fatal asserts into
-    `SEC2_DEBUG: FWSEC status=0x%x` style log lines. FWSECLIC is the licence-checking
-    companion.
+::   驻留 VBIOS 的固件安全 ucode，在引导早期运行在一个 Falcon 上，执行（其中就有）FRTS 划区。发布补丁 0002 很大程度上是为了让 FWSEC 失败可诊断，把致命断言转换成 `SEC2_DEBUG: FWSEC status=0x%x` 样式的日志行。FWSECLIC 是配套的许可证检查程序。
 
 ---
 
 ## G
 
 **GA100**
-:   The Ampere datacentre die used by both the A100 and the CMP 170HX: TSMC 7 nm N7,
-    54.2 billion transistors, 826 mm², BGA-2743 package, CUDA compute capability 8.0.
-    `PMC_BOOT_0` reads `0x170000a1` on every GA100 probed.
+::   A100 和 CMP 170HX 共同使用的 Ampere 数据中心晶片：TSMC 7 nm N7、542 亿晶体管、826 mm²、BGA-2743 封装、CUDA 计算能力 8.0。每个被探测的 GA100 上 `PMC_BOOT_0` 都读 `0x170000a1`。
 
 **GPC / TPC / SM**
-:   Graphics Processing Cluster, Texture Processing Cluster, Streaming Multiprocessor. The
-    170HX enumerates 5 active GPCs, 35 active TPCs and **70 SMs** (4480 CUDA cores) on both
-    SKUs, already at its fuse floor. A full GA100 would be 8 GPCs and 64 TPCs.
+::   Graphics Processing Cluster（图形处理集群）、Texture Processing Cluster（纹理处理集群）、Streaming Multiprocessor（流多处理器）。170HX 在两个 SKU 上都枚举 5 个活动 GPC、35 个活动 TPC 和 **70 个 SM**（4480 个 CUDA 核心），已经处在它的熔丝下限。完整 GA100 会是 8 个 GPC 和 64 个 TPC。
 
 **GSP**
-:   GPU System Processor, the RISC-V microcontroller on Ampere and later that runs most of
-    the resource manager on-die.
+::   GPU System Processor（GPU 系统处理器），Ampere 及以后的 RISC-V 微控制器，在晶片上运行大部分资源管理器。
 
 **GSP-RM**
-:   The resource-manager firmware image that runs on the GSP. Its counterpart on the host
-    is Kernel-RM / CPU-RM. Boot failures in this wiki are almost always GSP-RM bootstrap
-    failures.
+::   运行在 GSP 上的资源管理器固件映像。它在主机上的对应物是 Kernel-RM / CPU-RM。本维基里的启动失败几乎总是 GSP-RM 引导失败。
 
 ---
 
 ## H
 
 **HBM2 / HBM2e**
-:   High Bandwidth Memory, the stacked DRAM used by GA100. Theoretical peak on the 170HX is
-    1555.2 GB/s (1215 MHz DDR across 5120 bits). Measured figures span 1305.86 to
-    1600 GB/s depending on tool and access pattern; there is no single canonical number.
+::   High Bandwidth Memory（高带宽内存），GA100 使用的堆叠 DRAM。170HX 上的理论峰值是 1555.2 GB/s（5120-bit 上的 1215 MHz DDR）。实测数值根据工具和访问模式在 1305.86 到 1600 GB/s 之间；没有一个唯一的规范数字。
 
-**HS mode** (Heavy Secure)
-:   The Falcon's highest privilege mode. Code enters HS only after signature verification;
-    once in HS the low-secure bootstrap at IMEM `0x00` is wiped, DMEM becomes inaccessible
-    from the host, and the Falcon can write registers that are otherwise PL0-blocked. The
-    entire memory unlock exists because a specific register write set is only reachable
-    from HS.
+**HS mode**（Heavy Secure）
+::   Falcon 的最高权限模式。代码只有在签名验证后才会进入 HS；一旦进入 HS，IMEM `0x00` 处的低安全引导程序被擦除，DMEM 对主机不可访问，Falcon 可以写其它被 PL0 阻挡的寄存器。整个显存解锁之所以存在，是因为一组特定的寄存器写入只有从 HS 才够得着。
 
 **HULK**
-:   NVIDIA's internal licence/certificate mechanism for enabling debug and vendor features.
-    The 170HX carries a pre-built but empty HULK table of contents in its licence region at
-    `0xFE000`-`0xFEFFF`. Investigated and closed as a route.
+::   NVIDIA 用于启用调试和厂商功能的内部许可证/证书机制。170HX 在它的许可证区域 `0xFE000`-`0xFEFFF` 携带一个预建但为空的 HULK 目录表。已调查并作为一条路线关闭。
 
 ---
 
 ## I
 
 **InfoROM**
-:   The per-board persistent data region in the VBIOS image, holding serials and
-    calibration. On the DRIVE A100 it accounts for 99.5 % of the byte difference between
-    two physically distinct GPUs carrying the same firmware.
+::   VBIOS 映像里按板卡持久的、保存序列号和校准的数据区域。在 DRIVE A100 上，它占了两个物理上不同、却带相同固件的 GPU 之间字节差异的 99.5%。
 
 **IOMMU**
-:   The host input/output memory management unit. Passthrough mode (`iommu=pt`) is the
-    first thing to check when PCIe stays at Gen1 after installing the unlocker; the installer
-    sets `intel_iommu=on iommu=pt` or the AMD equivalent automatically.
+::   主机输入输出内存管理单元。直通模式（`iommu=pt`）是安装解锁器后 PCIe 仍停留在 Gen1 时首先要检查的；安装器会自动设置 `intel_iommu=on iommu=pt` 或 AMD 的等效项。
 
 ---
 
 ## L
 
 **LMR**
-:   `NV_PFB_PRI_MMU_LOCAL_MEMORY_RANGE` at `0x00100ce0`: the MMU's view of how much local
-    memory exists. Encoding is `size_MiB = MAG[9:4] << SCALE[3:0]`. Stock values are
-    `0x00000208` (8 GB card) and `0x00000288` (10 GB card); unlocked values are
-    `0x0000020B` (64 GB) and `0x0000028A` (40 GB). Its PLM is `0x001fa7c4`
-    (`..._LOCAL_MEMORY_RANGE__PRIV_LEVEL_MASK`), and there is an AON shadow at `0x001180f0`.
-    Do **not** expand LMR as "LM Request".
+::   `NV_PFB_PRI_MMU_LOCAL_MEMORY_RANGE` 在 `0x00100ce0`：MMU 对本地显存有多少的视图。编码是 `size_MiB = MAG[9:4] << SCALE[3:0]`。出厂值是 `0x00000208`（8 GB 卡）和 `0x00000288`（10 GB 卡）；解锁值是 `0x0000020B`（64 GB）和 `0x0000028A`（40 GB）。它的 PLM 是 `0x001fa7c4`（`..._LOCAL_MEMORY_RANGE__PRIV_LEVEL_MASK`），还有一个 AON 影子在 `0x001180f0`。**不要**把 LMR 展开成 "LM Request"。
 
 **LnkCap / LnkCap2 / LnkCtl2 / LnkSta**
-:   PCIe Express Capability registers for link capability, supported speeds, target speed
-    and trained status. Stock 170HX: `LnkCap 0x00456101`, `LnkCap2 0x00000002`,
-    `LnkSta 0x1041`. With the unlocker: `LnkCap 0x00456102`, `LnkCap2 0x00000006`,
-    `LnkCtl2 0x0002`, `LnkSta 0x1042`. Advertised capability is not the trained link.
+::   用于链路能力、受支持速度、目标速度和已训练状态的 PCIe Express Capability 寄存器。出厂 170HX：`LnkCap 0x00456101`、`LnkCap2 0x00000002`、`LnkSta 0x1041`。带解锁器：`LnkCap 0x00456102`、`LnkCap2 0x00000006`、`LnkCtl2 0x0002`、`LnkSta 0x1042`。声明的能力不是已训练的链路。
 
 **LTC**
-:   Level-two cache slice. The 170HX has 32 MB of L2 against the A100's 40 MB.
+::   Level-two cache slice（二级缓存切片）。170HX 有 32 MB 的 L2，而 A100 是 40 MB。
 
 **LTSSM**
-:   Link Training and Status State Machine, the PCIe state machine that negotiates speed
-    and width. On this card the register nicknamed LTSSM in the Gen2 patch is BAR0
-    `0x0008872c`, written with `0x00000006`. Fields at play elsewhere in that block include
-    LTSSM_DIRECTIVE (0 = NORMAL, 1 = CHANGE_SPEED) and a SPEED field at [19:18].
+::   Link Training and Status State Machine（链路训练与状态状态机），协商速度和位宽的 PCIe 状态机。在这块卡上，Gen2 补丁中昵称为 LTSSM 的寄存器是 BAR0 `0x0008872c`，写入 `0x00000006`。该块其它位置涉及的字段包括 LTSSM_DIRECTIVE（0 = NORMAL，1 = CHANGE_SPEED）和一个 [19:18] 处的 SPEED 字段。
 
 ---
 
 ## M
 
 **MIG**
-:   Multi-Instance GPU, Ampere's hardware partitioning feature. It can be enabled on an
-    unlocked 170HX by setting bit 0 of `0x820840`, after which `nvidia-smi` reports
-    `MIG M. Enabled` with 65536 MiB visible.
+::   Multi-Instance GPU（多实例 GPU），Ampere 的硬件分区功能。它可以通过设置 `0x820840` 的位 0 在解锁的 170HX 上启用，之后 `nvidia-smi` 报告 `MIG M. Enabled`，可见 65536 MiB。
 
     > [!WARNING]
-    > **Experimental**
-        The MIG enable is a community write and is **not** in the shipping unlocker.
+    > **实验性**
+        MIG 启用是一个社区写入，**不在**发布的解锁器中。
 
 **MOK / Secure Boot**
-:   Machine Owner Key enrolment, the mechanism that lets a signed out-of-tree module load
-    under UEFI Secure Boot. The patched modules are unsigned, so `install.sh` hard-fails if
-    `mokutil --sb-state` reports `SecureBoot enabled`.
+::   Machine Owner Key（机器所有者密钥）登记，让签名的树外模块能在 UEFI 安全启动下加载的机制。补丁模块未签名，所以如果 `mokutil --sb-state` 报告 `SecureBoot enabled`，`install.sh` 会硬性失败。
 
 ---
 
 ## N
 
 **NVGI / PciAt / FwSec body**
-:   The three main regions of a GA100 VBIOS image. NVGI is the earliest, executed by the
-    PBUS/XVE init-from-ROM sequencer before any firmware runs; PciAt holds the PCI-visible
-    identity; the FwSec body holds the signed firmware. The whole functional difference
-    between the 8 GB and 10 GB VBIOS images comes down to 2 bytes in the NVGI bootstrap.
+::   GA100 VBIOS 映像的三个主要区域。NVGI 是最早的，在任何固件运行前由 PBUS/XVE 的从 ROM 初始化序列器执行；PciAt 持有 PCI 可见的身份；FwSec body 持有签名的固件。8 GB 和 10 GB VBIOS 映像之间全部的功能差异归结为 NVGI 引导程序里的 2 个字节。
 
 **NVLink**
-:   Fused off on the 170HX (`FUSE_NVLINK_DIS`). No firmware or driver change can restore it.
-    Whether the board-side NVLink interface ICs are populated is unresolved. See
-    [NVLink](../frontier/nvlink.md).
+::   在 170HX 上熔断关闭（`FUSE_NVLINK_DIS`）。任何固件或驱动改动都无法恢复它。板侧 NVLink 接口 IC 是否被贴装仍未解决。参见[NVLink](../frontier/nvlink.md)。
 
 **nvidia-open**
-:   NVIDIA's open GPU kernel modules. `cmpunlocker` patches this tree, not the proprietary
-    one, and accepts exactly versions `610.43.03` (default) and `610.43.02`.
+::   NVIDIA 的开源 GPU 内核模块。`cmpunlocker` 补丁的是这棵树，不是专有那棵，并且恰好接受版本 `610.43.03`（默认）和 `610.43.02`。
 
 ---
 
 ## O
 
 **OTP**
-:   One-Time Programmable. The fuses that carry the compute throttle
-    (`OPT_SM_SPEED_SELECT`, nine separate fuses), the device ID, the PCIe generation
-    disables and the floorsweep masks. The registers exposing them are read-only fuse
-    shadows. The master kill fuse at `0x008203f0` reads `0x00000000` (unblown), which is
-    why any of this is possible.
+::   One-Time Programmable（一次性可编程）。携带算力节流（`OPT_SM_SPEED_SELECT`，九个独立熔丝）、设备 ID、PCIe 代数禁用和地板清扫掩码的熔丝。暴露它们的寄存器是只读的熔丝影子。位于 `0x008203f0` 的主清除熔丝读 `0x00000000`（未烧断），这就是这一切为何可能。
 
 ---
 
 ## P
 
 **P2P**
-:   Peer-to-peer GPU-to-GPU transfer. Absent on this card.
+::   Peer-to-peer（点对点）GPU 间传输。在这块卡上缺失。
 
-**PLM** (Privilege Level Mask)
-:   A per-register access-control mask that decides which privilege levels (PL0 host, up to
-    PL3 heavy-secure) may read and write the register it guards. Opening a PLM is the whole
-    game: the shipping in-driver path opens exactly four, in order, with at most two
-    attempts each:
+**PLM**（权限级别掩码）
+::   一个按寄存器控制的访问控制掩码，决定哪些权限级别（PL0 主机，直到 PL3 重度安全）可以读和写它所守护的寄存器。打开 PLM 是整个关键：发布的驱动内路径按顺序恰好打开四个，每个最多尝试两次：
 
-    | Index | Name | Address | Target value |
+    | 索引 | 名称 | 地址 | 目标值 |
     |---|---|---|---|
     | 0 | `WPR_CFG` | `0x001fa7cc` | `0xfffff0ff` |
     | 1 | `FBPA` | `0x009a0148` | `0xffffffff` |
     | 2 | `WPR` | `0x001fa7c4` | `0xffffffff` |
     | 3 | `FEAT` | `0x00823804` | `0xffffffff` |
 
-    A `WPR_CFG` readback of `0xfffff0ff` is **correct** and is not a failure. Guides that
-    say "all PLMs must show `0xffffffff`" are over-strict.
+    `WPR_CFG` 回读为 `0xfffff0ff` 是**正确的**，不是失败。说 "all PLMs must show `0xffffffff`" 的指南过于严格。
 
 **PMA**
-:   Physical Memory Allocator, the RM object that owns framebuffer pages
-    (`pmaRegisterRegion`, `pmaGetFreeMemory`, `PMA_REGION_DESCRIPTOR`). Shipping patch 0003
-    performs a "late PMA extension" that grows the high PMA region to cover the newly
-    exposed framebuffer, logging `SEC2_DEBUG: late PMA extension status=0x%x`. It has
-    nothing to do with power management.
+::   Physical Memory Allocator（物理内存分配器），拥有帧缓冲页的 RM 对象（`pmaRegisterRegion`、`pmaGetFreeMemory`、`PMA_REGION_DESCRIPTOR`）。发布补丁 0003 执行一次"晚期 PMA 扩展"，把高的 PMA 区域扩到覆盖新暴露的帧缓冲，记录 `SEC2_DEBUG: late PMA extension status=0x%x`。它与电源管理毫无关系。
 
 **PMC_BOOT_0**
-:   BAR0 `0x00000000`, the chip identity register. Reads `0x170000a1` on every GA100. A
-    GA10x control part reads `0xb74000a1`.
+::   BAR0 `0x00000000`，芯片身份寄存器。在每个 GA100 上都读 `0x170000a1`。一个 GA10x 对照部件读 `0xb74000a1`。
 
 **PRAMIN**
-:   The privileged BAR0 window that gives the CPU direct access to a movable region of
-    video memory. Shipping patch 0004 clamps the PRAMIN base back to a stock 8 GB-derived
-    offset (`(0x2000ULL << 20) - DRF_SIZE(NV_PRAMIN)`) whenever `fbAddrSpaceSizeMb > 0x2000`,
-    because otherwise the window would be computed from 65536 MB and land outside reachable
-    BAR0 space. PRAMIN was also the instrument that proved 80 distinct GiB of physical DRAM
-    are present on a 10 GB card.
+::   特权 BAR0 窗口，让 CPU 直接访问视频内存的一块可移动区域。发布补丁 0004 在 `fbAddrSpaceSizeMb > 0x2000` 时把 PRAMIN 基址钳回出厂 8 GB 派生的偏移量（`(0x2000ULL << 20) - DRF_SIZE(NV_PRAMIN)`），因为否则窗口会从 65536 MB 计算并落到可达 BAR0 空间之外。PRAMIN 也是证明 10 GB 卡上有 80 个不同的 GiB 物理 DRAM 的工具。
 
 **PRI**
-:   The GPU's internal privileged register bus. A read that is blocked or targets nothing
-    returns a `0xbadfXXXX` poison value rather than data: `0xbadf5040` = blocked by a
-    privilege level mask, `0xbadf1100` = target does not exist, `0xbadf20NN` = target exists
-    but that FBPA is floorswept, `0xbadf5108` = AON secure scratch read from PL0.
+::   GPU 的内部特权寄存器总线。被阻挡或目标不存在的读返回 `0xbadfXXXX` 毒值而非数据：`0xbadf5040` = 被权限级别掩码阻挡，`0xbadf1100` = 目标不存在，`0xbadf20NN` = 目标存在但那个 FBPA 被地板清扫，`0xbadf5108` = 从 PL0 读 AON 安全临时。
 
 **`probe.sh`**
-:   The read-only characterisation tool (`tools/mmio-probe`). It mmaps `resource0`
-    read-only, dumps roughly 120 to 130 named registers plus 24 per-FBPA reads, and
-    **never writes to BAR0**. Constants: `FBPA_BASE = 0x900000`, `FBPA_STRIDE = 0x4000`,
-    `CSTATUS_RAM = 0x20C`. It emits `registers.json`, `lspci.txt`, `nvidia-smi.txt`,
-    `gpu-summary.csv` and `probe.log`. It is the standard verification instrument: after
-    any write, read the register back with `probe.sh` rather than trusting a tool's claim
-    of success.
+::   只读表征工具（`tools/mmio-probe`）。它以只读方式 mmap `resource0`，转储大约 120 到 130 个具名寄存器加 24 次每-FBPA 读，并且**从不对 BAR0 写入**。常量：`FBPA_BASE = 0x900000`、`FBPA_STRIDE = 0x4000`、`CSTATUS_RAM = 0x20C`。它输出 `registers.json`、`lspci.txt`、`nvidia-smi.txt`、`gpu-summary.csv` 和 `probe.log`。它是标准的验证工具：任何写入之后，用 `probe.sh` 回读寄存器，而不是相信工具的声称成功。
 
 **PTE kind**
-:   The "kind" field of a GPU page table entry, describing compression and tiling format.
-    Shipping patch 0005 forces `*pteKind = NV_MMU_PTE_KIND_GENERIC_MEMORY` in place of
-    `..._COMPRESSIBLE_DISABLE_PLC` for these device IDs.
+::   GPU 页表条目的 "kind"（种类）字段，描述压缩和分块格式。发布补丁 0005 为这些设备 ID 强制 `*pteKind = NV_MMU_PTE_KIND_GENERIC_MEMORY`，取代 `..._COMPRESSIBLE_DISABLE_PLC`。
 
 ---
 
 ## R
 
 **RFRD**
-:   An image-layout descriptor record in the VBIOS SPI ROM, found at absolute `0x2000`.
-    One community parser mislabels it as a "power table", which it is not.
+::   VBIOS SPI ROM 中的一个映像布局描述符记录，位于绝对地址 `0x2000`。一个社区解析器把它误标为 "power table"，它不是。
 
 **ROP chain**
-:   Return-Oriented Programming chain. A payload built entirely from short instruction
-    sequences ("gadgets") already present in signed code, chained by overwriting return
-    addresses, so that no new code has to be signed. On this card the chain is placed in
-    the oversized GSP signature buffer and executed by the SEC2 Booter. The Booter takes its
-    hijacked return address from DMEM `0xFF5C`; `0xFF48` is the saved-r3 slot in the `0x4d4`
-    pop block and the base of the `0x18`-byte frame grid, so in the superseded standalone
-    chains an N-write tail began at `0xFF48 + N*0x18`. See [ROP chain](../unlock/rop-chain.md).
+::   Return-Oriented Programming chain（面向返回编程链）。一个完全由已签名代码中现成的短指令序列（"gadgets"，小工具）构建的载荷，通过覆写返回地址把它们串起来，这样就不需要为任何新代码签名。在这块卡上，链被放在超大的 GSP 签名缓冲区里，由 SEC2 Booter 执行。Booter 从 DMEM `0xFF5C` 取它被劫持的返回地址；`0xFF48` 是 `0x4d4` pop 块里的保存-r3 槽位，也是 `0x18` 字节帧网格的基址，所以在被取代的独立链中，一个 N 写尾部从 `0xFF48 + N*0x18` 开始。参见[ROP 链](../unlock/rop-chain.md)。
 
 ---
 
 ## S
 
 **SBR**
-:   Secondary Bus Reset, a stronger reset than FLR issued by the upstream bridge. SBR drops
-    and re-initialises the always-on power domain, so it clears wedges rooted in AON scratch
-    that survive FLR.
+::   Secondary Bus Reset（次级总线复位），由上游桥发出的一种比 FLR 更强的复位。SBR 会下电并重新初始化常电域，所以它能清除根植于挺过 FLR 的 AON 临时状态里的卡死。
 
 **SCP**
-:   The Falcon's Secure Co-Processor, the crypto block used for signature verification and
-    key handling. `SCP_CTL_P2PRX` bit 3 (SFK_LOADED) is polled during Falcon engine-reset
-    recovery.
+::   Falcon 的 Secure Co-Processor（安全协处理器），用于签名验证和密钥处理的加密块。Falcon 引擎复位恢复期间会轮询 `SCP_CTL_P2PRX` 位 3（SFK_LOADED）。
 
 **SEC2**
-:   The GPU's security-engine Falcon, at BAR0 base `0x00840000` (mailbox 0 at `0x00840040`).
-    It runs the Booter ucode, and it is the engine that the unlock exploits. Its
-    reset-PLM observable (address reported as `0x008403C4`, identity disputed) reads `0xff`
-    clean, `0x8f` after `secure_teardown` has run, `0x00cf` in the driver-still-loaded
-    partial-fire state.
+::   GPU 的安全引擎 Falcon，位于 BAR0 基址 `0x00840000`（邮箱 0 在 `0x00840040`）。它运行 Booter ucode，也是解锁所利用的引擎。它的复位-PLM 可观察量（地址报告为 `0x008403C4`，身份有争议）干净时读 `0xff`，`secure_teardown` 运行后读 `0x8f`，驱动仍加载的部分触发状态下读 `0x00cf`。
 
 **Signature buffer**
-:   The memory descriptor holding the GSP firmware signature. Stock size is 4096 bytes; the
-    shipping patch enlarges it to `0x0000f800` (63,488 bytes) and fills it with the payload,
-    dword `0x000004a7`. The earlier, abandoned approach patched `gsp_tu10x.bin` on disk and
-    was blocked by the `fwsignature_ga100` section being only `0x1000` bytes.
+::   持有 GSP 固件签名的内存描述符。出厂大小为 4096 字节；发布补丁把它放大到 `0x0000f800`（63,488 字节）并填充载荷，dword `0x000004a7`。更早、被放弃的做法是在磁盘上补丁 `gsp_tu10x.bin`，但被 `fwsignature_ga100` 节只有 `0x1000` 字节所阻挡。
 
 **SS0 / SS1**
-:   `FEATURE_OVERRIDE_SM_SPEED_SELECT` (`0x0082381c`) and `..._SM_SPEED_SELECT_1`
-    (`0x00823820`). These control per-instruction-unit **issue rate**, not which SMs are
-    active. The unlock writes `0x88888888` and `0x00000008`. A locked card reads, for
-    example, `0x53540175` at SS0. They are AON and survive FLR. They are not "Suspension
-    State" registers.
+::   `FEATURE_OVERRIDE_SM_SPEED_SELECT`（`0x0082381c`）和 `..._SM_SPEED_SELECT_1`（`0x00823820`）。它们控制每个指令单元的**发射速率**，而不是哪些 SM 活跃。解锁写入 `0x88888888` 和 `0x00000008`。锁定卡读的例如 SS0 是 `0x53540175`。它们是 AON 的并挺过 FLR。它们不是 "Suspension State" 寄存器。
 
 **Strap / strap resistor**
-:   A 0402 resistor plus an empty adjacent pad, where moving the part between positions
-    flips a hardware-sampled configuration bit. The 170HX carries five strap pairs
-    (ten pads, designators R986 to R1005) plus a DEVID_SEL pair elsewhere. The primary PCIe
-    device ID is fused into the die and is **not** strap-settable
-    (`FUSE_DEVID_SW_OVR_DIS 0x00820584` = 1 on every card probed).
+::   一个 0402 电阻加一个空的相邻焊盘，在两个位置之间移动元件就会翻转一个由硬件采样的配置位。170HX 携带五对跨接（十个焊盘，位号 R986 到 R1005），外加别处的 DEVID_SEL 一对。主 PCIe 设备 ID 熔进晶片，**不能**靠跨接设置（`FUSE_DEVID_SW_OVR_DIS 0x00820584` = 在每张被探测的卡上都是 1）。
 
 ---
 
 ## V
 
 **VBIOS**
-:   The card's firmware ROM. Four 170HX images exist publicly; the TechPowerUp "16 GB" and
-    "0 GB" size labels on two of them are wrong and neither unlocks memory. VBIOS version
-    makes no difference to whether the unlock works. See [VBIOS](../hardware/vbios.md).
+::   卡的固件 ROM。公开存在四款 170HX 映像；其中两款上 TechPowerUp 的 "16 GB" 和 "0 GB" 大小标签是错的，且两者都不解锁显存。VBIOS 版本对解锁能否生效没有区别。参见[VBIOS](../hardware/vbios.md)。
 
 **VSEC**
-:   Vendor-Specific Extended Capability, the PCIe config-space extended capability block.
-    Two registers matter for Gen2: `VSEC_DEVICE` at `0x0008860c` (bit 0 set through the
-    Booter payload) and `VSEC_HIERARCHY` at `0x00088610` (a plain host BAR0 write after the
-    Booter phase).
+::   Vendor-Specific Extended Capability（厂商特定扩展能力），PCIe 配置空间的扩展能力块。Gen2 有两个寄存器要紧：`VSEC_DEVICE` 在 `0x0008860c`（通过 Booter 载荷置位 0）和 `VSEC_HIERARCHY` 在 `0x00088610`（Booter 阶段之后的一次普通主机 BAR0 写入）。
 
 ---
 
 ## W
 
 **WPR / WPR1 / WPR2**
-:   Write Protected Region. Framebuffer ranges the MMU refuses to let unprivileged agents
-    write, used to hold ACR and GSP firmware state. WPR2 lo/hi live at `0x001fa824` and
-    `0x001fa828`. Disabled they read `0x1FFFFE00 / 0x00000000`; after a Booter run they read
-    `0x01F77000 / 0x01FFEE00`. The shipping patch saves both once and rewrites them before
-    **every** Booter Load attempt, rather than clearing them. "WPR2 already up" was the
-    dominant early failure and is now downgraded to a warning that continues.
+::   Write Protected Region（写保护区域）。MMU 拒绝让非特权代理写入的帧缓冲范围，用于持有 ACR 和 GSP 固件状态。WPR2 的高低值位于 `0x001fa824` 和 `0x001fa828`。禁用时它们读 `0x1FFFFE00 / 0x00000000`；一次 Booter 运行后读 `0x01F77000 / 0x01FFEE00`。发布补丁把两者各保存一次，并在**每一次** Booter Load 尝试前重写它们，而不是清除它们。"WPR2 already up" 是早期的主导失败，现在降级为一条继续执行的警告。
 
 **WprMeta**
-:   The metadata structure describing the WPR layout, including `fbSize` and
-    `sizeOfSignature`, that the driver populates and the Booter validates.
+::   描述 WPR 布局的元数据结构，包括 `fbSize` 和 `sizeOfSignature`，由驱动填充、由 Booter 验证。
 
 ---
 
 ## X
 
 **Xid**
-:   NVIDIA's driver-emitted error identifier. The ones that matter here:
+::   NVIDIA 驱动发出的错误标识。这里要紧的有：
 
-    | Xid | Meaning in this corpus |
+    | Xid | 在本语料库中的含义 |
     |---|---|
-    | 31 | MMU fault, `FAULT_INFO_TYPE_REGION_VIOLATION`. Allocation past the usable top of the unlocked window. Card unusable in CUDA until reboot. At 80 GB, kernels touching more than roughly 40 GB cause fatal GPU loss independent of power limit; reported Xid codes include Xid 31 (described as harmless) and Xid 154 after CUDA memory tests, and the dominant reported symptom is hangs. Xid 31 alone was suggested by a bystander and was not corroborated as *the* signature by the operator with the failing card. |
-    | 45 | Provoked by SIGKILLing a live CUDA verification kernel; forces a reset cycle. |
-    | 119 | GSP RPC timeout. Two distinct variants: 60 s waiting on function 4097 `GSP_INIT_DONE` (boot never completed) and 6 s on function 103 `GSP_RM_ALLOC` (post-boot hang, repeats per `nvidia-smi`). |
-    | 154 | Dominant failure after CUDA memory tests on the over-provisioned 80 GB configuration; limits the card to one CUDA context per fire. |
+    | 31 | MMU 故障，`FAULT_INFO_TYPE_REGION_VIOLATION`。分配越过解锁窗口可用顶端。卡在重启前无法在 CUDA 中使用。在 80 GB 下，触碰超过约 40 GB 的内核会独立于功耗上限造成致命 GPU 丢失；报告的错误码包括 Xid 31（被描述为无害）和 CUDA 内存测试后的 Xid 154，主导报告症状是挂起。Xid 31 单独是旁观者提出的，并未被有故障卡的操作者佐证为*那个*标志。 |
+    | 45 | 由 SIGKILL 一个活着的 CUDA 验证内核诱发；强制一次复位循环。 |
+    | 119 | GSP RPC 超时。两种不同变体：等函数 4097 `GSP_INIT_DONE` 60 秒（启动从未完成）和函数 103 `GSP_RM_ALLOC` 6 秒（启动后挂起，每次 `nvidia-smi` 重复）。 |
+    | 154 | 过度配置的 80 GB 配置在 CUDA 内存测试后的主导失败；把卡限制为每次触发一个 CUDA 上下文。 |
 
 **XP3G**
-:   The PCIe link-layer override block at `0x0008e1xx`, including `XP3G_OVR0` `0x0008e110`,
-    `XP3G_VAL0` `0x0008e120`, `XP3G_OVR3` `0x0008e11c`, `XP3G_VAL3` `0x0008e12c` and the PLM
-    quartet `0x0008e1b0` / `0x0008e1b4` / `0x0008e1b8` / `0x0008e1bc`. The Gen2 patch pushes a
-    23-entry `xp3gTable` through the Booter payload primitive (18 PLM opens plus 5 value
-    writes). NVIDIA has not published an expansion of the name.
+::   `0x0008e1xx` 处的 PCIe 链路层覆盖块，包括 `XP3G_OVR0` `0x0008e110`、`XP3G_VAL0` `0x0008e120`、`XP3G_OVR3` `0x0008e11c`、`XP3G_VAL3` `0x0008e12c` 和 PLM 四元组 `0x0008e1b0` / `0x0008e1b4` / `0x0008e1b8` / `0x0008e1bc`。Gen2 补丁通过 Booter 载荷原语推入一张 23 条目 `xp3gTable`（18 次 PLM 打开加 5 次值写入）。NVIDIA 未发布该名字的展开。
 
 **XVE**
-:   NVIDIA's internal name for the PCI Express endpoint and config-space block, base
-    `0x00088xxx`. The Gen2-family branches add three XVE capability PLMs to the table:
-    `0x00088ff4` (XVE), `0x00088ab4` (XVE_B), `0x00088ff8` (XVE_C). The letters are not
-    expanded in any public NVIDIA document.
+::   NVIDIA 对 PCI Express 端点和配置空间块的内部名称，基址 `0x00088xxx`。Gen2 系分支在表里加三个 XVE 能力 PLM：`0x00088ff4`（XVE）、`0x00088ab4`（XVE_B）、`0x00088ff8`（XVE_C）。这些字母在任何公开 NVIDIA 文档中都没展开。
 
 ---
 
-## Numbers, codes and file paths
+## 数字、代码和文件路径
 
 **`0x008200FC`**
-:   One register, two names. The branch source writes
-    `{0x008200fcU, 0xffffffffU, "OPT_PLM"}`, so `OPT_PLM` is the code name; `FUSE_SS_PLM` is
-    the clean-room tooling name for the same register. It is **not** written by shipping
-    master. Whether it is writable, and what it reads on a cold card, is open.
+::   一个寄存器，两个名字。分支源码写 `{0x008200fcU, 0xffffffffU, "OPT_PLM"}`，所以 `OPT_PLM` 是代码名；`FUSE_SS_PLM` 是净室工具对同一寄存器的名字。它**不**被发布的 master 写入。它是否可写、冷卡上读什么，仍是开放的。
 
 **`0xbadfXXXX`**
-:   See [PRI](#p). These are never stored data.
+::   参见[PRI](#p)。它们绝不是存储的数据。
 
 **`0xc0deca7e`**
-:   The fake canary sentinel placed in the crafted signature buffer.
+::   放在构造的签名缓冲区里的假金丝雀哨兵。
 
 **Branch names**
-:   There are **12** unreleased branch snapshots (`80`, `Gen2`, `PG199`,
-    `clanker_driver-port`, `debug-gen2`, `deced`, `docs`, `ecc`, `far`, `housekeeping`,
-    `memory`, `multiple-cards`) and 13 trees counting shipping `master`. Documents that say
-    "thirteen unreleased branches" are off by one.
+::   有 **12** 个未发布的分支快照（`80`、`Gen2`、`PG199`、`clanker_driver-port`、`debug-gen2`、`deced`、`docs`、`ecc`、`far`、`housekeeping`、`memory`、`multiple-cards`），加上当前发布的 `master` 共 13 棵树。说 "thirteen unreleased branches" 的文档差一个。
 
 **`/lib/modules/$(uname -r)/updates/cmpunlocker/`**
-:   Where the install writes the patched modules plus three marker files:
-    `driver_version`, `card_profile` (`8gb` or `10gb`) and `unlock_geometry`. Multi-card
-    branches add `gpu_inventory`.
+::   安装写入补丁模块外加三个标记文件的地方：`driver_version`、`card_profile`（`8gb` 或 `10gb`）和 `unlock_geometry`。多卡分支增加 `gpu_inventory`。
 
 **`SEC2_DEBUG`**
-:   The log tag for the unlock path. `sudo dmesg | grep SEC2_DEBUG` is the single primary
-    diagnostic. Two sibling tags exist: `SEC2_DEBUG_HEAP` and `SEC2_DEBUG_LATE_PMA`. All are
-    emitted at `LEVEL_ERROR`, so no extra debug flags are needed. Total absence of
-    SEC2_DEBUG lines means the patched module never ran.
+::   解锁路径的日志标签。`sudo dmesg | grep SEC2_DEBUG` 是唯一的主诊断手段。存在两个兄弟标签：`SEC2_DEBUG_HEAP` 和 `SEC2_DEBUG_LATE_PMA`。全部在 `LEVEL_ERROR` 级别发出，所以不需要额外的调试标志。完全没有 SEC2_DEBUG 行意味着补丁模块从未运行。
 
 ---
 
-## Tools referenced in this wiki
+## 本维基引用的工具
 
-| Tool | What it is used for here |
+| 工具 | 在这里的用途 |
 |---|---|
-| `clpeak` | OpenCL bandwidth and compute microbenchmark; source of the Gen1 x4 ~0.85 GB/s figure |
-| `cuda_memtest` | GPU memory verification; the 80 GB profile passes once after reboot then fails |
-| `gpu-burn` | Sustained compute stress with an error counter; a stable 40 GB card passes 5 minutes cleanly |
-| `mixbench` | Mixed-precision throughput; its `1769.47 GB/sec` figure is theoretical, not measured |
-| `nvtop` | Live per-GPU telemetry including PCIe generation and width |
-| `ocl_pcie_bw` | OpenCL host-to-device bandwidth; source of the 6.63 to 6.67 GB/s Gen2 x16 figure |
-| `pcielink.sh` | Community data-collection script for link-training reports; prints identity plus the full LnkCap/LnkSta/AER set for GPU and bridge |
-| `probe.sh` | Read-only register survey; see [PRI](#p) above |
-| `verify.sh` | Per-BDF unlock verification on the multi-card branches |
-| `CH341A` | SPI flash programmer. GPU EEPROMs are 1.8 V, so a 1.8 V adapter is required |
+| `clpeak` | OpenCL 带宽和算力微基准；Gen1 x4 约 0.85 GB/s 数值的来源 |
+| `cuda_memtest` | GPU 显存验证；80 GB 档位在重启后通过一次然后失败 |
+| `gpu-burn` | 带错误计数器的持续算力压力；稳定的 40 GB 卡干净通过 5 分钟 |
+| `mixbench` | 混合精度吞吐；它的 `1769.47 GB/sec` 数值是理论的，不是实测 |
+| `nvtop` | 包括 PCIe 代数和位宽在内的实时每 GPU 遥测 |
+| `ocl_pcie_bw` | OpenCL 主机到设备带宽；Gen2 x16 的 6.63 到 6.67 GB/s 数值的来源 |
+| `pcielink.sh` | 收集链路训练报告的社区数据采集脚本；打印 GPU 和桥的身份加全套 LnkCap/LnkSta/AER |
+| `probe.sh` | 只读寄存器调查；见上方[PRI](#p) |
+| `verify.sh` | 多卡分支上的按-BDF 解锁验证 |
+| `CH341A` | SPI flash 编程器。GPU EEPROM 是 1.8 V，所以需要一个 1.8 V 转接器 |
 
 ---
 
-## See also
+## 参见
 
-- [How to read this wiki](how-to-read-this-wiki.md) for the confidence conventions.
-- [Register reference](../unlock/register-reference.md) for every address in one table.
-- [Identify your card](identify-your-card.md) to work out which SKU you hold.
+- [如何阅读本维基](how-to-read-this-wiki.md)，了解置信度约定。
+- [寄存器参考](../unlock/register-reference.md)，一张表里收全所有地址。
+- [识别你的卡](identify-your-card.md)，弄清你持有哪个 SKU。

@@ -1,394 +1,262 @@
-# The board and its variants
+# 板卡及其变体
 
-**What this page covers.** The physical CMP 170HX PCB: what it is derived from, which components
-NVIDIA deliberately deleted from it, the two shipping variants and every reliable way to tell
-them apart, board and part-number codes, connector layout, the VRM, the strap resistor array,
-the per-SKU floorsweep, and what the bare footprints on the board do and do not tell you.
+**本页内容。** 物理 CMP 170HX PCB：它从什么派生而来、NVIDIA 故意从它上面删除了哪些元件、两个出货变体以及每一种可靠的区分方法、板卡和料号代码、连接器布局、VRM、跳线电阻阵列、按 SKU 的地板清扫，以及板上的裸焊盘能告诉你什么、不能告诉你什么。
 
-**Two facts to fix before anything else.**
+**先修正两个事实。**
 
-1. **The CMP 170HX PCB is the NVIDIA A100 40 GB PCIe reference design with components
-   deliberately deleted.** Every component reference designator on the board matches the leaked
-   NVIDIA Tesla A100 electrical schematic `NVIDIA-A100-GA100-883-P1001-B02-Rev-A.pdf` of the
-   PG100/PG101 family. The match is to the **40 GB PCIe** board specifically, not the 80 GB and
-   not SXM.
-2. **There are exactly two shipping variants, and they unlock to different capacities.** The
-   **8 GB** card (`10de:20c2`) unlocks to **64 GB**. The **10 GB** card (`10de:2082`) unlocks to
-   **40 GB**. Never mix these up. The 80 GB configuration was tried on 10 GB cards and found
-   unstable; see [the 80 GB question](../frontier/80gb.md).
+1. **CMP 170HX PCB 是 NVIDIA A100 40 GB PCIe 参考设计，故意删除了元件。** 板上每一个元件参考编号都与泄露的 NVIDIA Tesla A100 电气原理图 `NVIDIA-A100-GA100-883-P1001-B02-Rev-A.pdf`（PG100/PG101 系列）匹配。匹配的**正是** 40 GB PCIe 板，不是 80 GB、也不是 SXM。
+2. **恰好有两个出货变体，它们解锁到不同容量。** **8 GB** 卡（`10de:20c2`）解锁到 **64 GB**。**10 GB** 卡（`10de:2082`）解锁到 **40 GB**。绝不要搞混。80 GB 配置在 10 GB 卡上试过并发现不稳定；参见[80 GB 问题](../frontier/80gb.md)。
 
 ---
 
-## The two variants at a glance
+## 两个变体一览
 
-| Property | 8 GB variant | 10 GB variant |
+| 属性 | 8 GB 变体 | 10 GB 变体 |
 |---|---|---|
-| PCI ID | `10de:20c2` (`0x20C2`) | `10de:2082` (`0x2082`) |
-| Subsystem | `0x158510DE` | `0x155710DE` |
-| Board part number | `900-11001-0108-000` | `900-11001-0105-000` |
-| GPU part number | `20C2-105-A1` | `2082-105-A1` |
-| Board ID | not recorded | `0x8100` |
-| Production VBIOS | `92.00.67.00.01` (2021-05-14) | `92.00.66.00.02` (2021-04-23) |
-| HBM vendor | SK Hynix **HBM2e** | Samsung **HBM2** |
-| Active FBPAs / FBPs | 16 of 24 / 8 of 12 | 20 of 24 / 10 of 12 |
-| Active stacks / bus width | 4 stacks, 4096-bit | 5 stacks, 5120-bit |
-| Stock capacity | 8192 MiB | 10240 MiB |
-| **Unlocks to** | **65536 MiB (64 GB)** | **40960 MiB (40 GB)** |
-| Unlocked CFG1 `0x009a0204` | `0x02779000` | `0x02669000` |
-| Unlocked LMR `0x00100ce0` | `0x0000020B` | `0x0000028A` |
+| PCI ID | `10de:20c2`（`0x20C2`） | `10de:2082`（`0x2082`） |
+| 子系统 | `0x158510DE` | `0x155710DE` |
+| 板卡料号 | `900-11001-0108-000` | `900-11001-0105-000` |
+| GPU 料号 | `20C2-105-A1` | `2082-105-A1` |
+| 板卡 ID | 未记录 | `0x8100` |
+| 量产 VBIOS | `92.00.67.00.01`（2021-05-14） | `92.00.66.00.02`（2021-04-23） |
+| HBM 厂商 | SK Hynix **HBM2e** | Samsung **HBM2** |
+| 活动 FBPA / FBP | 24 中的 16 / 12 中的 8 | 24 中的 20 / 12 中的 10 |
+| 活动堆叠 / 总线宽度 | 4 堆，4096-bit | 5 堆，5120-bit |
+| 出厂容量 | 8192 MiB | 10240 MiB |
+| **解锁到** | **65536 MiB（64 GB）** | **40960 MiB（40 GB）** |
+| 解锁 CFG1 `0x009a0204` | `0x02779000` | `0x02669000` |
+| 解锁 LMR `0x00100ce0` | `0x0000020B` | `0x0000028A` |
 | `FUSE_SKU_ID` `0x00821060` | `0x80` | `0x68` |
-| `OPT_GPC_DISABLE` `0x00820350` | `0x13`, `0x25`, `0x45` observed | `0x15`, `0x85`, `0xa8` observed: **per-die, not per-SKU; all leave 5 GPCs / 70 SM** |
+| `OPT_GPC_DISABLE` `0x00820350` | 观察到 `0x13`、`0x25`、`0x45` | 观察到 `0x15`、`0x85`、`0xa8`：**按晶片而非按 SKU；全部留下 5 个 GPC / 70 SM** |
 | `NV_PTOP_FS4` `0x0002241c` | `0x00000000` | `0x00000081` |
 
-Both report identically in the obvious places, which is exactly why the table above matters:
-`lspci` names both `GA100 [CMP 170HX] (rev a1)`, and `nvidia-smi` reports the product name only
-as "NVIDIA Graphics Device". Neither string distinguishes the SKUs.
+两者在显而易见的地方报告得一模一样，这正是上面那张表重要的原因：`lspci` 把两者都命名为 `GA100 [CMP 170HX] (rev a1)`，而 `nvidia-smi` 把产品名只报告为 "NVIDIA Graphics Device"。两个字符串都区分不了 SKU。
 
-A third device ID, `10de:20b0`, is detected by the installer but is **not** unlocked: the
-in-driver gate accepts `0x20C2` and `0x2082` only, so a `20b0` card installs the tool without
-unlocking anything. `10de:20b0` is the A100 SXM4 40 GB ID.
+第三个设备 ID `10de:20b0` 会被安装器检测到，但**不**被解锁：驱动内门只接受 `0x20C2` 和 `0x2082`，所以一张 `20b0` 卡会安装工具却不解锁任何东西。`10de:20b0` 是 A100 SXM4 40 GB 的 ID。
 
 > [!CAUTION]
-> **Getting the variant wrong is the single most consequential identification error**
+> **搞错变体是后果最严重的一个识别错误**
 >
-> The shipping driver picks geometry from the PCI device ID at runtime, so it will do the right
-> thing on its own. But a human who assumes "8 GB means 40 GB" or "10 GB means 64 GB" will
-> misread every register capture, every capacity report and every troubleshooting thread. Read
-> the device ID first, every time.
+> 出货驱动在运行时从 PCI 设备 ID 选择几何布局，所以它自己会做对。但一个假设 "8 GB 意味着 40 GB" 或 "10 GB 意味着 64 GB" 的人，会误读每一次寄存器捕获、每一份容量报告和每一个排障线程。每次先读设备 ID。
 
 ---
 
-## Telling them apart
+## 区分它们
 
-### From software
+### 从软件
 
 ```bash
-# 1. Device ID and subsystem. This is the authoritative answer.
+# 1. 设备 ID 和子系统。这是权威答案。
 lspci -nn -d 10de: | grep -i GA100
 # 0d:00.0 3D controller [0302]: NVIDIA Corporation GA100 [CMP 170HX] [10de:20c2] (rev a1)
 
 lspci -d 10de:20c2 -vnn | grep -i "Subsystem"
 # Subsystem: NVIDIA Corporation Device [10de:1585]
 
-# 2. Cross-check with nvidia-smi.
+# 2. 用 nvidia-smi 交叉核对。
 nvidia-smi --query-gpu=pci.device_id,pci.sub_device_id,vbios_version,memory.total \
            --format=csv
 
-# 3. Board and GPU part numbers, and the serial/board ID, from the InfoROM.
+# 3. 来自 InfoROM 的板卡和 GPU 料号，以及序列号/板卡 ID。
 nvidia-smi -q | grep -Ei "board part number|gpu part number|inforom|serial"
 ```
 
-Mapping:
+映射：
 
-| `pci.device_id` | `pci.sub_device_id` | Variant |
+| `pci.device_id` | `pci.sub_device_id` | 变体 |
 |---|---|---|
-| `0x20C210DE` | `0x158510DE` | 8 GB, unlocks to 64 GB |
-| `0x208210DE` | `0x155710DE` | 10 GB, unlocks to 40 GB |
+| `0x20C210DE` | `0x158510DE` | 8 GB，解锁到 64 GB |
+| `0x208210DE` | `0x155710DE` | 10 GB，解锁到 40 GB |
 
-### From registers, if the PCI IDs are in doubt
+### 从寄存器（如果 PCI ID 有疑问）
 
-These are read-only probes over BAR0. See [fuses and OTP](fuses-and-otp.md) for the full map and
-[verify](../procedures/verify.md) for the tooling.
+这些是经 BAR0 的只读探测。完整图见[熔丝与 OTP](fuses-and-otp.md)，工具见[验证](../procedures/verify.md)。
 
-| Register | 8 GB | 10 GB |
+| 寄存器 | 8 GB | 10 GB |
 |---|---|---|
-| `FUSE_FBP_DISABLE` `0x00820364` | `0x00000852` | `0x00000009` (also `0x840`; varies per die) |
-| `FUSE_FBPA_DISABLE` `0x00820368` | `0x00c0330c` | `0x000000c3` (also `0xc03000`) |
-| `FBHUB_NUM_ACTIVE_LTCS` `0x00100800` | `0x10` (16) | `0x14` (20) |
+| `FUSE_FBP_DISABLE` `0x00820364` | `0x00000852` | `0x00000009`（也有 `0x840`；按晶片而异） |
+| `FUSE_FBPA_DISABLE` `0x00820368` | `0x00c0330c` | `0x000000c3`（也有 `0xc03000`） |
+| `FBHUB_NUM_ACTIVE_LTCS` `0x00100800` | `0x10`（16） | `0x14`（20） |
 | `FBPA_NUM_ACTIVE` `0x009a0164` | `8` | `0xa` |
 | `FUSE_SKU_ID` `0x00821060` | `0x80` | `0x68` |
 | `NV_PTOP_FS4` `0x0002241c` | `0x00000000` | `0x00000081` |
-| VBIOS IFR fingerprint | `2ff19960f9175320` | `3ca3d24230d6800f` |
-| VBIOS FIRMWARE fingerprint | `e2c91c1808ae2759` | `8c4e1344c51b0940` |
+| VBIOS IFR 指纹 | `2ff19960f9175320` | `3ca3d24230d6800f` |
+| VBIOS FIRMWARE 指纹 | `e2c91c1808ae2759` | `8c4e1344c51b0940` |
 
-`NV_PTOP_FS4` bit 0 is `GEN2_PCIE` and bit 7 is `GEN2_PCIE_SPEED`, so the 8 GB card reading
-`0x00000000` is the interesting half. The 10 GB reading of `0x00000081` matches what an A100
-80 GB, an RTX 3070, GA10x parts and the Drive `0x20bb` all return.
+`NV_PTOP_FS4` 位 0 是 `GEN2_PCIE`，位 7 是 `GEN2_PCIE_SPEED`，所以 8 GB 卡读 `0x00000000` 是有意思的那一半。10 GB 卡读 `0x00000081` 与 A100 80 GB、RTX 3070、GA10x 部件和 Drive `0x20bb` 返回的都一致。
 
-### From the board and the package
+### 从板卡和封装
 
-| Signal | 8 GB | 10 GB |
+| 信号 | 8 GB | 10 GB |
 |---|---|---|
-| PCB silkscreen above the gold fingers | `180-11001-DAAA-B15` (also seen `180-11001-DAAA-B35`, `180-11001-DAAA-045`) | same board family |
-| ASIC marking | `GA100-105F-A1` | `GA100-105A-A1` |
-| HBM vendor (GPU-Z, or stack markings) | SK Hynix HBM2e | Samsung HBM2 |
-| Board PN sticker / InfoROM `BRD` | `900-11001-0108-000` | `900-11001-0105-000` |
+| 金手指上方的 PCB 丝印 | `180-11001-DAAA-B15`（也见过 `180-11001-DAAA-B35`、`180-11001-DAAA-045`） | 同一板卡家族 |
+| ASIC 标记 | `GA100-105F-A1` | `GA100-105A-A1` |
+| HBM 厂商（GPU-Z，或堆叠标记） | SK Hynix HBM2e | Samsung HBM2 |
+| 板卡料号贴纸 / InfoROM `BRD` | `900-11001-0108-000` | `900-11001-0105-000` |
 
-The `-0108-` versus `-0105-` field in the board part number is the most reliable purely physical
-discriminator short of reading the HBM stack markings.
+板卡料号里 `-0108-` 对 `-0105-` 字段，是除读 HBM 堆叠标记外最可靠的纯物理判别器。
 
 ---
 
-## Board codes and lineage
+## 板卡代码与血统
 
-| Code | What it is | Relationship to the 170HX |
+| 代码 | 它是什么 | 与 170HX 的关系 |
 |---|---|---|
-| `PG100` / `PG101` | NVIDIA A100 PCIe board family, the schematic family the 170HX designators match | The 170HX **is** this board, depopulated |
-| `P1001-B02` | The specific leaked schematic revision (`NVIDIA-A100-GA100-883-P1001-B02-Rev-A.pdf`); page 3 is "IO: PCIe CONNECTOR" | Source of the capacitor designators and values used for the lane-width mod |
-| `180-11001-DAAA-*` | PCB silkscreen part number on the 170HX | The `11001` field is shared with the board PN `900-11001-*` |
-| `900-11001-0108-000` / `900-11001-0105-000` | Assembled board part numbers | 8 GB / 10 GB |
-| `GA100-883AA-A1` | ASIC marking on a retail Tesla A100 40 GB | The full-fat bin, photographed alongside a 170HX for comparison |
-| `GA100-105F-A1` | ASIC marking on the 170HX | The cut-down bin. The `105` matches the GPU PN suffix `-105-A1` on both SKUs |
-| `PG199` | The NVIDIA DRIVE A100 (A100D) **SXM2** module, PCI `10DE:20BB` | **Not a 170HX board.** A different part entirely |
+| `PG100` / `PG101` | NVIDIA A100 PCIe 板卡家族，170HX 设计编号所匹配的原理图家族 | 170HX **就是**这块板，缺件版 |
+| `P1001-B02` | 具体的泄露原理图修订（`NVIDIA-A100-GA100-883-P1001-B02-Rev-A.pdf`）；第 3 页是 "IO: PCIe CONNECTOR" | 位宽改装所用电容设计编号和值的来源 |
+| `180-11001-DAAA-*` | 170HX 上的 PCB 丝印料号 | `11001` 字段与板卡料号 `900-11001-*` 共享 |
+| `900-11001-0108-000` / `900-11001-0105-000` | 装配板卡料号 | 8 GB / 10 GB |
+| `GA100-883AA-A1` | 零售 Tesla A100 40 GB 上的 ASIC 标记 | 完整分级，为对比与 170HX 并排拍过照 |
+| `GA100-105F-A1` | 170HX 上的 ASIC 标记 | 缩减分级。`105` 与两个 SKU 上的 GPU 料号后缀 `-105-A1` 匹配 |
+| `PG199` | NVIDIA DRIVE A100（A100D）**SXM2** 模块，PCI `10DE:20BB` | **不是 170HX 板。** 一个完全不同的部件 |
 
 > [!WARNING]
-> **PG199 is a recurring source of confusion, in three different ways**
+> **PG199 是一个反复出现的混淆来源，有三种不同方式**
 >
-> 1. **PG199 is not the 170HX board code.** It is the DRIVE A100 SXM2 module. It was repeatedly
->    floated as an unlock candidate because it shares the 170HX's memory topology (4-stack
->    Hynix HBM2e, 4096-bit, sold as 32 GB, some sources listing a 40 GB SKU) and would need no
->    PCIe soldering. A first-hand owner reported 96 SMs rather than 108, supported core clocks
->    of only 1140-1260 MHz, PCIe 3.0 x16, brutal to cool, and difficult to run training loads on
->    under water. TechPowerUp's 6144-bit listing for it was called wrong. No PG199 unlock exists.
->    One attempt is on record: a modified cmpunlocker was applied to a PG199 board on
->    2026-07-26, the intended CFG1 and LMR writes landed and the PLMs opened, but boot failed
->    with `Booter failed 0x54` and GSP never finished init.
-> 2. **The unlocker branch named `PG199` does not implement PG199 support.** Its diff against
->    master touches only `README.md`, `common/constants.yaml` (comments only), `driver/build.sh`,
->    `install.sh`, `remove.sh` and `requirements.txt`, and deletes the PR template. Its profiles
->    are byte-identical to master's 8 GB and 10 GB profiles, no driver patch is changed, and
->    `0x20BB` appears nowhere in the repository. It makes no device-detection change at all:
->    master's own `install.sh` already greps for `10de:20b0` alongside `10de:20c2` and
->    `10de:2082`, and the branch only rewords the README requirement line to say so.
-> 3. **TechPowerUp entry 283106 is a DRIVE-PG199-PROD image and must never be flashed to a
->    170HX.** See [VBIOS](vbios.md).
+> 1. **PG199 不是 170HX 板代码。** 它是 DRIVE A100 SXM2 模块。它反复被当作解锁候选浮出，因为它共享 170HX 的显存拓扑（4 堆 Hynix HBM2e，4096-bit，按 32 GB 出售，有些来源列出一个 40 GB SKU），且不需要 PCIe 焊接。一位一手拥有者报告 96 个 SM 而非 108、支持的核心时钟只有 1140-1260 MHz、PCIe 3.0 x16、散热极难、水冷下跑训练负载困难。TechPowerUp 对它的 6144-bit 列项被称是错的。不存在 PG199 解锁。一次尝试记录在案：2026-07-26 把一份修改过的 cmpunlocker 应用在一块 PG199 板上，预期的 CFG1 和 LMR 写入落地、PLM 打开，但启动以 `Booter failed 0x54` 失败，GSP 从未完成初始化。
+> 2. **名为 `PG199` 的解锁器分支不实现 PG199 支持。** 它对 master 的 diff 只碰 `README.md`、`common/constants.yaml`（仅注释）、`driver/build.sh`、`install.sh`、`remove.sh` 和 `requirements.txt`，并删除 PR 模板。它的档位与 master 的 8 GB 和 10 GB 档位逐字节相同，没有驱动补丁被改动，`0x20BB` 在仓库中任何地方都不出现。它完全不改变设备检测：master 自己的 `install.sh` 已经在 `10de:20c2` 和 `10de:2082` 旁 grep `10de:20b0`，该分支只是改写 README 的依赖行来这么说。
+> 3. **TechPowerUp 条目 283106 是一个 DRIVE-PG199-PROD 映像，绝不能刷到 170HX 上。** 参见[VBIOS](vbios.md)。
 
 ---
 
-## Physical dimensions and mounting
+## 物理尺寸与安装
 
-| Measurement | Value |
+| 测量 | 值 |
 |---|---|
-| PCB length | 27 cm |
-| All-in length | 29 cm, including the I/O shield and a plugged-in EPS connector |
-| Heatsink bolt pattern around the die | 57 × 68 mm centre-to-centre (68 mm vertical, 57 mm horizontal) |
-| Die package | about 55 × 55 mm, BGA-2743 |
-| Die area | 826 mm², TSMC 7 nm, 54,200 million transistors, 65.6 M/mm² |
-| Fasteners | Torx T10 and T15 |
-| Thermal pads | 1.5 mm soft on the main areas, 3 mm soft on the inductors, plus liquid thermal compound on the die |
+| PCB 长度 | 27 cm |
+| 全长度 | 29 cm，含 I/O 挡板和一个插上的 EPS 连接器 |
+| 晶片周围散热器螺栓孔型 | 57 × 68 mm 中心到中心（68 mm 垂直，57 mm 水平） |
+| 晶片封装 | 约 55 × 55 mm，BGA-2743 |
+| 晶片面积 | 826 mm²，TSMC 7 nm，542 亿晶体管，65.6 M/mm² |
+| 紧固件 | Torx T10 和 T15 |
+| 导热垫 | 主区域 1.5 mm 软垫，电感 3 mm 软垫，晶片上还有液态导热膏 |
 
-The package legend on the 170HX also reads `NVIDIA / B KR 2120A1 / TBSG42.M0W e1`.
+170HX 的封装图例也读 `NVIDIA / B KR 2120A1 / TBSG42.M0W e1`。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Whether the main-area thermal pad is 1.5 mm or 2 mm. The 1.5 mm and 3 mm figures came from an
-> owner with the card open and a photograph; a "2 mm" figure came from a different participant
-> prefaced with "I think". The T10/T15 bits are corroborated by both. A caliper measurement of a
-> stock pad would settle it.
+> 主区域导热垫是 1.5 mm 还是 2 mm。1.5 mm 和 3 mm 数值来自一位开卡并拍照片的拥有者；"2 mm" 数值来自另一位参与者、前面带 "I think"（我觉得）。T10/T15 螺丝刀头被两人佐证。一把卡尺量出厂垫就能定论。
 
-Cooling, teardown order and waterblock fitment are covered on [cooling](../operations/cooling.md).
-The one board-specific hazard worth repeating here, because it is a property of the *depopulated
-PCB* rather than of any particular cooler:
+散热、拆解顺序和水冷头安装见[散热](../operations/cooling.md)。这里值得重复的唯一板级危险，因为它是一个 *缺件 PCB* 的属性而非任何特定散热器的属性：
 
 > [!CAUTION]
-> **Cover every unpopulated IC footprint before lowering a waterblock**
+> **在放下水冷头之前，盖住每一个未贴装的 IC 焊盘**
 >
-> All unpopulated IC footprints within reach of the block's contact pillars must be covered with
-> thermal pad, or the block's metal pillars can short across the exposed copper pads and
-> permanently kill the card. **Because the 170HX is a depopulated A100 board it has far more
-> bare footprints than a real A100 and is correspondingly more dangerous to waterblock.** Pad
-> placement: the DrMOS positions left and right of the ASIC; bottom-left and bottom-right of the
-> ASIC; the PMIC to the right of the die between an inductor and a capacitor; and the two PMICs
-> to the left of the die below the 3.3 µH inductor. Confidence is high for the instruction and
-> the mechanism; the causal attribution rests on one card that died about an hour after a
-> waterblock install, competing with a pre-existing mining-wear fault, and was never definitively
-> isolated.
+> 水冷头接触柱够得到的范围内所有未贴装 IC 焊盘都必须用导热垫盖住，否则水冷头的金属柱会短路横跨裸露的铜焊盘，永久杀死卡。**因为 170HX 是一块缺件的 A100 板，它比真 A100 有多得多的裸焊盘，相应地水冷更危险。** 垫片放置位置：ASIC 左右两侧的 DrMOS 位置；ASIC 的左下和右下；晶片右侧一颗电感和一颗电容之间的 PMIC；以及晶片左侧、3.3 µH 电感下方的两颗 PMIC。对指令和机制置信度高；因果归属建立在一块卡上——它在水冷头安装约一小时后死掉，与一个既有的挖矿磨损故障竞争，从未被决定性地隔离。
 
 ---
 
-## Connector layout
+## 连接器布局
 
-| Connector | Detail |
+| 连接器 | 详情 |
 |---|---|
-| PCIe edge | Full x16 mechanical, **x16 electrically routed**, trains at x4 stock because 12 lanes' AC-coupling capacitors are depopulated |
-| NVLink edge fingers | **Physically present** on the PCB, visible in teardown photographs and exposed by A100 waterblocks. Whether the supporting NVLink ICs are populated is **open and leans depopulated**: one direct A100-versus-CMP comparison says missing, against a schematic-based reading; see [NVLink hardware](nvlink-hardware.md) |
-| Power | **1 × EPS 8-pin**, not a PCIe 8-pin, at the top right, with a stiff cable routed through the backplane |
-| Display outputs | None. No display hardware. Display output is recorded as permanently absent |
-| Unpopulated 4-pin pad | Measured carrying 12 V, suspected to be a fan header |
+| PCIe 边缘 | 全 x16 机械，**x16 电气布线**，出厂以 x4 训练，因为 12 条通道的交流耦合电容被缺件 |
+| NVLink 边缘金手指 | **物理上存在** 于 PCB，拆解照片可见，并被 A100 水冷头暴露。支撑的 NVLink IC 是否贴装**开放且倾向缺件**：一次直接 A100-对-CMP 对比说缺失，对一个基于原理图的读数；参见[NVLink 硬件](nvlink-hardware.md) |
+| 供电 | **1 × EPS 8-pin**，不是 PCIe 8-pin，位于右上角，带一根穿过背板的硬线缆 |
+| 显示输出 | 无。没有任何显示硬件。显示输出被记录为永久缺失 |
+| 未贴装 4-pin 焊盘 | 测得携带 12 V，怀疑是风扇接口 |
 
-### The EPS connector
+### EPS 连接器
 
-Power input is a single EPS 8-pin. Most PSU-integrated EPS cables have oversized retention clips
-that physically will not fit, so a 2× PCIe-8-pin-to-EPS adapter is the usual solution. Related
-cable-safety rules stated alongside: a modular EPS12V cable must carry 4× 12 V and 4× GND on
-**both** ends, and one good-quality pin carries only about 70 to 80 W. The slot power limit in the
-device capability structure is 75 W and the connector is rated 300 W. The software ceiling is set
-by the VBIOS, not by the connector: 250 W maximum on stock firmware, and 300 W only on cards
-carrying the NVIDIA 300 W OC image. See [power and PSU](../operations/power-and-psu.md).
+供电输入是一个单一的 EPS 8-pin。大多数 PSU 内置的 EPS 线缆有物理上塞不进去的过大保持夹，所以 2× PCIe-8-pin-to-EPS 转接线是通常的解决方案。相关的线缆安全规则并列说明：一根模组 EPS12V 线缆必须**两端**都带 4× 12 V 和 4× GND，且一颗优质引脚只承载约 70 到 80 W。设备能力结构里的插槽功耗上限是 75 W，连接器额定 300 W。软件上限由 VBIOS 设定，不由连接器：出厂固件最大 250 W，只有带 NVIDIA 300 W OC 映像的卡才是 300 W。参见[供电与 PSU](../operations/power-and-psu.md)。
 
-During teardown the power cable must be pried free of the backplane with a plastic spudger before
-the board can move at all, and the PCB cannot be lifted vertically because the PCIe connector
-slides into a slot in the backplane. That step is documented as having confused a well-known
-hardware channel on its first attempt.
+拆解时，必须先用水管撬棒把供电线缆从背板上撬开，板卡才能动，而且 PCB 不能垂直抬起，因为 PCIe 连接器滑进背板的一个槽里。那一步被记录为在第一次尝试时把某个知名硬件频道弄糊涂过。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Are the 4-pin fan-header pads live and PWM-controllable? One pin was measured at 12 V. The
-> mating receptacle part number is unknown and nobody has established whether a tachometer or
-> PWM signal is present. Scoping the remaining two pins at idle and under load, and tracing them
-> on the leaked schematic, would answer it. It matters because it would enable standalone
-> per-card fan control with no external controller.
+> 4-pin 风扇接口焊盘是活的且能 PWM 控制吗？一颗引脚被测为 12 V。配对插座料号未知，也没人确立过是否存在转速计或 PWM 信号。在空转和负载下探测其余两个引脚，并在泄露的原理图上追踪它们，能回答它。它重要，因为它能实现无需外部控制器的独立每卡风扇控制。
 
-### Memory apertures
+### 显存孔径
 
-Relevant to any BAR-level work:
+对任何 BAR 级工作都相关：
 
-| BAR | Size | Notes |
+| BAR | 大小 | 备注 |
 |---|---|---|
-| BAR0 | 16 MB, non-prefetchable (`0xfa000000` on one test host, `resource0` size `0x1000000`) | Register aperture; NV_PROM lives at +`0x300000` |
-| BAR1 | 64 MB, prefetchable | **Not resizable.** This is why PRAMIN-window work matters for large-memory patches |
+| BAR0 | 16 MB，不可预取（一台测试主机上 `0xfa000000`，`resource0` 大小 `0x1000000`） | 寄存器孔径；NV_PROM 在 +`0x300000` |
+| BAR1 | 64 MB，可预取 | **不可调整大小。** 这就是 PRAMIN 窗口工作对大内存补丁重要的原因 |
 | BAR3 | 32 MB | |
 
 ---
 
-## What was depopulated, and what it means
+## 删掉了什么，意味着什么
 
-This is the heart of the page. Four classes of deletion, with very different consequences. One of
-the four, the NVLink interface ICs, is a reported deletion rather than a confirmed one: the
-population question is unresolved, with direct evidence both ways.
+这是本页的心脏。四类删除，后果截然不同。其中一类、NVLink 接口 IC，是报告的删除而非确认的：贴装问题未解决，双方都有直接证据。
 
-| Deleted | Consequence | Restorable? |
+| 删除 | 后果 | 可恢复？ |
 |---|---|---|
-| PCIe AC-coupling capacitors, lanes 4-15 (24 × 0402) | Link trains at x4 instead of x16 | **Yes.** Hand-soldering, reliably reproduced |
-| VRM phases: DrMOS transistors plus their output inductors | None that anyone has measured | Physically yes, functionally pointless |
-| NVLink interface ICs (population **unresolved**, see below) | No NVLink either way; the fuse closes it | No known path |
-| Security-module region (Microchip CEC1712) | The 170HX has the pads but no chip | Not wanted; its absence is a *reduction* in verification hardware |
+| PCIe 交流耦合电容，通道 4-15（24 × 0402） | 链路以 x4 而非 x16 训练 | **是。** 手工焊接，可靠复现 |
+| VRM 相位：DrMOS 晶体管及其输出电感 | 没人测出任何后果 | 物理上可以，功能上无意义 |
+| NVLink 接口 IC（贴装**未解决**，见下） | 无论怎样都没有 NVLink；熔丝关它 | 无已知路径 |
+| 安全模块区域（Microchip CEC1712） | 170HX 有焊盘但无芯片 | 不需要；它的缺失是验证硬件的*减少* |
 
-### PCIe AC-coupling capacitors: the flagship mod
+### PCIe 交流耦合电容：旗舰改装
 
-The card trains at x4 because the AC-coupling capacitors for the upper twelve lanes (lanes 4-15)
-are **routed on the PCB but depopulated from the factory**. Two capacitors per differential pair
-× 12 lanes = 24 missing 0402 parts. Hand-soldering all 24 restores a full x16 link. Populating
-only 12 of the 24 yields x8. The mod is purely physical: it works with no software patch at all.
+卡以 x4 训练，因为上方十二条通道（通道 4-15）的交流耦合电容**在 PCB 上布线但出厂缺件**。每个差分对 2 颗 × 12 通道 = 24 颗缺失的 0402 部件。手工焊上全部 24 颗恢复完整的 x16 链路。只贴装 24 颗中的 12 颗得到 x8。这个改装纯粹是物理的：完全不需要软件补丁就能工作。
 
-| Specification | Value |
+| 规格 | 值 |
 |---|---|
-| Package | 0402 |
-| Value | 220 nF (0.22 µF) |
-| Dielectric | **X7R** (frequently miswritten as "XR7") |
-| Voltage rating | ≥ 6.3 V. The x16 mod that is known to have worked used 6.3 V parts |
-| Manufacturer part | Taiyo Yuden `MAASJ105SB7224KFCA01` (220 nF, 6.3 V, X7R, 0402). Samsung `CL05B224KO5NNNC` (16 V) also reported working |
-| Designators | roughly C1100-C1350, from schematic page 3 "IO: PCIe CONNECTOR" |
-| Distributor numbers | Digi-Key `3886834` and Digi-Key `1276-1176-1-ND` are both cited; neither is verified against the other. Quote the manufacturer part |
-| Reported substitute | 100 nF 16 V X7R worked for one tester; another desoldered equivalents from a dead motherboard |
+| 封装 | 0402 |
+| 值 | 220 nF（0.22 µF） |
+| 介质 | **X7R**（常被误写成 "XR7"） |
+| 额定电压 | ≥ 6.3 V。已知能工作的 x16 改装用了 6.3 V 部件 |
+| 厂商料号 | Taiyo Yuden `MAASJ105SB7224KFCA01`（220 nF，6.3 V，X7R，0402）。Samsung `CL05B224KO5NNNC`（16 V）也报告能用 |
+| 设计编号 | 大致 C1100-C1350，来自原理图第 3 页 "IO: PCIe CONNECTOR" |
+| 分销商编号 | Digi-Key `3886834` 和 Digi-Key `1276-1176-1-ND` 都被引用；两者没有互相对照验证。引用厂商料号 |
+| 报告的替代品 | 100 nF 16 V X7R 对一位测试者有效；另一位从一块死主板拆下等效件 |
 
 > [!CAUTION]
-> **The capacitor mod changes lane WIDTH only. It never changes PCIe GENERATION.**
+> **电容改装只改变通道位宽。它从不改变 PCIe 代数。**
 >
-> A cap-modded card with no unlocker reports **x16 at PCIe 1.0**. Conversely, Gen2 (5 GT/s) has
-> been reached in software on completely unmodded **x4** cards. The two axes are independent.
-> This is settled from source code: no file in the shipping repository or in any of the twelve
-> unreleased branches contains the strings "capacitor", "AC coupling", "solder" or any
-> lane-width register, and a grep over the full history returns nothing. The experimental `Gen2`
-> branch manipulates link **speed** only. See [PCIe subsystem](pcie-subsystem.md) and
-> [PCIe Gen2](../unlock/pcie-gen2.md).
+> 一块无解锁器、做过电容改装的卡报告 **PCIe 1.0 下的 x16**。反过来说，Gen2（5 GT/s）已在完全未改装的 **x4** 卡上通过软件达到。两个轴是独立的。这从源码就已定论：出货仓库或十二个未发布分支的任何文件里都不含字符串 "capacitor"、"AC coupling"、"solder" 或任何位宽寄存器，对完整历史的一次 grep 也一无所获。实验性 `Gen2` 分支只操纵链路**速度**。参见[PCIe 子系统](pcie-subsystem.md) 和[PCIe Gen2](../unlock/pcie-gen2.md)。
 
-Partial or bridged solder work negotiates down to the next legal width (16 to 8 to 4 to 1) rather
-than failing outright, which makes the reported lane count a direct diagnostic of solder quality.
-One modder's progression across three cards was x4, then x8, then x16 as technique improved. An
-x8 result after a cap mod means incomplete or bridged work, not a distinct hardware limit.
+部分或桥接的焊工会协商降到下一个合法位宽（16 到 8 到 4 到 1），而不是彻底失败，这让报告的通道数成为焊锡质量的直接诊断。一位改装者三张卡的进展是 x4、然后 x8、然后 x16，随技术提高。电容改装后出现 x8 结果意味着焊接不完整或桥接，而非一个不同的硬件限制。
 
-Rework technique, procedure, difficulty and the measured bandwidth results are on
-[physical mods](../operations/physical-mods.md). The short version: leaded 60/40 solder and gel
-flux, wick away all the factory lead-free solder first, a fine-point iron at about 380 °C is
-sufficient and needs no preheating. The area is not cramped and one modder completed a card by
-hand in about 20 minutes. Preheating the whole board in an oven was proposed and immediately
-rejected; the dominant beginner failure mode is over-preheating with an IR stove plus hot air,
-which bends the PCB, breaks internal traces and cooks ICs, producing defects that are extremely
-hard to diagnose afterwards.
+返工技术、流程、难度和实测带宽结果在[物理改装](../operations/physical-mods.md)。简版：含铅 60/40 焊锡和凝胶助焊剂，先吸掉所有出厂无铅焊锡，约 380 °C 的尖头烙铁就够、无需预热。这个区域不拥挤，一位改装者手工约 20 分钟完成一张卡。把整块板放进烤箱预热被提出并立即否决；新手失败的主导模式是用 IR 炉加风枪过度预热，它弯 PCB、断内部走线、烤熟 IC，产生事后极难诊断的缺陷。
 
-### VRM phases
+### VRM 相位
 
-The card uses **MP86957 smart power stages, rated 70 A output each**. Several DrMOS positions and
-their output inductors are unpopulated. The in-channel conclusion is that the stock VRM can handle
-about 500 W and that the unpopulated phases are redundancy rather than necessity. Measured
-full-load draw is about 250 W, the stock limit.
+卡使用 **MP86957 智能功率级，每颗额定输出 70 A**。几个 DrMOS 位置及其输出电感未贴装。频道内结论是出厂 VRM 能处理约 500 W，未贴装的相位是冗余而非必需。实测满载功耗约 250 W，即出厂上限。
 
 > [!NOTE]
-> **Populating the missing VRM phases does not help anything**
+> **贴装缺失的 VRM 相位不帮任何忙**
 >
-> Refuted from three directions. (a) The 8 GB card has *identical* power delivery and is
-> entirely stable at 64 GB, while the 10 GB card at 80 GB is not. (b) The failing 80 GB cards
-> never drew above about 80 W during the crashing workload, against a 250 W stock limit. (c)
-> Electrically, the GPU does not sense VRM phase count, a VRM runs correctly under full load with
-> half its MOSFETs fitted (the rest simply run hotter), and the PWM controller would additionally
-> have to be reconfigured to drive any added phases, so soldering parts alone would not even
-> raise the effective phase count. The 500 W figure is datasheet reasoning and has never been
-> validated by an actual 500 W run.
+> 从三个方向被驳斥。（a）8 GB 卡有*完全相同*的供电，在 64 GB 下完全稳定，而 10 GB 卡在 80 GB 下不稳定。（b）崩溃工作负载下失败的 80 GB 卡从未超过约 80 W，而出厂上限是 250 W。（c）电气上，GPU 不感知 VRM 相位数量，一个 VRM 在只装一半 MOSFET 的情况下满载也运行正确（其余只是更热），而且 PWM 控制器还必须被重新配置才能驱动任何新增相位，所以单靠焊接部件甚至提高不了有效相位数量。500 W 数值是数据手册推理，从未被一次真实的 500 W 运行验证。
 
-Restoring full A100 TDP is expected to be a simple shunt mod rather than a firmware change, but
-nobody has performed or measured one. A software or VBIOS route to a 400-500 W limit was proposed
-as the alternative and also never achieved.
+恢复完整 A100 TDP 预期是一个简单的分流改装而非固件改动，但没人执行或测过。一个到 400-500 W 上限的软件或 VBIOS 路径被作为替代方案提出，也从未达成。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Does the 170HX need the medium SMD capacitors on the rear of the PCB near the core, roughly two
-> per MOSFET on the left and right cap rows? Raised from a photograph by someone who had
-> previously seen an RTX 2070 with two of them broken off, which wrecked its voltages; the dual
-> placement is redundant but at least one must be present and working. This concerns local
-> decoupling rather than VRM phases, so it is in tension with, not refuted by, the phase-count
-> result above. Never checked on a 170HX. Next step: photograph the rear of a working 8 GB and a
-> working 10 GB card and compare against the schematic's C-designator list.
+> 170HX 需要核心附近 PCB 背面的中等尺寸 SMD 电容吗，左右电容排上每 MOSFET 大约两颗？从一张照片提出，拍照者之前见过一张 RTX 2070 有两颗断掉、毁掉了它的电压；成对放置是冗余的，但每对至少必须有一颗存在且工作。这关乎本地去耦而非 VRM 相位，所以它与上面相位数量结果相紧张，而非被驳斥。在 170HX 上从未检查过。下一步：给一块工作的 8 GB 和一块工作的 10 GB 卡背面拍照，对照原理图的 C 设计编号清单。
 
 ### NVLink
 
-The edge fingers are present. Whether the supporting ICs are populated is **open, and leans
-depopulated**: a teardown and the one direct A100-versus-CMP board comparison both report parts
-missing, against a schematic-based reading and a project VBIOS comparison table row saying the
-PCB is fully populated; see [NVLink hardware](nvlink-hardware.md).
-Independently of that, NVLink is fused off in silicon
-(`FUSE_NVLINK_DIS`), there is no NVLink register in the `0x00823800`-`0x0082382C` feature-override
-block, and no NVLink code exists in any branch. `PTOP_SCAL_NUM_NVLINK` `0x0002246c` still reads
-`0xc`, because the die is a complete GA100. P2P is absent on this card.
+边缘金手指存在。支撑 IC 是否贴装**开放，且倾向缺件**：一次拆解和唯一一次直接 A100-对-CMP 板卡对比都报告部件缺失，对一个基于原理图的读数、以及一行说 PCB 完全贴装的项目 VBIOS 对比表；参见[NVLink 硬件](nvlink-hardware.md)。独立于此，NVLink 在硅片中被熔断关闭（`FUSE_NVLINK_DIS`），`0x00823800`-`0x0082382C` 特性覆盖块里没有 NVLink 寄存器，任何分支里都不存在 NVLink 代码。`PTOP_SCAL_NUM_NVLINK` `0x0002246c` 仍读 `0xc`，因为晶片是一颗完整的 GA100。这块卡上 P2P 缺失。
 
-By contrast the CMP 90HX shroud has an opening for an NVLink connector but the PCB lacks the
-connector entirely, so the 170HX is comparatively generous here: the traces exist.
+相比之下，CMP 90HX 的导流罩有一个 NVLink 连接器的开口但 PCB 完全没有连接器，所以 170HX 在这里相对大方：走线存在。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Can NVLink be brought up? The expectation in-channel was "will require PCB mods most likely,
-> add missing components". It is complicated by the hypothesis that the GA100 interposer can
-> itself carry eFuses, meaning the NVLink disconnect may be physical and unreachable by any laser
-> or any solder. Nobody has imaged or probed an interposer. This is the least tractable hardware
-> question on the card: it plausibly requires BGA-class rework on top of an unknown. See
-> [NVLink](../frontier/nvlink.md) and [NVLink hardware](nvlink-hardware.md).
+> NVLink 能带起来吗？频道内预期是 "will require PCB mods most likely, add missing components"（很可能需要 PCB 改装、加缺失元件）。它被一个假设复杂化：GA100 中介层本身可能携带 eFuse，意味着 NVLink 断开可能是物理的、任何激光或任何焊锡都够不到。没人给中介层成像或探测过。这是卡上最不可处理的硬件问题：它在未知之上合理地需要 BGA 级返工。参见[NVLink](../frontier/nvlink.md) 和[NVLink 硬件](nvlink-hardware.md)。
 
-### The missing security module
+### 缺失的安全模块
 
-A populated region on some A100 boards that is absent on the 170HX was identified as a **Microchip
-CEC1712 security chip**, initially described as a "mystery FPGA that verifies the VBIOS" and
-corrected the same day with a citation to NVIDIA's "Data Center CEC Defeaturing" end-customer
-communication. The 170HX PCB has the pads but no chip. Not all A100s carry it either: an Ampere
-revision shipped without it because of component shortages, and there is no way to tell from a
-listing. The AMD MI50 has a comparable guard chip that only accepts official VBIOS images.
-Confidence medium: no part marking was ever read off a board and no datasheet was produced.
+一些 A100 板上存在、170HX 上缺失的一个贴装区域被识别为 **Microchip CEC1712 安全芯片**，最初被描述为一个"验证 VBIOS 的神秘 FPGA"，当天就用对 NVIDIA 的 "Data Center CEC Defeaturing"（数据中心 CEC 去功能化）最终客户通知的引用做了更正。170HX PCB 有焊盘但无芯片。也不是所有 A100 都带它：一个 Ampere 修订因元件短缺而发货时没有它，而且没法从列表判断。AMD MI50 有一个可比的守卫芯片，只接受官方 VBIOS 映像。置信度中等：从未从板上读出部件标记，也未产出数据手册。
 
-### The Winbond chip in the circulating hardware-restore PDF
+### 流传的硬件恢复 PDF 里的 Winbond 芯片
 
-The Winbond BIOS chip that appears in the bill of materials of the circulating `a100-unlock.pdf` /
-`cmp-170hx_a100_hardware-restore.pdf` is a **backup VBIOS chip** for recovering from a bad flash.
-It is not part of the PCIe or memory unlock. The PDF's author stated that only the small components
-on the PCIe lanes are needed for x16, and that everything else in that build was an attempt to
-replicate an A100 under the hood. An experienced modder reading the same guide judged it to imply a
-full BGA job requiring a stencil, which is why the guide over-scares people out of a mod that is
-actually beginner-to-hobbyist level. Confidence medium: this rests on second-hand recollection of
-the author's explanation, consistent with the author's own "only the lane parts are needed"
-statement.
+出现在流传的 `a100-unlock.pdf` / `cmp-170hx_a100_hardware-restore.pdf` 物料清单里的 Winbond BIOS 芯片，是一个用于从刷坏中恢复的**备份 VBIOS 芯片**。它不是 PCIe 或显存解锁的一部分。该 PDF 作者声明只有 PCIe 通道上的小元件是 x16 所需要的，那份构建里其它一切都是为了在引擎盖下复刻一台 A100。一位读同一份指南的有经验改装者判断它暗示一个需要钢网的全 BGA 活，这正是为什么该指南把人吓退一个实际上是新手到爱好者级别的改装。置信度中等：这依赖对作者解释的二手回忆，与作者自己 "only the lane parts are needed"（只需要通道部件）的陈述一致。
 
 ---
 
-## Strap resistors
+## 跳线电阻
 
-The board carries five strap resistor pairs in the top-left area near the decoupling capacitors:
-ten pads for five straps, unmarked parts, typically 100 kΩ 0402, pulled to 0 V or 1.8 V. Each strap
-is a resistor plus an empty pad, so moving the part between the two positions flips that strap bit.
-Reading left to right on the PCB:
+板卡在靠近去耦电容的左上区域携带五对跳线电阻：五个跳线的十个焊盘，未标记部件，通常 100 kΩ 0402，上拉到 0 V 或 1.8 V。每个跳线是一颗电阻加一个空焊盘，所以把部件在两个位置之间移动就翻转那个跳线位。在 PCB 上从左到右读：
 
-| Strap | Designators | Function |
+| 跳线 | 设计编号 | 功能 |
 |---|---|---|
 | Strap1 | R986, R987 | `RAMCFG[1]` |
 | Strap0 | R989, R990 | `RAMCFG[0]` |
@@ -396,178 +264,105 @@ Reading left to right on the PCB:
 | Strap4 | R999, R1000 | `PCIE_CFG` |
 | Strap2 | R1004, R1005 | `RAMCFG[2]` |
 
-R1004 and R1005 are the two alternative footprints of the *same* strap position, not two separate
-resistors. A sixth strap, `DEVID_SEL` at R240/R241, is named in the same source but has never been
-physically located.
+R1004 和 R1005 是*同一个*跳线位置的两个替代焊盘，不是两颗独立电阻。第六个跳线 `DEVID_SEL`（R240/R241）在同一来源中被点名，但从未被物理定位。
 
-Stock patterns: the A100 40 GB and the 170HX 10 GB share `LLLLH`; the 170HX 8 GB is `HHLLH`. Strap
-resistor 2 (`RAMCFG[2]`, rightmost) is H on both variants. The A100 schematic's GPU STRAP
-CONFIGURATION table gives STRAP2/STRAP1/STRAP0 to `RAMCFG[4:0]` as `H, L, L` = `00100` = Samsung
-HBM2 8 Gb 8Hi; `H, H, H` = `00111` = Hynix HBM2E 16 Gb 8Hi; `L, M, H` = `01010` = Micron HBM2E
-16 Gb 8Hi, where M is a mid-level tri-state. Confidence medium: this is derived from VBIOS strap
-tables and the A100 schematic rather than measured on a CMP.
+出厂模式：A100 40 GB 和 170HX 10 GB 共享 `LLLLH`；170HX 8 GB 是 `HHLLH`。跳线电阻 2（`RAMCFG[2]`，最右）在两个变体上都是 H。A100 原理图的 GPU STRAP CONFIGURATION 表把 STRAP2/STRAP1/STRAP0 对应到 `RAMCFG[4:0]`：`H, L, L` = `00100` = Samsung HBM2 8 Gb 8Hi；`H, H, H` = `00111` = Hynix HBM2E 16 Gb 8Hi；`L, M, H` = `01010` = Micron HBM2E 16 Gb 8Hi，其中 M 是一个中电平三态。置信度中等：这派生自 VBIOS 跳线表和 A100 原理图，而非在 CMP 上实测。
 
 > [!CAUTION]
-> **Moving the memory strap resistors does not unlock VRAM, and one pattern bricks the card**
+> **移动显存跳线电阻不解锁 VRAM，且有一种模式会变砖**
 >
-> Settled from four independent directions. (a) One tester permuted all 8 combinations of the last
-> three straps on a 10 GB card with stock VBIOS and saw no change in reported VRAM; the pattern
-> `LLHHH` bricked the system with no POST; physically removing three straps also changed nothing.
-> (b) A second tester independently reported a strap flip "did not change a thing". (c) A 10 GB
-> card re-strapped to `HHLLH`, the 8 GB stock pattern, still read
-> `FBPA_CFG1_BROADCAST @ 0x009a0204 = 0x02449000`, the unmodified 10 GB value. (d) An unmodified
-> 10 GB card reached the same 80 GB state as a re-strapped one, so no resistor change was ever a
-> prerequisite. The maintainers accepted the debunk the same day it was demonstrated.
+> 从四个独立方向定论。（a）一位测试者用出厂 VBIOS 在一块 10 GB 卡上穷举后三个跳线的全部 8 种组合，报告显存无变化；`LLHHH` 模式让系统无 POST 变砖；物理移除三颗跳线也没改变任何东西。（b）第二位测试者独立报告一次跳线翻转 "did not change a thing"（一点没变）。（c）一块重新跳到 8 GB 出厂模式 `HHLLH` 的 10 GB 卡，仍读 `FBPA_CFG1_BROADCAST @ 0x009a0204 = 0x02449000`，即未修改的 10 GB 值。（d）一块未修改的 10 GB 卡达到了与重跳线卡相同的 80 GB 状态，所以任何电阻改动从来都不是前提。维护者们在它被证明的当天就接受了这个揭穿。
 
-The reason it cannot work is in the source code: the shipping unlock selects memory geometry from
-the **PCI device ID at driver runtime**, not from any strap. The patch computes
-`devId = pGpu->idInfo.PCIDeviceID >> 16`; if `devId == 0x20C2` it writes `cfg1Value = 0x02779000`
-and `lmrValue = 0x0000020B`, otherwise `0x02669000` and `0x0000028A`, via
-`GPU_REG_WR32(pGpu, 0x009a0204U, cfg1Value)` and `GPU_REG_WR32(pGpu, 0x00100ce0U, lmrValue)`.
-Re-strapping `RAMCFG` to the 8 GB pattern therefore cannot make the 64 GB path apply to a 10 GB
-card. Only a device-ID change could, and the device ID is not on the `RAMCFG` straps.
+它不能工作的原因在源码里：出货解锁在**驱动运行时从 PCI 设备 ID** 选择显存几何布局，而不是从任何跳线。补丁计算 `devId = pGpu->idInfo.PCIDeviceID >> 16`；如果 `devId == 0x20C2` 就写 `cfg1Value = 0x02779000` 和 `lmrValue = 0x0000020B`，否则写 `0x02669000` 和 `0x0000028A`，经 `GPU_REG_WR32(pGpu, 0x009a0204U, cfg1Value)` 和 `GPU_REG_WR32(pGpu, 0x00100ce0U, lmrValue)`。因此把 `RAMCFG` 重新跳到 8 GB 模式不可能让 64 GB 路径适用于一块 10 GB 卡。只有设备 ID 改动能做到，而设备 ID 不在 `RAMCFG` 跳线上。
 
-One recorded oddity worth knowing when reading old captures: a mismatched strap change on a 10 GB
-card produced `CFG1 = 0x4266a000` where `0x02669000` was expected, with only the first four FBPAs
-active and one stack.
+一个值得在读旧捕获时知道的、被记录下来的怪事：一块 10 GB 卡上的不匹配跳线改动产生 `CFG1 = 0x4266a000`，而预期是 `0x02669000`，只有前四个 FBPA 激活、一个堆叠。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> What do Strap3 (`VGA_DEVICE`, R993/R994) and Strap4 (`PCIE_CFG`, R999/R1000) actually do? The
-> question was posed on 2026-07-26 after the strap map had been posted twice and went unanswered.
-> A `VGA_DEVICE` strap could bear on display-output enablement and a `PCIE_CFG` strap on link
-> configuration, both open problems. One accidental data point exists: a tester who intended to
-> move R1004 in fact moved Strap4, taking the pattern from `LLLLH` to `LLLHH`, and reported no
-> memory effect. Whether PCIe capability negotiation changed was never measured. Next step:
-> repeat that experiment deliberately and capture `lspci -vv` LnkCap and LnkSta before and after.
+> Strap3（`VGA_DEVICE`，R993/R994）和 Strap4（`PCIE_CFG`，R999/R1000）到底做什么？这个问题在跳线图被贴出两次后于 2026-07-26 提出，无人应答。一个 `VGA_DEVICE` 跳线可能关系到显示输出使能，一个 `PCIE_CFG` 跳线关系到链路配置，两者都是未解问题。存在一个意外的数据点：一位本想移动 R1004 的测试者实际移动了 Strap4，把模式从 `LLLLH` 变成 `LLLHH`，报告没有显存影响。PCIe 能力协商是否改变从未被测量。下一步：故意重复那个实验，并在前后捕获 `lspci -vv` 的 LnkCap 和 LnkSta。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Locate R240/R241 (`DEVID_SEL`) on the physical board. It matters because the device ID is what
-> the shipping driver keys geometry off, and because `OPT_DEVID_SW_OVERRIDE_DIS` `0x00820584` = 1
-> closes every software route. Tried and rejected: visual search near the R986-R1005 group,
-> photographic search of the front side, and asking a commercial AI assistant, which fabricated a
-> confident answer and then reversed itself when challenged. One researcher argues from designator
-> numbering that R240/R241 cannot be near R986-R1005 and may be on the opposite PCB side, noting
-> that A100 and 170HX front-side designators run below 500 while a Tesla V100 rear side runs above
-> 500. Another insists the M-marked resistors they photographed are the right ones. Never settled.
-> Best next step: a systematic high-resolution scan of the sub-500-designator side, cross-referenced
-> against the leaked schematic's `DEVID_SEL` net rather than against designator adjacency.
+> 在物理板上定位 R240/R241（`DEVID_SEL`）。它重要，因为设备 ID 是出货驱动赖以选择几何布局的依据，也因为 `OPT_DEVID_SW_OVERRIDE_DIS` `0x00820584` = 1 关闭了每一条软件路径。尝试过并被否定的：在 R986-R1005 组附近目视搜索、正面的照片搜索，以及问一个商业 AI 助手——它编了一个自信的答案，被质疑后又自我推翻。一位研究者从设计编号编号论证 R240/R241 不可能靠近 R986-R1005、可能在对面的 PCB 侧，并指出 A100 和 170HX 正面的设计编号低于 500，而 Tesla V100 背面高于 500。另一位坚持他们拍到的 M 标记电阻就是正确的那些。从未定论。最佳下一步：对低于 500 设计编号那一侧做一次系统性的高分辨率扫描，对照泄露原理图的 `DEVID_SEL` 网络而非对照设计编号相邻性。
 
 ---
 
-## Memory package
+## 显存封装
 
-| | 8 GB variant | 10 GB variant |
+| | 8 GB 变体 | 10 GB 变体 |
 |---|---|---|
-| Vendor and type | SK Hynix HBM2e | Samsung HBM2 |
-| GA100 package option | 96 GB of faster Hynix HBM2e (as on the A100 80 GB) | 48 GB of Samsung HBM2 (as on the A100 40 GB) |
-| Active stacks | 4 | 5 |
-| Bus width | 4096-bit | 5120-bit |
-| Unlock target | 4 × 16 GB = 64 GB, **stable** | 5 × 8 GB = 40 GB, **stable**; 80 GB unstable |
+| 厂商和类型 | SK Hynix HBM2e | Samsung HBM2 |
+| GA100 封装选项 | 96 GB 更快 Hynix HBM2e（如 A100 80 GB 上） | 48 GB Samsung HBM2（如 A100 40 GB 上） |
+| 活动堆叠 | 4 | 5 |
+| 总线宽度 | 4096-bit | 5120-bit |
+| 解锁目标 | 4 × 16 GB = 64 GB，**稳定** | 5 × 8 GB = 40 GB，**稳定**；80 GB 不稳定 |
 
-**This vendor split is the leading explanation for why 8 GB to 64 GB is stable while 10 GB to
-80 GB is not.** The 8 GB card sits on the denser, faster Hynix package. Confidence high: asserted
-independently by at least three participants over a month, never contradicted, backed by a GPU-Z
-screenshot, and consistent with the observed stability split.
+**这个厂商划分是"为什么 8 GB 到 64 GB 稳定、而 10 GB 到 80 GB 不稳定"的头号解释。** 8 GB 卡坐落在更密集、更快的 Hynix 封装上。置信度高：至少三位参与者在一个多月内独立断言，从未被反驳，有 GPU-Z 截图背书，且与观察到的稳定性划分一致。
 
-The full die would be 6144-bit across 24 FBPAs. That configuration has never been available on a
-170HX.
+完整晶片会是 24 个 FBPA 上的 6144-bit。那个配置在 170HX 上从未可用。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Does the 8 GB card carry five stacks of 16 GB, or six stacks with four of twelve FBPs disabled?
-> The circulating unlock guide states "HBM2e: 5 stacks × 16 GB = 64 GB physically (Hynix),
-> software-locked to 8 GB". The proof-of-concept team states every GA100 package carries six
-> physical stacks, 96 GB of Hynix HBM2e on the 8 GB variant, with two of the twelve FBPs fused off
-> as defective and four total marked disabled, spread so that two stacks run a full 1024-bit
-> interface and four run only 512 bits. Both agree the addressable target is 64 GB and both agree
-> the memory is Hynix HBM2e. **Leaning to the six-stack account:** the measured 8 GB fuse mask
-> leaves 16 of 24 FBPAs across 8 of 12 FBPs, and the 5 × 16 = 64 arithmetic conveniently matches
-> the unlock target in a way that looks back-derived. But the "two stacks at 1024-bit, four at
-> 512-bit" split does not obviously reconcile with the measured contiguous per-FBPA dead indices
-> (2, 3, 8, 9, 12, 13, 22, 23), which read as four *whole* stacks lost. Decapping, an X-ray, or a
-> per-stack bandwidth measurement would settle it.
+> 8 GB 卡带五堆 16 GB，还是六堆、十二个 FBP 中四个被禁用？流传的解锁指南称 "HBM2e: 5 stacks × 16 GB = 64 GB physically (Hynix), software-locked to 8 GB"（HBM2e：物理上 5 堆 × 16 GB = 64 GB（Hynix），软件锁定到 8 GB）。概念验证团队称每个 GA100 封装带六堆物理堆叠、8 GB 变体上是 96 GB 的 Hynix HBM2e，十二个 FBP 中两个被作为有缺陷熔断、四个被标记为禁用，分布使两堆跑完整的 1024-bit 接口、四堆只跑 512 位。双方都同意可寻址目标是 64 GB，都同意显存是 Hynix HBM2e。**倾向六堆说：** 实测的 8 GB 熔丝掩码在 12 个 FBP 的 8 个上留下 24 个 FBPA 中的 16 个，而 5 × 16 = 64 的算术以看起来事后反推的方式恰好匹配解锁目标。但 "两堆 1024-bit、四堆 512-bit" 的划分不能明显调和实测的连续每-FBPA 死索引（2、3、8、9、12、13、22、23），后者读起来像丢了四*整*堆。去盖、一张 X 光，或一次每堆带宽测量能定论它。
 
-HBM stacks are bonded to the **silicon interposer**, not to the PCB. A failed stack therefore
-cannot be reflowed back into service. One member spent several hours at a range of temperatures
-with a heat gun on several HBM2 GPUs with no success. HBM stacks also contain internal fuses, so
-faulty dies can be permanently fused out inside the stack. Samsung HBM2 in particular is reported
-not to tolerate voltage adjustment well, and nobody has identified the rail's controller or
-measured its voltage.
+HBM 堆叠邦定在**硅中介层**上，不在 PCB 上。因此一个失效的堆叠不能回流重新服役。一位成员用热风枪在几个 HBM2 GPU 上、各种温度下花了几个小时，毫无成功。HBM 堆叠也含内部熔丝，所以堆叠内有缺陷的晶片可以被永久熔出。特别是 Samsung HBM2 被报告为不耐电压调整，且没人识别出该电压轨的控制器或测过它的电压。
 
 ---
 
-## Floorsweep: what is fused off on each variant
+## 地板清扫：每个变体上熔断了什么
 
-The capacity and SM caps are burned into fuses and cannot be re-enabled in software. Full detail is
-on [fuses and OTP](fuses-and-otp.md); the board-relevant summary:
+容量和 SM 上限烧在熔丝里，不能软件重新启用。完整细节在[熔丝与 OTP](fuses-and-otp.md)；与板相关的汇总：
 
-| Register | 8 GB (`0x20C2`) | 10 GB (`0x2082`) |
+| 寄存器 | 8 GB（`0x20C2`） | 10 GB（`0x2082`） |
 |---|---|---|
-| `FUSE_FBP_DISABLE` `0x00820364` | `0x00000852` (8 of 12 FBPs active) | `0x00000009` or `0x840` (10 of 12 active) |
-| `FUSE_FBPA_DISABLE` `0x00820368` | `0x00c0330c` (16 of 24 active) | `0x000000c3` or `0xc03000` (20 of 24) |
+| `FUSE_FBP_DISABLE` `0x00820364` | `0x00000852`（12 个 FBP 中 8 个活动） | `0x00000009` 或 `0x840`（12 个中 10 个活动） |
+| `FUSE_FBPA_DISABLE` `0x00820368` | `0x00c0330c`（24 个中 16 个活动） | `0x000000c3` 或 `0xc03000`（24 个中 20 个） |
 | `FUSE_FBIO_DISABLE` `0x0082036c` | `0x00c0330c` | `0xc03000` |
 | `ROP_L2_DISABLE` `0x008202C4` | | `0xc03000` |
-| `FBHUB_NUM_ACTIVE_LTCS` `0x00100800` | `0x10` (16) | `0x14` (20) |
+| `FBHUB_NUM_ACTIVE_LTCS` `0x00100800` | `0x10`（16） | `0x14`（20） |
 | `FBPA_NUM_ACTIVE` `0x009a0164` | `8` | `0xa` |
-| Dead per-FBPA indices | 2, 3, 8, 9, 12, 13, 22, 23 | 0, 1, 6, 7 |
+| 死每-FBPA 索引 | 2、3、8、9、12、13、22、23 | 0、1、6、7 |
 
-Floorswept partitions read back `0xbadf20xx` (for example fbpa02 `0xbadf2011`, fbpa08 `0xbadf2014`,
-fbpa12 `0xbadf2016`, fbpa22 `0xbadf201b`) while live ones read `0x00001000`.
+被地板清扫的分区回读 `0xbadf20xx`（例如 fbpa02 `0xbadf2011`、fbpa08 `0xbadf2014`、fbpa12 `0xbadf2016`、fbpa22 `0xbadf201b`），而活分区读 `0x00001000`。
 
-Two points that matter when comparing dumps across cards:
+对比跨卡转储时，两点要紧：
 
-- **There are no real silicon defects, only an active disable mask.** The corresponding DEFECTIVE
-  registers all read zero: `FBP 0x8205CC`, `FBPA 0x8205D0`, `FBIO 0x8205D4`, `ROP/L2 0x8205E8`.
-  Writing 0 to the DISABLE registers does not move them.
-- **The specific mask varies per die; the totals do not.** Observed FBP masks on 10 GB cards
-  include `0x840` (FBP6, FBP11) and `0x00000009` (FBP0, FBP3): different indices, both leaving 10
-  of 12. GPC masks observed include `0x13`, `0x15`, `0x25`, `0x45`, `0x85` and `0xa8`, all leaving 5 GPCs
-  and all enumerating 70 SM. Expect these to differ between cards without it indicating a different SKU or different
-  unlock potential.
+- **没有真正的硅片缺陷，只有一个活动禁用掩码。** 相应的 DEFECTIVE 寄存器全部读零：`FBP 0x8205CC`、`FBPA 0x8205D0`、`FBIO 0x8205D4`、`ROP/L2 0x8205E8`。对 DISABLE 寄存器写 0 不会移动它们。
+- **具体掩码按晶片而异；总数不变。** 10 GB 卡上观察到的 FBP 掩码包括 `0x840`（FBP6、FBP11）和 `0x00000009`（FBP0、FBP3）：不同索引，都留下 12 个中的 10 个。观察到的 GPC 掩码包括 `0x13`、`0x15`、`0x25`、`0x45`、`0x85` 和 `0xa8`，全部留下 5 个 GPC 且全部枚举 70 个 SM。预期它们在不同卡之间会不同，而不表明是不同的 SKU 或不同的解锁潜力。
 
-The compute side is at its fuse floor on both variants: 5 active GPCs, 35 active TPCs, 70 SM at
-compute capability 8.0, which is 4480 CUDA cores. Every per-GPC `CTRL_OPT` register
-(`0x00820838 + i*4`) and every `RECONF_OVR` (`0x00820A40 + i*4`) reads `0x00000000`,
-`OPT_GPC_DEFECTIVE 0x008205C4` = 0, and the fuse floor computed from `OPT|RECONFIG` equals the
-enumerated count exactly. Against a full GA100 (8 GPC × 8 TPC = 64 TPC = 128 SM) the part ships
-54.7 % of the die's SMs, and none of the missing SMs are recoverable.
+算力侧在两个变体上都处于它的熔丝下限：5 个活动 GPC、35 个活动 TPC、计算能力 8.0 下的 70 个 SM，即 4480 个 CUDA 核心。每一个每-GPC `CTRL_OPT` 寄存器（`0x00820838 + i*4`）和每一个 `RECONF_OVR`（`0x00820A40 + i*4`）都读 `0x00000000`，`OPT_GPC_DEFECTIVE 0x008205C4` = 0，而从 `OPT|RECONFIG` 计算的熔丝下限与枚举数恰好相等。相对完整 GA100（8 GPC × 8 TPC = 64 TPC = 128 SM），该部件发货了晶片 SM 的 54.7%，且缺失的 SM 没有一个可恢复。
 
-The die itself is a complete GA100 by every scaling register:
+按每一个规模寄存器，晶片本身就是一颗完整的 GA100：
 
-| Register | Value | GA10x control card |
+| 寄存器 | 值 | GA10x 对照卡 |
 |---|---|---|
 | `PTOP_SCAL_NUM_GPCS` `0x00022430` | `8` | `6` |
 | `PTOP_SCAL_NUM_TPC_GPC` `0x00022434` | `8` | `4` |
-| `PTOP_SCAL_NUM_FBPS` `0x00022438` | `0xc` (12) | `4` |
-| `PTOP_SCAL_NUM_FBPAS` `0x0002243c` | `0x18` (24) | `4` |
-| `PTOP_SCAL_NUM_LTCS` `0x00022454` | `0x18` (24) | `8` |
+| `PTOP_SCAL_NUM_FBPS` `0x00022438` | `0xc`（12） | `4` |
+| `PTOP_SCAL_NUM_FBPAS` `0x0002243c` | `0x18`（24） | `4` |
+| `PTOP_SCAL_NUM_LTCS` `0x00022454` | `0x18`（24） | `8` |
 | `PTOP_SCAL_FBPA_PER_FBP` `0x00022458` | `2` | `1` |
-| `PTOP_SCAL_NUM_NVLINK` `0x0002246c` | `0xc` (12) | `0` |
+| `PTOP_SCAL_NUM_NVLINK` `0x0002246c` | `0xc`（12） | `0` |
 | `PTOP_FS_STATUS` `0x00022470` | `0x3f` | |
-| `PMC_BOOT_0` `0x00000000` | `0x170000a1` (`0x170` = GA100, rev a1) | `0xb74000a1` |
+| `PMC_BOOT_0` `0x00000000` | `0x170000a1`（`0x170` = GA100，rev a1） | `0xb74000a1` |
 
 > [!NOTE]
-> **Register-address correction of record**
+> **记录在案的寄存器地址更正**
 >
-> `0x00820C14` is `STATUS_OPT_FBIO`, **not** `STATUS_OPT_FBPA`. The FBPA floorsweep status is at
-> `0x00820C18`. The Pascal-era FBPA fuse address `0x00021C14` returns BADF on GA100. The
-> clean-room `probe.sh` carries both entries with the correction annotated inline, so the tooling
-> itself preserves the history.
+> `0x00820C14` 是 `STATUS_OPT_FBIO`，**不是** `STATUS_OPT_FBPA`。FBPA 地板清扫状态在 `0x00820C18`。Pascal 时代的 FBPA 熔丝地址 `0x00021C14` 在 GA100 上返回 BADF。净室 `probe.sh` 带着内联标注的更正携带两个条目，所以工具本身保留了历史。
 
 ---
 
-## Device-ID fuses
+## 设备 ID 熔丝
 
-Both 170HX PCI IDs are burned on the same die.
+两个 170HX PCI ID 都烧在同一颗晶片上。
 
-| Fuse | Address | 10 GB reading | 8 GB reading |
+| 熔丝 | 地址 | 10 GB 读数 | 8 GB 读数 |
 |---|---|---|---|
-| `OPT_PCIE_DEVIDA` | `0x008204d8` | `0x00002082` | `0x000020c2` (disputed, see below) |
+| `OPT_PCIE_DEVIDA` | `0x008204d8` | `0x00002082` | `0x000020c2`（有争议，见下） |
 | `OPT_PCIE_DEVIDB` | `0x0082056c` | `0x000020c2` | `0x000020c2` |
 | `OPT_DEVID_SW_OVERRIDE_DIS` | `0x00820584` | `0x00000001` | `0x00000001` |
 | `OPT_INTERNAL_SKU` | `0x008203f4` | `0x00000000` | `0x00000000` |
@@ -577,138 +372,91 @@ Both 170HX PCI IDs are burned on the same die.
 | `FUSE_OPT_SECURE_GSP` | `0x0082074c` | `0x00000001` | |
 | `FUSECTRL` | `0x00820000` | `0xe0040000` | |
 
-`FUSE_FB_FALCON_PRI_DIS` = 0 means the Falcon can still reach FB PRI registers, which is a
-precondition for the memory unlock. `FUSE_OPT_SECURE_GSP` = 1 means GSP debug is disabled.
+`FUSE_FB_FALCON_PRI_DIS` = 0 意味着 Falcon 仍能到达 FB PRI 寄存器，这是显存解锁的前提。`FUSE_OPT_SECURE_GSP` = 1 意味着 GSP 调试被禁用。
 
-**The primary PCIe device ID is fused into the die and cannot be changed by VBIOS or by strap
-resistors; only the subsystem ID is VBIOS-settable.** Selection between DEVIDA and DEVIDB is
-strap-latched (`DEVID_SEL`), and as of 2026-07-27 no software-only way to change it had been found.
-A VBIOS declaring an alternate device ID only means that VBIOS is *permitted to run* on a card with
-that ID; it cannot rebrand the card.
+**主 PCIe 设备 ID 熔进晶片，VBIOS 或跳线电阻都改不了；只有子系统 ID 是 VBIOS 可设置的。** DEVIDA 和 DEVIDB 之间的选择是跳线锁存的（`DEVID_SEL`），截至 2026-07-27 没有找到纯软件方式改变它。一个声明了替代设备 ID 的 VBIOS 只意味着那个 VBIOS 被*允许运行*在带那个 ID 的卡上；它不能给卡改牌。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Device-ID fuse values on an 8 GB card. A 2026-07-19 BAR0 probe of a `0x20c2` card reports
-> DEVIDA **and** DEVIDB both `0x000020c2`. A 2026-07-22 PCIe firmware analysis states DEVIDA
-> `0x2082`, DEVIDB `0x20C2`, and 2026-07-24/25 dumps on 10 GB cards agree with the latter. Neither
-> has been retracted, and the SKU behind the second figure is not stated. Either the 8 GB card
-> genuinely has both fuses at `0x20c2`, which is what a separate source independently claims, or
-> one dump is mislabelled. Note that the first reading breaks the working `DEVIDB = DEVIDA | 0x40`
-> hypothesis, which otherwise holds on the 170HX (`0x2082`/`0x20c2`) and on a GA10x control card
-> (`0x2484`/`0x24c4`). A single dump of both fuses from one confirmed 8 GB card, with `lspci -nn`
-> in the same paste, would settle it.
+> 8 GB 卡上的设备 ID 熔丝值。2026-07-19 对一张 `0x20c2` 卡的 BAR0 探测报告 DEVIDA **和** DEVIDB 都 `0x000020c2`。2026-07-22 的 PCIe 固件分析声明 DEVIDA `0x2082`、DEVIDB `0x20C2`，而 2026-07-24/25 在 10 GB 卡上的转储与后者一致。两者都没被撤回，第二个数字背后的 SKU 也未说明。要么 8 GB 卡真的把两个熔丝都放在 `0x20c2`（另一个来源独立声称如此），要么一份转储贴错了标签。注意第一个读数打破了 `DEVIDB = DEVIDA | 0x40` 这个工作假设，它在 170HX（`0x2082`/`0x20c2`）和一张 GA10x 对照卡（`0x2484`/`0x24c4`）上否则成立。从一张确认的 8 GB 卡转储一次两个熔丝、同一份粘贴里带 `lspci -nn`，就能定论它。
 
 > [!NOTE]
-> **`20B2` is not a CMP 170HX device ID**
+> **`20B2` 不是 CMP 170HX 设备 ID**
 >
-> It appeared in an early message and was corrected in-channel on 2026-06-29 as a typo for
-> `2082`. It also appears inside a speculative re-fusing proposal as a *target* A100 ID, which is
-> a different usage. The two 170HX IDs are `0x20C2` (8 GB) and `0x2082` (10 GB).
+> 它出现在一条早期消息中，并在 2026-06-29 被频道内更正为 `2082` 的笔误。它也出现在一份推测性的重新熔断提案里，作为*目标* A100 ID，那是另一种用法。两个 170HX ID 是 `0x20C2`（8 GB）和 `0x2082`（10 GB）。
 
 ---
 
-## Revision differences
+## 修订差异
 
-There is no single "revision" axis on this card. Four independent things vary.
+这块卡上没有单一的 "revision" 轴。四个独立的东西会变化。
 
-| Axis | Values seen | Does it matter? |
+| 轴 | 见过的值 | 要紧吗？ |
 |---|---|---|
-| Silicon revision | `rev a1` on every card (`PMC_BOOT_0` = `0x170000a1`) | No variation observed |
-| PCB silkscreen trailing field | `180-11001-DAAA-B15`, `180-11001-DAAA-B35`, `180-11001-DAAA-045` | Same board family; no functional difference established. B15 and B35 both took the x16 capacitor mod with identical results |
-| VBIOS revision | `92.00.67.00.01` (8 GB production), `92.00.6D.00.09` (2021-11-01, 300 W, no memory OC), `92.00.6D.00.0A` (2022-04-07, 300 W, 432 MHz memory field), `92.00.66.00.02` (10 GB production) | **Not for the unlock.** Yes for power limit and memory clock |
-| Per-die floorsweep mask | FBP and GPC disable masks differ between dies of the same SKU | No: totals are constant |
+| 硅片修订 | 每张卡 `rev a1`（`PMC_BOOT_0` = `0x170000a1`） | 未观察到变化 |
+| PCB 丝印尾字段 | `180-11001-DAAA-B15`、`180-11001-DAAA-B35`、`180-11001-DAAA-045` | 同一板卡家族；未确立功能差异。B15 和 B35 都做了 x16 电容改装且结果相同 |
+| VBIOS 修订 | `92.00.67.00.01`（8 GB 量产）、`92.00.6D.00.09`（2021-11-01，300 W，无显存超频）、`92.00.6D.00.0A`（2022-04-07，300 W，432 MHz 显存字段）、`92.00.66.00.02`（10 GB 量产） | **对解锁无关。** 对功耗上限和显存时钟要紧 |
+| 按晶片地板清扫掩码 | 同一 SKU 的不同晶片之间 FBP 和 GPC 禁用掩码不同 | 否：总数恒定 |
 
-**VBIOS version makes no difference to whether the unlock works.** Four cards across two hosts, two
-on each of `92.00.67.00.01` and `92.00.6D.00.0A`, showed identical unlock and Gen2 results, with
-identical Board PN `900-11001-0108-000`, GPU PN `20C2-105-A1` and subsystem `0x158510DE`. Writing
-"8 GB cards carry `92.00.6D.00.0A`" as a blanket statement is wrong: both versions are in the field.
-Full version detail is on [VBIOS](vbios.md).
+**VBIOS 版本对解锁能否工作毫无区别。** 两台主机上的四张卡，`92.00.67.00.01` 和 `92.00.6D.00.0A` 各两张，显示了相同的解锁和 Gen2 结果，板卡料号 `900-11001-0108-000`、GPU 料号 `20C2-105-A1` 和子系统 `0x158510DE` 都相同。把 "8 GB 卡带 `92.00.6D.00.0A`" 写成一句笼统陈述是错的：两个版本都在野外存在。完整版本细节在[VBIOS](vbios.md)。
 
-One supplier-side wrinkle, recorded because it would show up as an apparent hardware difference: a
-single commercially interested source claimed to hold "two kinds of VBIOS for 170hx, one has higher
-bandwidth", with no version strings and no figures given. It is at least consistent with both the
-364 MHz and 432 MHz memory-field images being in circulation. Unresolvable from the record.
+一个供应商侧的褶皱，记录它是因为它会表现为一个明显的硬件差异：一个商业利益相关来源声称持有 "two kinds of VBIOS for 170hx, one has higher bandwidth"（170hx 的两种 VBIOS，一种带宽更高），没有给出版本字符串、也没给数字。它至少与 364 MHz 和 432 MHz 显存字段映像都在流传这一点一致。从记录中无法裁决。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Do power-raised "unlock BIOS" cards blow a rear-board capacitor after prolonged mining? One
-> owner relayed that the seller who supplied their cards had this happen repeatedly and showed a
-> blown board, with the suspected parts narrowed to two components on the rear of an 8 GB board
-> believed to be capacitors. The same seller ran cards at around 56 °C, raising the suspicion of
-> monitoring the wrong sensor and overheating the VRM while mining bandwidth-bound coins. An
-> experienced long-time owner said they had never seen this failure and doubted it. No photograph
-> of the failed component and no measurement were produced. A photograph of a failed board with
-> the designator readable, plus a thermocouple reading on the VRM under a bandwidth-bound load,
-> would settle it.
+> 提高功耗的 "unlock BIOS" 卡在长期挖矿后会烧掉一块背面电容吗？一位拥有者转述供卡的卖家反复遇到这事并展示了一块烧毁的板，被怀疑的部件缩小到一块 8 GB 板背面两个据信是电容的元件。同一位卖家让卡在约 56 °C 运行，这让人怀疑监控了错误的传感器、在挖带宽受限币时让 VRM 过热。一位有经验的老拥有者说从未见过这种失效并对此存疑。没有生产出故障元件的照片，也没有测量。一张设计编号可读的故障板照片，加上带宽受限负载下 VRM 上的一次热电偶读数，能定论它。
 
 ---
 
-## What the PCB does and does not tell you
+## PCB 能告诉你什么、不能告诉你什么
 
-**It tells you** exactly which features were removed and, thanks to the matching A100 schematic,
-exactly which parts would restore them. That is how the lane-width mod was derived: designator
-range, package, value and dielectric all came off page 3 of the schematic rather than from guesswork.
+**它告诉你** 精确地哪些功能被移除，并感谢匹配的 A100 原理图、精确地哪些部件能恢复它们。位宽改装就是这样推导出来的：设计编号范围、封装、值和介质都来自原理图第 3 页，而非猜测。
 
-**It does not tell you** anything about the capacity or compute limits. Those live in three layers,
-and only one of them is on the board:
+**它不告诉你** 关于容量或算力限制的任何东西。那些存在于三层，只有一层在板上：
 
-| Layer | Where | Movable? |
+| 层 | 在哪 | 可移动？ |
 |---|---|---|
-| PCB-level physical omissions | The board | Yes, by soldering, but only for PCIe lane width |
-| VBIOS firmware | The SPI ROM, inside the MAC range | No, without csecret(2) |
-| OTP fuses | The die | No |
+| PCB 级物理缺失 | 板 | 可以，通过焊接，但只对 PCIe 通道位宽 |
+| VBIOS 固件 | SPI ROM，在 MAC 范围内 | 否，没有 csecret(2) |
+| OTP 熔丝 | 晶片 | 否 |
 
-The unlock that actually shipped moves none of them. It overrides register state at runtime, from
-the driver, with no hardware change at all. Across all six shipping patches the only registers
-written in the `0x0082xxxx` fuse space are `0x00823804` (FEAT PLM), `0x0082381C` (SS0 =
-`0x88888888`) and `0x00823820` (SS1 = `0x00000008`). No floorsweep register (`0x00820350`,
-`0x00820364`, `0x00820368`, `0x0082036C`, `0x008202C4`, `0x00820C1C`) is written anywhere. **The
-unlock reprograms memory geometry; it does not and cannot revive fused-off units.**
+实际出货的解锁一个都不移动。它在运行时从驱动覆盖寄存器状态，完全不改硬件。在全部六个出货补丁中，`0x0082xxxx` 熔丝空间里唯一被写的寄存器是 `0x00823804`（FEAT PLM）、`0x0082381C`（SS0 = `0x88888888`）和 `0x00823820`（SS1 = `0x00000008`）。没有任何地板清扫寄存器（`0x00820350`、`0x00820364`、`0x00820368`、`0x0082036C`、`0x008202C4`、`0x00820C1C`）在任何地方被写。**解锁重新编程显存几何布局；它不能也不会复活被熔断关闭的单元。**
 
-### Board-level dead ends
+### 板级死路
 
-Do not retry these without new information. The full list is on
-[dead ends](../history/dead-ends.md).
+没有新信息就不要重试这些。完整清单在[死路](../history/dead-ends.md)。
 
-| Attempt | Why it is dead |
+| 尝试 | 为什么它是死的 |
 |---|---|
-| Memory strap resistors unlock VRAM | Exhaustive permutation of all 8 combinations produced no capacity change; `LLHHH` bricked the system; removing three straps changed nothing |
-| Re-strapping `RAMCFG` to the 8 GB pattern makes the 64 GB path apply to a 10 GB card | The driver selects geometry from the PCI device ID, not from any strap |
-| Adding the missing VRM FETs, capacitors, coils and inductors stabilises 80 GB | Refuted three ways (see VRM section above) |
-| A waterblock stabilises 80 GB, because the retail A100 80 GB has no IHS while the 170HX does | Never tested, superseded by the memory-refresh explanation, and undercut by the measurement that failing cards draw only about 80 W: they are not thermally limited |
-| Hardware-modding the HBM voltage rail as a stability fix | Nobody executed it, no controller identified, no rail voltage measured. Samsung HBM2 reportedly does not tolerate it, and faulty HBM can be permanently fused out inside the stack |
-| Reflowing a failed HBM2 stack with a heat gun | Stacks are bonded to the interposer, not the PCB. Tried on several HBM2 GPUs over several hours with no success |
-| A `strap5` resistor switches between the two fused device IDs | The strap was never located, and the five-strap map published a week later enumerates exactly five straps with no strap5 |
-| Clearing `CTRL_OPT` to recover extra SMs | All eight per-GPC `CTRL_OPT` registers already read `0x00000000` and the enumerated 35 TPC already equals the fuse floor. The GPC disable is in OTP at `0x00820350`, not in `CTRL_OPT` |
-| A BGA reball on a CMP-class card | Attempted first-hand and failed: `nvidia-smi` hangs on access despite MODS reporting no errors afterwards. Worth knowing as a failure *mode*: a MODS-clean card can still hang the driver |
-| Preheating the whole board in an oven before the capacitor rework | Rejected as a beginner trap; over-preheating bends the PCB, breaks internal traces and cooks ICs |
-| Applying 3.3 V to a "manufacturing_mode" pin found on some cards | Observed on real hardware but never characterised, never pursued to a result |
+| 显存跳线电阻解锁 VRAM | 穷举全部 8 种组合没产生容量变化；`LLHHH` 让系统变砖；移除三颗跳线什么都没改 |
+| 把 `RAMCFG` 重新跳到 8 GB 模式让 64 GB 路径适用于 10 GB 卡 | 驱动从 PCI 设备 ID 而非任何跳线选择几何布局 |
+| 加回缺失的 VRM FET、电容、线圈和电感稳定 80 GB | 三方面被驳斥（见上面 VRM 一节） |
+| 水冷头稳定 80 GB，因为零售 A100 80 GB 没有 IHS 而 170HX 有 | 从未测试，被显存刷新解释取代，并被"失败卡只抽约 80 W"的测量削弱：它们不受热限制 |
+| 硬件改装 HBM 电压轨作为稳定修复 | 没人执行，没识别控制器，没测轨电压。Samsung HBM2 报告不耐它，有缺陷的 HBM 可以在堆叠内被永久熔出 |
+| 用热风枪回流一个失效的 HBM2 堆叠 | 堆叠邦定在中介层上，不在 PCB 上。在几个 HBM2 GPU 上试了几个小时，毫无成功 |
+| 一个 `strap5` 电阻在两个熔断设备 ID 之间切换 | 该跳线从未被定位，一周后发布的五跳线图精确枚举五个跳线、没有 strap5 |
+| 清除 `CTRL_OPT` 以恢复额外 SM | 全部八个每-GPC `CTRL_OPT` 寄存器已经读 `0x00000000`，枚举的 35 TPC 已经等于熔丝下限。GPC 禁用位于 `0x00820350` 的 OTP，不在 `CTRL_OPT` |
+| 在 CMP 级卡上做 BGA 植球 | 一手尝试过并失败：尽管 MODS 之后报告无错误，`nvidia-smi` 访问时挂起。值得作为一个失败*模式*了解：一张 MODS 干净的卡仍可能挂起驱动 |
+| 电容返工前把整块板放进烤箱预热 | 作为新手陷阱被否决；过度预热弯 PCB、断内部走线、烤熟 IC |
+| 对某些卡上找到的 "manufacturing_mode" 引脚施加 3.3 V | 在真实硬件上观察到，但从未表征、从未追到结果 |
 
 > [!WARNING]
-> **Fabricated board topology reads exactly like real board topology**
+> **编造的板卡拓扑读起来和真实板卡拓扑一模一样**
 >
-> Recorded verbatim as a cautionary data point. A commercial AI assistant, asked where R240/R241
-> and the board crystals are, confidently placed R240/R241 "adjacent to the other high-value 100k
-> strap resistors (such as R985-R1016)", described them as 100 kΩ 0402 parts tied to `FS_OVERT`
-> and `PCIE_CFG`, and named Y200 (27.000 MHz) and Y201 (100.000 MHz low-jitter differential) on
-> "Page 5: CLOCK GENERATION / CRYSTALS" of a PG100/PG101 schematic. When challenged on
-> reference-designator logic it reversed itself completely. None of it was verifiable. Treat any
-> designator, page reference or net name that is not read off a photograph or the schematic itself
-> as unverified.
+> 作为一个警示性数据点逐字记录。一个商业 AI 助手被问到 R240/R241 和板卡晶体在哪时，自信地把 R240/R241 放在 "adjacent to the other high-value 100k strap resistors (such as R985-R1016)"（靠近其它高值 100k 跳线电阻旁），把它们描述为连接到 `FS_OVERT` 和 `PCIE_CFG` 的 100 kΩ 0402 部件，并在一份 PG100/PG101 原理图的 "Page 5: CLOCK GENERATION / CRYSTALS" 上点名 Y200（27.000 MHz）和 Y201（100.000 MHz 低抖动差分）。当就参考设计编号逻辑被质疑时，它彻底自我推翻。其中没有一条可验证。把任何不是从照片或原理图本身读出的设计编号、页码或网络名都当作未验证。
 
 ---
 
-## Related pages
+## 相关页面
 
-- [Identify your card](../start/identify-your-card.md): the short version of the table above
-- [VBIOS](vbios.md): ROM structure, per-batch versions, and the seven-byte restriction
-- [Fuses and OTP](fuses-and-otp.md): the floorsweep and device-ID fuses in full
-- [Memory subsystem](memory-subsystem.md): FBPAs, stacks, CFG1 and LMR
-- [PCIe subsystem](pcie-subsystem.md) and [physical mods](../operations/physical-mods.md): the
-  lane-width capacitor mod end to end
-- [Power delivery](power-delivery.md) and [power and PSU](../operations/power-and-psu.md)
-- [Cooling](../operations/cooling.md): teardown order, waterblocks, air retrofits
-- [NVLink hardware](nvlink-hardware.md)
-- [GA100 silicon](ga100-silicon.md)
+- [识别你的卡](../start/identify-your-card.md)：上面那张表的简版
+- [VBIOS](vbios.md)：ROM 结构、按批次版本，以及七字节限制
+- [熔丝与 OTP](fuses-and-otp.md)：完整的地板清扫和设备 ID 熔丝
+- [显存子系统](memory-subsystem.md)：FBPA、堆叠、CFG1 和 LMR
+- [PCIe 子系统](pcie-subsystem.md) 和[物理改装](../operations/physical-mods.md)：位宽电容改装端到端
+- [板载供电](power-delivery.md) 和[供电与 PSU](../operations/power-and-psu.md)
+- [散热](../operations/cooling.md)：拆解顺序、水冷头、风冷改造
+- [NVLink 硬件](nvlink-hardware.md)
+- [GA100 硅片](ga100-silicon.md)

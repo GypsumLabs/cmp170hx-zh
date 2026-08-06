@@ -1,638 +1,400 @@
-# The clean room and the provenance question
+# 净室与来源溯源问题
 
-## What this page covers
+## 本页覆盖内容
 
-The CMP 170HX unlock was developed under an explicit clean-room protocol, and the single question
-that protocol existed to answer is whether the resulting code could have been produced without
-material from the February 2022 LAPSUS$ breach of NVIDIA. This page records how the clean room was
-organised, what its rules were, what its permitted inputs were, what the contemporaneous provenance
-assessment concluded and on what reasoning, what later byte-level comparison established, and how a
-leaked private proof-of-concept entered the picture on 2026-07-18.
+CMP 170HX 解锁是在一份明确的净室协议下开发的，而那份协议存在要回答的单个问题是：生成的代码能否在没有 2022 年 2 月 LAPSUS$ 对 NVIDIA 的泄露材料的情况下被产出。本页记录净室如何组织、它的规则是什么、它允许的输入是什么、当时的来源评估结论是什么、依据什么推理、后来的字节级比较确立了什么、以及一份泄露的私有概念验证如何在 2026-07-18 进入画面。
 
-Two results dominate everything below.
+两个结果主导下面的一切。
 
-1. **Every constant in the shipping ROP payload but one has been traced to a dated public or
-   clean-room-derived artifact that predates the shipping patch.** Gadget addresses come from a
-   decrypted debug-booter disassembly published 2026-07-01, gadget semantics from an auto-generated
-   atlas published 2026-07-10, the DMEM stack frame grid from a public git commit on
-   2026-07-15T04:47Z, and the buffer, guard, fill and size constants from the June 2026 academic
-   preprint. The exception is the `0x00000007` planted at payload offset `0x1100` (`D[0x1900]`),
-   which no dated artifact predating the patch accounts for. Nothing else in the payload requires
-   leaked material to derive.
-2. **The shipping `cmpunlocker` driver patch set is, line for line, the leaked `patch.diff`,** with
-   10 GB dual-geometry support added and one hostile change removed, adopted 70 minutes after
-   `patch.diff` was posted. Derivability in principle and derivation in fact are not the same thing,
-   and the source material does not settle which happened.
+1. **出货 ROP 载荷里的每个常量，除一个外，都已追溯到一份早于出货补丁的、带日期的公开或净室派生的工件。** Gadget 地址来自 2026-07-01 发布的解密调试-booter 反汇编、gadget 语义来自 2026-07-10 发布的自动生成图谱、DMEM 栈帧网格来自 2026-07-15T04:47Z 的一个公开 git 提交、缓冲区、守卫、填充和大小常量来自 2026 年 6 月的学术预印本。例外是种在载荷偏移量 `0x1100`（`D[0x1900]`）的 `0x00000007`、没有任何早于补丁的带日期工件解释它。载荷里其它什么都不需要泄露材料来推导。
+2. **出货的 `cmpunlocker` 驱动补丁集，逐行地，就是泄露的 `patch.diff`**，加了 10 GB 双几何布局支持、移除一处敌对改动、在 `patch.diff` 贴出后 70 分钟被采纳。原则上的可推导性和事实上的推导不是一回事、而源材料没有解决哪一个发生了。
 
-This page reports both, states the arguments made on each side, and stops there. It does not offer a
-legal conclusion, and no individual is named anywhere on it. For the code itself see
-[the six driver patches](../unlock/driver-patches.md) and [the ROP chain](../unlock/rop-chain.md);
-for dates see [the project timeline](timeline.md).
+本页同时报告两者、陈述每一方的论证、然后就此打住。它不提供法律结论、而且本页任何地方都不点名任何人。代码本身见[六个驱动补丁](../unlock/driver-patches.md) 和[ROP 链](../unlock/rop-chain.md)；日期见[项目时间线](timeline.md)。
 
 ---
 
-## Why a clean room existed at all
+## 为什么净室一开始就存在
 
-The unlock did not begin in a clean room. It began on a public GitHub issue tracker in March 2026,
-moved to a Discord server in April 2026, and by May 2026 had produced the decisive cryptography
-result that allowed the AES-encrypted, RSA-signed `booter_load` code to be read. In June 2026 a ROP
-chain able to jump to an arbitrary address inside that code was demonstrated and announced publicly.
-Development then moved into a private group of **seven people**, which produced the proof-of-concept,
-the academic preprint dated June 2026, and two internal **Driver Modification Guides** (one for
-compute, one for memory).
+解锁不是在净室里开始的。它于 2026 年 3 月在一个公开 GitHub 问题跟踪器上开始、于 2026 年 4 月移到一个 Discord 服务器、到 2026 年 5 月已产出那个让 AES 加密、RSA 签名的 `booter_load` 代码能被读取的决定性密码学结果。2026 年 6 月、一条能在那个代码内部跳到任意地址的 ROP 链被演示并公开宣布。开发随后移进一个**七人**的私人群组、它产出了概念验证、日期为 2026 年 6 月的学术预印本、和两份内部**驱动修改指南**（一份算力、一份显存）。
 
-That private group made two decisions that shaped everything afterwards:
+那个私人群组做了两个塑造此后一切的决定：
 
-- **Publish the paper, withhold the exploit code**, and wait for independent reproduction.
-- **Delete the original Discord server**, on the stated grounds that it may have contained material
-  leaked from NVIDIA.
+- **发表论文、扣留利用代码**、并等待独立复现。
+- **删除原始 Discord 服务器**、理由是它可能含从 NVIDIA 泄露的材料。
 
-The clean room was created to reproduce the withheld result from scratch, using only inputs whose
-provenance could be shown. The threat it was managing was the LAPSUS$ breach: as characterised by
-the later provenance assessment, a February to March 2022 incident that leaked approximately **1 TB**
-of NVIDIA data including GPU driver source code, internal hardware documentation and firmware signing
-keys. The leaked cache remains publicly locatable (the Internet Archive was named in-channel), which
-is exactly why a rule was needed rather than an assumption.
+净室是为了从零复现被扣留的结果而创建的、只使用能展示来源的输入。它管理的威胁是 LAPSUS$ 泄露：据后来的来源评估所述、2022 年 2 月到 3 月的一次泄露约 **1 TB** 的 NVIDIA 数据、包括 GPU 驱动源码、内部硬件文档和固件签名密钥。泄露的缓存保持公开可定位（Internet Archive 在频道内被点名）、这正是一条规则而非一个假设被需要的原因。
 
 ---
 
-## The rule set
+## 规则集
 
-The governing standard, stated as channel policy from 2026-06-27 and enforced by deletions and ban
-threats for the whole period:
+治理标准、从 2026-06-27 起作为频道政策陈述、并在整个时期通过删除和封禁威胁执行：
 
-1. **No NVIDIA secrets may be discussed.**
-2. **Secret knowledge is admissible only if the same information can be shown to be derivable from
-   public sources.**
-3. **Posting leaked or illegal material is a ban.** This explicitly covered leaked source, leaked
-   schematics, and any file carried over from the deleted earlier Discord.
+1. **不得讨论任何 NVIDIA 机密。**
+2. **只有能展示同一信息可从公开来源推导的机密知识才被采信。**
+3. **发布泄露或非法材料会被封禁。** 这明确覆盖泄露源码、泄露原理图、以及从被删除的早期 Discord 带过来的任何文件。
 
-The June 2026 preprint was designated **the single clean input document**, on two grounds: it was
-published on a scientific-publication site, and it had been sent to NVIDIA.
+2026 年 6 月预印本被指定为**唯一干净输入文档**、基于两点：它发布在一个科学出版物站点上、而且它已被发送给 NVIDIA。
 
-Rule 2 is the load-bearing one, and it is also the rule the 2026-07-18 events put under the most
-strain. See [Two readings, unresolved](#two-readings-unresolved) below.
+规则 2 是承重的那条、也是 2026-07-18 事件施加最大压力的那条规则。见下文[两种读法、未解决](#两种读法未解决)。
 
 ---
 
-## Clean room and dirty room: intended versus actual
+## 净室与脏室：设想的对比实际的
 
-A two-team split was proposed on day one. The stated organising principle was conventional: a
-**dirty-room** team performs the reverse engineering and emits documentation containing nothing
-illegal, and a **clean team** that has seen nothing else reimplements the result from those documents
-alone.
+第一提案里就提出了双队分裂。陈述的组织原则是常规的：一个**脏室**队执行逆向工程并产出不含任何非法内容的文档、一个什么都没看过、只从那些文档重新实现结果的**干净队**。
 
-That split was largely dropped. What actually materialised was a **channel split, not a team split**:
+那个分裂大体被放弃了。实际成形的是一种**频道分裂、而非队伍分裂**：
 
-| Intended | What happened |
+| 设想 | 实际发生 |
 |---|---|
-| Dirty-room team, isolated, does RE and writes specifications | No document in the source set uses "dirty room" as an operating team |
-| Clean team, exposure-free, implements from those specifications only | Same people worked across channels |
-| Separation enforced by team membership | Separation enforced by channel topic and by the admissibility rule |
+| 脏室队、隔离、做 RE 并写规格 | 源集里没有任何文档把 "dirty room"（脏室）当作一个运作团队使用 |
+| 干净队、零接触、只从那些规格实现 | 同一些人在频道之间工作 |
+| 靠队伍成员资格强制分离 | 靠频道主题和采信规则强制分离 |
 
-The channels that did exist were a `#general-how-to-cleanroom` how-to channel carrying only working
-values, and deeper technical channels carrying register sweeps, Falcon exit-path analysis and DMEM
-stack exploration. Confidence in this characterisation is **medium**: the intent is quoted verbatim
-in the archive and the channel structure is directly observable, but the two-team protocol is not
-evidenced as ever having been staffed.
+确实存在的频道是一个只携带工作值的 `#general-how-to-cleanroom` 指南频道、加更深的、携带寄存器扫描、Falcon 退出路径分析和 DMEM 栈探索的技术频道。对这个描述的置信度：**中等**：意图在档案里逐字引用、频道结构直接可观察、但双队协议没有被证明过曾被配备人员。
 
 ---
 
-## The clean input corpus
+## 干净输入语料库
 
-Everything the clean room permitted itself to build on, with the argument for each:
+净室允许自己建立其上的一切、带各自的论证：
 
-| Input | Why it was held clean |
+| 输入 | 为什么它被视为干净 |
 |---|---|
-| **"A Canary in the Crypto Mine: Defeating Stack Protection in a GPU Secure Coprocessor"**, June 2026, Zenodo record `20916112`, ResearchGate publication `408132536`, 16 pages | Published on a scientific-publication site and disclosed to the vendor. Designated the single clean input document. Circulated 2026-06-26; posted into the clean-room server 2026-07-16T06:07:12Z as `main.pdf` |
-| `NVIDIA/open-gpu-kernel-modules` (tags `610.43.02`, `610.43.03`, and earlier `580.x`) | NVIDIA's own published source |
-| The **debug** `booter_load` binary | Compiled as a C array inside NVIDIA's `.ko` and published in the open-gpu-kernel-modules tree as `g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c`. Extracted with the Nouveau firmware-extraction tool (patched for GA100). Working the path out took the group two days |
-| NVIDIA's **public AES-128-ECB test keys** | Sourced from NVIDIA's public Jetson Secure Boot documentation. The key construction is the MD5 initialization vector `...0123456789abcdef...` with the key number as the last byte. A self-contained public-domain Rijndael decrypter and key validator (`rijndael-tool.zip`) containing no NVIDIA material was published in-channel |
-| The **GA100 Fuse and Register Reference Table**: 120 registers across 15 Ampere cards | Produced entirely from read-only MMIO probing of hardware the participants owned or rented. See [fuses and OTP](../hardware/fuses-and-otp.md) |
-| BAR0 register reads from the card itself, and from A100 comparison parts | Owner-side measurement of owned hardware |
+| **"A Canary in the Crypto Mine: Defeating Stack Protection in a GPU Secure Coprocessor"**、2026 年 6 月、Zenodo 记录 `20916112`、ResearchGate 出版物 `408132536`、16 页 | 发布在一个科学出版物站点上并向厂商披露。被指定为唯一干净输入文档。2026-06-26 传阅；2026-07-16T06:07:12Z 作为 `main.pdf` 贴进净室服务器 |
+| `NVIDIA/open-gpu-kernel-modules`（标签 `610.43.02`、`610.43.03` 和更早的 `580.x`） | NVIDIA 自己发布的源码 |
+| **调试** `booter_load` 二进制 | 编译为 NVIDIA 自己 `.ko` 里的一个 C 数组、并在 open-gpu-kernel-modules 树里发布为 `g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c`。用 Nouveau 固件提取工具（为 GA100 打补丁）提取。弄通这条路花掉群组两天 |
+| NVIDIA 的**公开 AES-128-ECB 测试密钥** | 来源是 NVIDIA 公开的 Jetson Secure Boot 文档。密钥构造是 MD5 初始化向量 `...0123456789abcdef...`、密钥编号作最后字节。一个自包含、公域、含无 NVIDIA 材料的 Rijndael 解密器和密钥验证器（`rijndael-tool.zip`）在频道内发布 |
+| **GA100 熔丝与寄存器参考表**：15 张 Ampere 卡上的 120 个寄存器 | 完全从对参与者拥有或租用硬件的只读 MMIO 探测产出。见[熔丝与 OTP](../hardware/fuses-and-otp.md) |
+| 卡自身的 BAR0 寄存器读、和 A100 对比部件上的 | 拥有硬件的拥有者侧测量 |
 
-The framing agreed in-channel about the encryption was pointed: NVIDIA's mistake was **not** the use
-of trivial test keys, but **shipping exactly the same binary in the debug and production branches**,
-and signing a binary containing a serious vulnerability.
+频道内就加密达成的共识是尖锐的：NVIDIA 的错误**不是**使用琐碎测试密钥、而是**在调试和生产分支里发货恰好相同的二进制**、以及签名一个含严重漏洞的二进制。
 
-### The 15-card differential corpus
+### 15 卡差分语料库
 
-The register-level provenance argument rests on this table. It compares 120 registers read by
-`tools/mmio-probe/probe.sh` across:
+寄存器级来源论证压在这张表上。它对比 `tools/mmio-probe/probe.sh` 在下面读的 120 个寄存器：
 
-- **2 × CMP 170HX 10 GB**, physical, probed 2026-05-05 and 2026-05-07
-- **11 cards rented via a GPU-rental provider**: A100 SXM4 40G, A100 PCIe 40G, A100 PCIe 80G, A10,
-  A16, A5000, A6000, RTX 3080, RTX 3080 Ti, RTX 3090, RTX 3090 Ti. (An engineering-sample part
-  appears as a column in the fuse table but carries no values in any row.)
-- **2 × Drive A100 32 GB** (`GA100-550F-A1`, PG199), physical, probed 2026-05-31
+- **2 × CMP 170HX 10 GB**、物理、2026-05-05 和 2026-05-07 探测
+- **11 张经 GPU 租赁提供商租的卡**：A100 SXM4 40G、A100 PCIe 40G、A100 PCIe 80G、A10、A16、A5000、A6000、RTX 3080、RTX 3080 Ti、RTX 3090、RTX 3090 Ti。（一个工程样品部件作为一列出现在熔丝表里、却在任何一行都不带值。）
+- **2 × Drive A100 32 GB**（`GA100-550F-A1`、PG199）、物理、2026-05-31 探测
 
-Exactly five register groups distinguish a 170HX from an A100 of the same silicon: SM speed select,
-PCIe boot generation, NVLink disable, ECC enable, and FBPA CFG1 geometry.
+恰好五个寄存器组把一颗 170HX 与一颗同硅片的 A100 区分开：SM 速度选择、PCIe 引导代、NVLink 禁用、ECC 使能、和 FBPA CFG1 几何布局。
 
-Two physical 170HX units were also shown to be register-identical where it matters: **107 of 120
-registers byte-identical**, with all 13 differences being per-die binning artefacts (floorsweep masks
-and their FBIO/STATUS mirrors, the per-unit `FEAT_OVR_SM_SPD` encoding, `FEAT_OVR_QUADRO`, the HBM
-silicon identity registers, and the per-FBPA readbacks that follow the floorsweep). Every restriction
-fuse matched exactly. That result is what licenses generalising a recipe derived from one card to
-another.
+两块物理 170HX 单元也在要紧处被证明寄存器相同：**120 个寄存器中 107 个逐字节相同**、全部 13 个差异是按晶片分级伪影（地板清扫掩码和它们的 FBIO/STATUS 镜像、按单元的 `FEAT_OVR_SM_SPD` 编码、`FEAT_OVR_QUADRO`、HBM 硅片身份寄存器、以及跟随地板清扫的每-FBPA 回读）。每个限制熔丝都精确匹配。那个结果许可把一张卡派生的配方推广到另一张。
 
 ---
 
-## The provenance standard for the register values
+## 寄存器值的来源标准
 
-Accepted in-channel on 2026-07-02 as the justification for publishing the target register set:
+2026-07-02 在频道内作为发布目标寄存器集的理由被接受：
 
-> The memory geometry comes from the VBIOS and from reading the BAR0 address space, and everything
-> else can be deduced by diffing an A100's BAR0 output against a 170HX's, changing everything to the
-> A100 values.
+> 显存几何布局来自 VBIOS 和读 BAR0 地址空间，而其它一切可以靠 diff 一颗 A100 的 BAR0 输出对一颗 170HX 的、把所有东西改成 A100 值来推导。
 
-Only NVIDIA open-source driver data and NVIDIA's public test keys were used to produce the clean
-`booter_load` assembly. The 120-register cross-variant fuse table is the independent backing for the
-claim: it shows the A100-versus-170HX delta directly, without reference to any internal document.
+只用了 NVIDIA 开源驱动数据和 NVIDIA 的公开测试密钥来产出干净的 `booter_load` 汇编。120 寄存器跨变体熔丝表是该声称的独立背书：它直接展示 A100 对比 170HX 的差、不参照任何内部文档。
 
 ---
 
-## The load-bearing technical fact: debug equals production where it matters
+## 承重的技术事实：调试等于生产、在要紧处
 
-The entire clean-room approach depends on one empirical result. If the `-debug` compile of
-`booter_load` carried extra bytes, every gadget address derived from the readable debug disassembly
-would be shifted and useless on production silicon, and the only route to correct offsets would be
-the production binary (which cannot be decrypted) or leaked source.
+整个净室方法依赖一个实证结果。如果 `booter_load` 的 `-debug` 编译携带额外字节、从可读调试反汇编派生的每个 gadget 地址都会被移位、在生产硅片上无用、而正确偏移量的唯一路线会是生产二进制（它无法被解密）或泄露源码。
 
-The concern was raised on 2026-07-02 and disproved two ways in the same period:
+该担忧于 2026-07-02 被提出、并在同一时期被两种方式反驳：
 
-- The debug and production binaries are **exactly the same size**.
-- A ROP chain built purely from the debug disassembly **executed correctly on production silicon**.
+- 调试和生产二进制**大小完全相同**。
+- 一条纯粹从调试反汇编构建的 ROP 链**在生产硅片上正确执行**。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> "Same size plus one successful chain" is a proof by instance, not by construction. No document in
-> the source set records an actual byte-level comparison of the `IMAGE_DBG` and `IMAGE_PROD` blobs,
-> which the bindata archive makes trivially possible. Settled by: hashing the two entries in
-> `g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c`. Nobody has published that hash.
+> "同大小加一条成功链"是一个按实例的证明、不是一个按构造的证明。源集里没有任何文档记录对 `IMAGE_DBG` 和 `IMAGE_PROD` blob 的实际字节级比较、而 bindata 档案使它琐碎地可行。由：哈希 `g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c` 里两条目定论。没人发布过那个哈希。
 
-A related debate was whether touching the GSP signature at all breaks cleanliness. One camp held that
-tampering with a signature makes the result unclean by definition. The counter-position went
-unrebutted: return-oriented programming reuses code already present in the signed binary and needs no
-access to NVIDIA source, so a chain built from a legitimately decrypted binary is clean, and the only
-conceivably unclean element would be the payload itself if it had been copied rather than derived.
-The production booter is never modified: every working tool loads an unmodified signed image and only
-splices the detached 384-byte signature back at `PATCH_LOC 0x8900`.
+一个相关争论是触碰 GSP 签名是否一开始就破坏干净性。一个阵营认为篡改签名按定义使结果不干净。反方未被反驳：面向返回编程复用已签名二进制里已存在的代码、不需要访问 NVIDIA 源码、所以一条从合法解密二进制构建的链是干净的、唯一貌似不干净的元素会是载荷本身、如果它被复制而非推导的话。生产 booter 从不被修改：每个工作的工具加载一个未修改的签名映像、只把分离的 384 字节签名在 `PATCH_LOC 0x8900` 拼接回去。
 
 ---
 
-## The 2026-07-18 provenance assessment
+## 2026-07-18 来源评估
 
-A document titled **"Assessment: Is patch.diff Derived from LAPSUS$-Leaked Information?"** was posted
-at **2026-07-18T18:40:16Z**, exactly **39 minutes** after `patch.diff` itself was posted at
-**2026-07-18T18:01:15Z**. Both timestamps are decoded from Discord message snowflakes to the
-millisecond.
+一份标题为 **"Assessment: Is patch.diff Derived from LAPSUS$-Leaked Information?"** 的文档在 **2026-07-18T18:40:16Z** 贴出、**恰好**在 `patch.diff` 自己于 **2026-07-18T18:01:15Z** 贴出后的 **39 分钟**。两个时间戳都从 Discord 消息 snowflake 解码到毫秒。
 
-**Scope.** A patch against `NVIDIA/open-gpu-kernel-modules` tag `610.43.03`.
+**范围。** 一个对 `NVIDIA/open-gpu-kernel-modules` 标签 `610.43.03` 的补丁。
 
-**Clean-source corpus, exactly three items and no more:**
+**干净来源语料库、恰好三项、不多不少：**
 
-1. `paper.md` (the Canary preprint)
-2. `how_to.discord.html` and `discussion.discord.html`, exported transcripts of two channels of the
-   clean-room server
-3. `NVIDIA/open-gpu-kernel-modules` tag `610.43.03`
+1. `paper.md`（Canary 预印本）
+2. `how_to.discord.html` 和 `discussion.discord.html`、净室服务器两个频道的导出转写
+3. `NVIDIA/open-gpu-kernel-modules` 标签 `610.43.03`
 
-No leaked-cache comparison was available to the assessor, which the assessment itself records as a
-limit on its conclusion.
+评估者没有可用的泄露缓存对比、评估自己也把它记作对其结论的一个限制。
 
-**Method.** Compare the patch against those three sources, then apply the patch cleanly to a cloned
-repository and inspect it in context.
+**方法。** 把补丁对那三个来源对比、然后把补丁干净应用到一份克隆的仓库、并把它放在上下文里检查。
 
-**Verdict, verbatim:** "The available evidence does not support a conclusion that this patch is
-derived from LAPSUS$-leaked information."
+**裁决、逐字：** "The available evidence does not support a conclusion that this patch is derived from LAPSUS$-leaked information."（现有证据不支持这个补丁派生自 LAPSUS$ 泄露信息的结论。）
 
-### What the assessment classified as clean
+### 评估把什么分类为干净
 
-| Class | Contents | Recorded verdict |
+| 类 | 内容 | 记录在案的裁决 |
 |---|---|---|
-| **Clean from the paper** (nine concepts) | Stack-canary reference-word vulnerability (§5.1-5.3, Thesis 1); DMA overflow via unbounded signature-length copy (§3.2, §5.5); SEC2 Falcon HS-mode entry via signed booter (§2.2, §5.4); uniform-fill value **V = `0x4a7`** (§5.5, emulator trace); overflow signature size **SIGSZ = `0xf800`** (§5.5); PLM unlocking as the pivot after HS code execution (§6.1); the feature-override shadow register concept (§2.1); WPR2 teardown from HS (§8.5); the inverted threat model of a rooted host with the GPU as defender (§2.3) | "Clean. These concepts are fully documented in the paper and require no special access." |
-| **Clean from the open driver tree** (kernel-internal APIs) | `memdescCreate`, `memdescMapInternal`, `memdescFlushCpuCaches`, `memdescGetSize`, `memdescGetPhysAddr`; `pmaRegisterRegion`, `pmaGetRegionInfo`, `pmaGetFreeMemory`, `pmaGetTotalMemory`; `MEMDESC_FLAGS_ALLOC_IN_UNPROTECTED_MEMORY`; `os_open_and_read_file`; `kgspExecuteBooterLoad_HAL`, `kgspPopulateWprMeta_HAL`; `FB_REGION_DESCRIPTOR`, `PMA_REGION_DESCRIPTOR`; `NV_FLAG_PERSISTENT_SW_STATE`; `GPU_REG_RD32`/`GPU_REG_WR32`; `NV2080_CTRL_CMD_FB_GET_FB_REGION_INFO_PARAMS` | "Clean. Any competent kernel module developer can discover these by reading the source." Every named symbol is present in the shipping patch set |
-| **Clean but early** (eight elements, present in the public transcripts dated 2026-07-09 to 2026-07-17) | Feature-override addresses `0x823804`, `0x82381c`, `0x823820`, `0x9a0204`, `0x100ce0`; WPR2 registers `0x1fa824`/`0x1fa828` and WPR2 carving as a blocker; FB-geometry PLM addresses `0x100b10`/`0x100b38` and `0x9a0148`/`0x9a014C`/`0x9a0108`/`0x9a010C`; `0x8403C4` as `resetPLM`; three named exit strategies (`secure_teardown`, premature exit `0x8117`, `multiwrite_then_mutexfree_cleanexit`); FLR persistence of certain registers; a non-secure ucode loader for direct SEC2 control; DMEM stack exploration from `D[0xFFC4]` through `D[0xFFF0]` | "Clean, but overlapping." |
+| **干净、来自论文**（九个概念） | 栈金丝雀引用字漏洞（§5.1-5.3、Thesis 1）；经无界签名长度复制的 DMA 溢出（§3.2、§5.5）；经签名 booter 的 SEC2 Falcon HS 模式进入（§2.2、§5.4）；均匀填充值 **V = `0x4a7`**（§5.5、仿真器迹线）；溢出签名大小 **SIGSZ = `0xf800`**（§5.5）；HS 代码执行后作为枢轴的 PLM 解锁（§6.1）；特性覆盖影子寄存器概念（§2.1）；来自 HS 的 WPR2 teardown（§8.5）；带 GPU 作防御者的被侵入宿主这个颠倒威胁模型（§2.3） | "Clean. These concepts are fully documented in the paper and require no special access."（干净。这些概念在论文里被完整记录、不需要特殊访问。） |
+| **干净、来自开源驱动树**（内核内部 API） | `memdescCreate`、`memdescMapInternal`、`memdescFlushCpuCaches`、`memdescGetSize`、`memdescGetPhysAddr`；`pmaRegisterRegion`、`pmaGetRegionInfo`、`pmaGetFreeMemory`、`pmaGetTotalMemory`；`MEMDESC_FLAGS_ALLOC_IN_UNPROTECTED_MEMORY`；`os_open_and_read_file`；`kgspExecuteBooterLoad_HAL`、`kgspPopulateWprMeta_HAL`；`FB_REGION_DESCRIPTOR`、`PMA_REGION_DESCRIPTOR`；`NV_FLAG_PERSISTENT_SW_STATE`；`GPU_REG_RD32`/`GPU_REG_WR32`；`NV2080_CTRL_CMD_FB_GET_FB_REGION_INFO_PARAMS` | "Clean. Any competent kernel module developer can discover these by reading the source."（干净。任何称职的内核模块开发者都能通过读源码发现这些。）每个具名符号都存在于出货补丁集里 |
+| **干净但早**（八个元素、存在于日期 2026-07-09 到 2026-07-17 的公开转写里） | 特性覆盖地址 `0x823804`、`0x82381c`、`0x823820`、`0x9a0204`、`0x100ce0`；WPR2 寄存器 `0x1fa824`/`0x1fa828` 和作为阻塞者的 WPR2 carve；FB-几何 PLM 地址 `0x100b10`/`0x100b38` 和 `0x9a0148`/`0x9a014C`/`0x9a0108`/`0x9a010C`；`0x8403C4` 作 `resetPLM`；三个具名退出策略（`secure_teardown`、过早退出 `0x8117`、`multiwrite_then_mutexfree_cleanexit`）；某些寄存器的 FLR 持久性；一个用于直接 SEC2 控制的非安全 ucode 加载器；从 `D[0xFFC4]` 到 `D[0xFFF0]` 的 DMEM 栈探索 | "Clean, but overlapping."（干净、但重叠。） |
 
-One citation in that table is wrong. "WPR2 teardown from HS" is mapped to paper §8.5; §8.5 is titled
-"Persistence across FLR" and argues that override values held in an always-on island turn a transient
-exploit into a durable state. It contains no WPR2 teardown and no ROP discussion. The paper's only
-ROP reference is a single citation in §5.5. The practical consequence is that the shipping patch's
-explicit WPR2 save and restore around each Booter pass is not covered by the paper as the table
-implies. The assessment separately and correctly attributes WPR2 handling to the public transcripts,
-so this is a citation error rather than a substantive one.
+那张表里有一个引用是错的。"WPR2 teardown from HS" 被映射到论文 §8.5；§8.5 标题是 "Persistence across FLR"（跨 FLR 的持久性）并论证、持有覆盖值的常开岛把一个瞬时利用变成持久状态。它不含 WPR2 teardown、也不含 ROP 讨论。论文唯一的 ROP 引用是 §5.5 里的单一引用。实际后果是、出货补丁围绕每次 Booter 趟的显式 WPR2 保存和恢复不被论文覆盖、尽管表暗示如此。评估分开地、正确地、把 WPR2 处理归因到公开转写、所以这是一个引用错误、而非实质错误。
 
-### The assessment's three arguments for external origin
+### 评估关于外部起源的三个论证
 
-These are recorded as arguments, not as facts.
+这些被记录为论证、不是事实。
 
-1. **Negative evidence.** The patch contains no NVIDIA-internal code comments, no revealing variable
-   names from leaked builds, no use of the leaked signing keys (the exploit forges no signature), and
-   no internal-only register names that are not also discoverable through BAR0 probing. The paper's
-   ethics statement corroborates the key point directly: "We extracted no signing keys and forged no
-   signature."
-2. **The sledgehammer argument.** `patch.diff` inserts `return NV_OK;` as the first statement of
-   `gpuValidateRegOps` in `subdevice_ctrl_gpu_regops.c`, leaving the original body dead. It is
-   unconditional, affects all GPUs rather than only the CMP 170HX, and disables control-panel
-   register read/write validation entirely. The inference drawn: "The sledgehammer approach suggests
-   an external developer who needed a quick bypass and didn't care about collateral damage to other
-   GPUs or security... An internal NVIDIA engineer or someone with leaked docs would likely make a
-   surgical change."
-3. **The masquerade naming.** `SEC2_DEBUG_PRI_*`, `kgspSec2PostblTiming*` and the `SEC2_DEBUG` log
-   prefix exist nowhere in NVIDIA's codebase, and "PostBL Timing" is a plausible-sounding but
-   fictional feature name. The scheme reads as an attempt to disguise exploit code as a legitimate
-   manufacturing or debug feature, which "would be unnecessary for someone with legitimate access."
-   The naming is verbatim in the shipping code, which defines
-   `SEC2_DEBUG_PRI_FEATURE_OVERRIDE_PLM 0x00823804`,
-   `SEC2_DEBUG_PRI_FEATURE_OVERRIDE_SM_SPEED 0x0082381c`,
-   `SEC2_DEBUG_PRI_FEATURE_OVERRIDE_SM_SPEED_1 0x00823820`,
-   `SEC2_DEBUG_PRI_FBPA_CFG1 0x009a0204` and `SEC2_DEBUG_PRI_MMU_LMR 0x00100ce0` in
-   `0002-booter-verify.patch`.
+1. **负面证据。** 补丁不含 NVIDIA 内部代码注释、不含泄露构建的揭示性变量名、不使用泄露的签名密钥（利用不伪造签名）、也不含不是通过 BAR0 探测也可发现的内部专属寄存器名。论文的伦理陈述直接佐证关键点："We extracted no signing keys and forged no signature."（我们没有提取签名密钥、也没有伪造签名。）
+2. **大锤论证。** `patch.diff` 把 `return NV_OK;` 插作 `subdevice_ctrl_gpu_regops.c` 里 `gpuValidateRegOps` 的第一条语句、把原主体留成死代码。它无条件、影响所有 GPU 而非只有 CMP 170HX、并完全禁用控制面板寄存器读/写验证。引出的推断："The sledgehammer approach suggests an external developer who needed a quick bypass and didn't care about collateral damage to other GPUs or security... An internal NVIDIA engineer or someone with leaked docs would likely make a surgical change."（大锤方法表明一个需要快速绕过、不在乎对其它 GPU 或安全附带损害的外部开发者……一个内部 NVIDIA 工程师或有泄露文档的人很可能会做一次外科手术式改动。）
+3. **伪装命名。** `SEC2_DEBUG_PRI_*`、`kgspSec2PostblTiming*` 和 `SEC2_DEBUG` 日志前缀存在于 NVIDIA 代码库的任何地方都不、而 "PostBL Timing" 是一个貌似合理却虚构的功能名。该方案读作把利用代码伪装成一个合法制造或调试功能的尝试、那 "would be unnecessary for someone with legitimate access"（对合法访问的人不必要）。命名在出货代码里逐字存在、它定义 `0002-booter-verify.patch` 里的 `SEC2_DEBUG_PRI_FEATURE_OVERRIDE_PLM 0x00823804`、`SEC2_DEBUG_PRI_FEATURE_OVERRIDE_SM_SPEED 0x0082381c`、`SEC2_DEBUG_PRI_FEATURE_OVERRIDE_SM_SPEED_1 0x00823820`、`SEC2_DEBUG_PRI_FBPA_CFG1 0x009a0204` 和 `SEC2_DEBUG_PRI_MMU_LMR 0x00100ce0`。
 
 > [!CAUTION]
-> **The `gpuValidateRegOps` bypass is not in the shipping tool**
+> **`gpuValidateRegOps` 绕过不在出货工具里**
 >
-> The unconditional bypass is real and serious: any process with `NV_GPU_REG_OP` access could read
-> or write arbitrary GPU registers on any NVIDIA GPU in the machine. It exists **only in the leaked
-> `patch.diff`**. The shipping `cmpunlocker` patch set does not touch
-> `subdevice_ctrl_gpu_regops.c` at all, and the string `gpuValidateRegOps` appears nowhere in
-> `master` or in any of the twelve unreleased branches. Any text attributing this hole to
-> `cmpunlocker` is wrong.
+> 无条件绕过是真实且严重的：任何有 `NV_GPU_REG_OP` 访问的进程都能在机器里任意 NVIDIA GPU 上读或写任意 GPU 寄存器。它**只存在于泄露的 `patch.diff` 里**。出货的 `cmpunlocker` 补丁集**完全**不碰 `subdevice_ctrl_gpu_regops.c`、而字符串 `gpuValidateRegOps` 出现在 `master` 或十二个未发布分支的任何一个的任何地方都不。任何把这个洞归因于 `cmpunlocker` 的文字都是错的。
 
-### The single residual concern
+### 单一残余担忧
 
-Two items were rated HIGH and left uncleared: the complete ROP chain DMEM byte offsets (`0x1100`,
-`0x5b40`, `0xf754` through `0xf7f8`) and the gadget chain mapping `writeAddr`/`writeValue` through
-DMEM stack slots, described as `_kgspSec2PostblTimingFillPayload` writing **24 specific 32-bit
-values** at precise byte offsets inside the `0xf800`-byte signature buffer.
+两项被评 HIGH 且留下未清除：完整 ROP 链 DMEM 字节偏移量（`0x1100`、`0x5b40`、`0xf754` 到 `0xf7f8`）和把 `writeAddr`/`writeValue` 经 DMEM 栈槽映射的 gadget 链、被描述为 `_kgspSec2PostblTimingFillPayload` 在 `0xf800`-字节签名缓冲区里精确字节偏移量处写 **24 个特定 32 位值**。
 
-The reasoning was fourfold:
+推理是四重的：
 
-| # | Argument |
+| # | 论证 |
 |---|---|
-| (a) | The paper describes the concept of a uniform-fill ROP chain but does not publish the version-specific DMEM layout |
-| (b) | The offsets are booter-version-specific, and getting them wrong yields a crash (`MB0=0x31`, `IMEM_MISS_INS`, or canary failure) rather than a working exploit |
-| (c) | The community was exploring what it believed to be a different offset range |
-| (d) | Deriving them requires a cycle-faithful Falcon emulator plus the specific booter binary, NVIDIA-internal documentation of the stack frame layout, or the leaked booter source |
+| (a) | 论文描述均匀填充 ROP 链的概念、却没有发布版本专属 DMEM 布局 |
+| (b) | 偏移量是 booter 版本专属的、弄错它们产生崩溃（`MB0=0x31`、`IMEM_MISS_INS`、或金丝雀失败）而非一个工作利用 |
+| (c) | 社区在探索它相信的一个不同偏移量范围 |
+| (d) | 推导它们需要一个周期保真的 Falcon 仿真器加专属 booter 二进制、栈帧布局的 NVIDIA 内部文档、或泄露的 booter 源码 |
 
-Its own stated mitigation was that the paper's emulator methodology is sufficient to reproduce the
-analysis. Bottom line, verbatim: "The ROP chain offsets are the only element that would require
-significant independent work to produce without leaked documentation, and the paper explicitly
-describes how to do that work."
+它自己的既定缓解是、论文的仿真器方法论足以复现该分析。底线、逐字："The ROP chain offsets are the only element that would require significant independent work to produce without leaked documentation, and the paper explicitly describes how to do that work."（ROP 链偏移量是唯一一个在没有泄露文档的情况下产出需要大量独立工作的元素、而论文明确描述如何做那个工作。）
 
-The count is correct: the shipping payload contains exactly **24** `_kgspSec2PostblTimingPutU32`
-calls, at payload offsets `0x1100`, `0x5b40`, `0xf754`, `0xf758`, `0xf75c`, `0xf76c`, `0xf774`,
-`0xf780`, `0xf788`, `0xf78c`, `0xf790`, `0xf794`, `0xf798`, `0xf79c`, `0xf7a0`, `0xf7a4`, `0xf7b0`,
-`0xf7b8`, `0xf7c4`, `0xf7c8`, `0xf7d8`, `0xf7e0`, `0xf7f4`, `0xf7f8`.
+计数是对的：出货载荷恰好含 **24** 次 `_kgspSec2PostblTimingPutU32` 调用、在载荷偏移量 `0x1100`、`0x5b40`、`0xf754`、`0xf758`、`0xf75c`、`0xf76c`、`0xf774`、`0xf780`、`0xf788`、`0xf78c`、`0xf790`、`0xf794`、`0xf798`、`0xf79c`、`0xf7a0`、`0xf7a4`、`0xf7b0`、`0xf7b8`、`0xf7c4`、`0xf7c8`、`0xf7d8`、`0xf7e0`、`0xf7f4`、`0xf7f8`。
 
 ---
 
-## What later analysis established about that residual concern
+## 后来的分析确立了什么、关于那个残余担忧
 
-Concerns (c) and (d) do not survive. The corrections below were derived by re-reading the archived
-artifacts and the shipping source, not quoted from the assessment.
+担忧 (c) 和 (d) 不成立。下面的更正来自重读归档工件和出货源码、不是引用评估。
 
-### (c) is a base-offset framing artifact
+### (c) 是一个基址偏移量框架伪影
 
-The payload is DMA'd to DMEM `0x800`, so **payload offset + `0x800` = DMEM address**. The two
-"different" ranges are the same range:
+载荷被 DMA 到 DMEM `0x800`、所以**载荷偏移量 + `0x800` = DMEM 地址**。两个"不同"的范围是同一个范围：
 
-| Patch offset | DMEM address | Status in the assessment's own tables |
+| 补丁偏移量 | DMEM 地址 | 在评估自己表里的状态 |
 |---|---|---|
-| `0xf754` | `D[0xFF54]` | flagged HIGH |
-| `0xf76c` | `D[0xFF6C]` | flagged HIGH |
-| `0xf7c4` | `D[0xFFC4]` | listed as **clean but early** |
-| `0xf7f8` | `D[0xFFF8]` | flagged HIGH |
+| `0xf754` | `D[0xFF54]` | 标记 HIGH |
+| `0xf76c` | `D[0xFF6C]` | 标记 HIGH |
+| `0xf7c4` | `D[0xFFC4]` | 列为**干净但早** |
+| `0xf7f8` | `D[0xFFF8]` | 标记 HIGH |
 
-The clean-but-early list already contained `D[0xFFC4]` through `D[0xFFF0]`, which covers four of the
-22 stack slots the assessment flagged as HIGH. By the assessment's own accounting, part of the range
-it flagged as HIGH was already flagged as clean. The assessment cited the patch offset as suspect and
-the DMEM address as clean, on the same slot.
+干净但早列表已经包含 `D[0xFFC4]` 到 `D[0xFFF0]`、它覆盖评估标记 HIGH 的 22 个栈槽中四个。按评估自己的记账、它标记 HIGH 的范围部分已经被标记为干净。评估在同一槽上、把补丁偏移量当可疑、把 DMEM 地址当干净。
 
-### (d) is refuted by dated public artifacts
+### (d) 被带日期的公开工件反驳
 
-Every code address in the shipping ROP chain is an instruction boundary in the clean room's own
-decrypted debug-booter disassembly, published **seventeen days before** the patch.
+出货 ROP 链里每个代码地址都是净室自己的解密调试-booter 反汇编里的一条指令边界、**早于补丁十七天**发布。
 
-| Artifact | Posted | What it supplies |
+| 工件 | 发布 | 它提供什么 |
 |---|---|---|
-| `booter_load_ga100_dbg_seccode.fuc5.asm` (545,149 B) | 2026-07-01T12:40:37Z | Raw envydis output; every chain address `0x0cbd`, `0x0ccb`, `0x10aa`, `0x10b9`, `0x1fbd`, `0x582d`, `0x7f2f`, `0x815a`, `0x0d66`, `0x04d4` matches exactly one instruction line |
-| `...annotated.fuc5.asm` | 2026-07-03T17:12:52Z | Per-function banners |
-| `...annotated.fuc5_v2.asm` (607,702 B, 11,875 lines) | 2026-07-09T03:03:21Z | Every `lcall` carries an inline comment naming the callee |
-| **Register Gadget Atlas** | 2026-07-10T13:40:14Z | Machine-generated from that disassembly. Lists `0x0cbd` as "`$r10 <- $r0`, canary(r15==r9), via-call, `mpopaddret $r3 0x4`" and `0x1fbd` as "`$r11 <- $r10`, canary(r15==r9), via-call, `mpopaddret $r2 0x4`", precisely the roles they play in the shipping chain, including the `mpopaddret` epilogues that produce the frame stride |
-| `cmpunlocker` initial commit `9b9fb2f`, `common/constants.yaml` | 2026-07-14T21:47:02-07:00 = 2026-07-15T04:47:02Z | `dmem_layout: dma_target 0x0800, payload_size 0xF800, guard_addr 0x6340, canary 0xFACEB13D`; `booter_addrs: bar0_write_gadget 0x10B9`; `payload_frames: frame_start_addr 0xFF48, frame_stride 0x18, frame_field_offsets {r0 0x00, r1 0x04, r2 0x08, r3 0x0C, saved_reg 0x10, return_addr 0x14}` |
-| `ROP_CHAINS_1180f8_nibble_writeup_20260715.md` | 2026-07-15T18:48:10Z | The same grid in prose: "N BAR0-master writes via the light `0x10b9` self-chain, **+0x18 DMEM per write**", tabulating `D[0xFF50]`, `D[0xFF54]`, `D[0xFF5C]`, `D[0xFF68]`, `D[0xFF6C]`, `D[0xFF74]`, `D[0xFF80]`, `D[0xFF84]` |
+| `booter_load_ga100_dbg_seccode.fuc5.asm`（545,149 B） | 2026-07-01T12:40:37Z | 原始 envydis 输出；每个链地址 `0x0cbd`、`0x0ccb`、`0x10aa`、`0x10b9`、`0x1fbd`、`0x582d`、`0x7f2f`、`0x815a`、`0x0d66`、`0x04d4` 恰好匹配一条指令行 |
+| `...annotated.fuc5.asm` | 2026-07-03T17:12:52Z | 每函数横幅 |
+| `...annotated.fuc5_v2.asm`（607,702 B、11,875 行） | 2026-07-09T03:03:21Z | 每个 `lcall` 带一个命名被调者的内联注释 |
+| **寄存器 Gadget 图谱** | 2026-07-10T13:40:14Z | 从那个反汇编机器生成。列出 `0x0cbd` 为 "`$r10 <- $r0`、canary(r15==r9)、via-call、`mpopaddret $r3 0x4`" 和 `0x1fbd` 为 "`$r11 <- $r10`、canary(r15==r9)、via-call、`mpopaddret $r2 0x4`"、精确地是它们在出货链里扮演的角色、包括产出帧步长的 `mpopaddret` 尾声 |
+| `cmpunlocker` 初始提交 `9b9fb2f`、`common/constants.yaml` | 2026-07-14T21:47:02-07:00 = 2026-07-15T04:47:02Z | `dmem_layout: dma_target 0x0800, payload_size 0xF800, guard_addr 0x6340, canary 0xFACEB13D`；`booter_addrs: bar0_write_gadget 0x10B9`；`payload_frames: frame_start_addr 0xFF48, frame_stride 0x18, frame_field_offsets {r0 0x00, r1 0x04, r2 0x08, r3 0x0C, saved_reg 0x10, return_addr 0x14}` |
+| `ROP_CHAINS_1180f8_nibble_writeup_20260715.md` | 2026-07-15T18:48:10Z | 散文里同一个网格："N BAR0-master writes via the light `0x10b9` self-chain、**每次写 +0x18 DMEM**"、把 `D[0xFF50]`、`D[0xFF54]`、`D[0xFF5C]`、`D[0xFF68]`、`D[0xFF6C]`、`D[0xFF74]`、`D[0xFF80]`、`D[0xFF84]` 制成表 |
 
-**All 22 stack-slot offsets in the shipping patch fall exactly on a named field of that six-field,
-`0x18`-stride grid, with zero unaligned hits.** The remaining two of the 24 values are the guard word
-(`0x5b40` maps to `D[0x6340]`) and `0x1100` (maps to `D[0x1900]`).
+**出货补丁里全部 22 个栈槽偏移量恰好落在那六字段、`0x18` 步长网格的一个具名字段上、零个未对齐命中。** 24 个值中剩余两个是守卫字（`0x5b40` 映射到 `D[0x6340]`）和 `0x1100`（映射到 `D[0x1900]`）。
 
-The remaining non-gadget constants are accounted for as well: `0xf800`, `0x800`, `0x6340` and `0x4a7`
-come from the paper's emulator trace and are on the assessment's own clean-from-paper list;
-`0xc0deca7e` is the paper's published guard stub value; `0x5b40 = 0x6340 - 0x800` is arithmetic on two
-numbers the paper prints; `0x0000ffbc` at `D[0xFFB0]` is a self-referential DMEM stack pointer into
-the frame grid; and `0x00008e18` at `D[0xFF90]` lies beyond the booter's code image (the disassembly
-ends at `0x86ff`) and points into the register-descriptor table region `0x8e04`/`0x8e08` documented
-in the annotated listing at instruction lines `0x0d39`, `0x0da1` and `0x0e1b`.
+剩余的非-gadget 常量也被说明：`0xf800`、`0x800`、`0x6340` 和 `0x4a7` 来自论文的仿真器迹线、且在评估自己的干净-来自-论文列表上；`0xc0deca7e` 是论文发布的守卫桩值；`0x5b40 = 0x6340 - 0x800` 是论文打印的两个数字上的算术；`D[0xFFB0]` 处的 `0x0000ffbc` 是一个指向帧网格的自引用 DMEM 栈指针；`D[0xFF90]` 处的 `0x00008e18` 超出 booter 的代码映像（反汇编止于 `0x86ff`）并指向带注释清单里指令行 `0x0d39`、`0x0da1` 和 `0x0e1b` 文档化的寄存器描述符表区域 `0x8e04`/`0x8e08`。
 
-### The clean room's own chain was related but not a copy
+### 净室自己的链相关、却不是一份副本
 
-The clean-room Python unlocker and the shipping C chain share the buffer base `0x800`, the size
-`0xF800`, the guard address `0x6340` and the `0xFF48`/`0x18` six-field frame grid. They differ
-visibly in two ways:
+净室 Python 解锁器和出货 C 链共享缓冲区基址 `0x800`、大小 `0xF800`、守卫地址 `0x6340` 和 `0xFF48`/`0x18` 六字段帧网格。它们以两种可见方式不同：
 
-| | Clean-room Python (`payload/build.py`, commit `9b9fb2f`) | Shipping C (`0001-sec2-postbl-plm-ss-cfg.patch`) |
+| | 净室 Python（`payload/build.py`、提交 `9b9fb2f`） | 出货 C（`0001-sec2-postbl-plm-ss-cfg.patch`） |
 |---|---|---|
-| Canary literal | `0xFACEB13D` (the project codename) | `0xc0deca7e` (the paper's published stub) |
-| Chain shape | One self-chaining gadget `0x10B9`, one frame per write | Longer chain through `0x0cbd`, `0x1fbd`, `0x815a`, `0x582d` |
-| Terminator | `0x0000810D` | `0x00000ccb` (ACR mutex release) then `0x00007f2f`, exactly the `multiwrite_then_mutexfree_cleanexit` strategy named in the public transcripts |
+| 金丝雀字面量 | `0xFACEB13D`（项目代号） | `0xc0deca7e`（论文发布的桩） |
+| 链形状 | 一个自链 gadget `0x10B9`、每次写一帧 | 经 `0x0cbd`、`0x1fbd`、`0x815a`、`0x582d` 的更长的链 |
+| 终止符 | `0x0000810D` | `0x00000ccb`（ACR 互斥锁释放）然后 `0x00007f2f`、恰好是公开转写命名的 `multiwrite_then_mutexfree_cleanexit` 策略 |
 
-The exploit's codename, **FACEB13D**, pronounced "fake bird", refers to the stack guard canary that
-had to be defeated, not to the Falcon. The enumerated hurdles were security by obscurity, stack
-canaries, security levels L0 to L3, an immutable boot ROM, a secure co-processor, AES encryption of
-code, and RSA signing of code.
+利用的代号、**FACEB13D**、发音 "fake bird"（假鸟）、指那个必须被击败的栈守卫金丝雀、不是指 Falcon。列举的障碍是 obscurity 式安全、栈金丝雀、安全级别 L0 到 L3、一个不可变引导 ROM、一个安全协处理器、代码的 AES 加密、和代码的 RSA 签名。
 
 ---
 
-## The leaked proof-of-concept
+## 泄露的概念验证
 
-### The redistributed package
+### 重分发的包
 
-Roughly three days after the clean-room compute unlocker was released and cloned to GitHub, a
-"Chinese unlock" surfaced on Russian Telegram. It was the leaked private proof-of-concept, not
-independent work, according to the assessment made at the time.
+净室算力解锁器发布并克隆到 GitHub 后约三天、一个 "Chinese unlock" 浮现在俄罗斯 Telegram 上。它按当时作出的评估是泄露的私有概念验证、不是独立工作。
 
-Package structure, as inspected by multiple independent reviewers:
+包结构、经多位独立审查者检查：
 
 ```text
 cmp170hx-unlock-610.43.03.zip
-├── install.sh                              # assessed safe on inspection
-├── NVIDIA-Linux-x86_64-610.43.03.run       # byte-identical to the official installer
-├── open-gpu-kernel-modules-610.43.03/      # patched source + precompiled binaries
-└── README.txt                              # irrelevant
+├── install.sh                              # 检查后评估安全
+├── NVIDIA-Linux-x86_64-610.43.03.run       # 与官方安装器逐字节相同
+├── open-gpu-kernel-modules-610.43.03/      # 打过补丁的源码 + 预编译二进制
+└── README.txt                              # 无关
 ```
 
-Diffing the shipped source against `NVIDIA/open-gpu-kernel-modules` tag `610.43.03` produced
-`patch.diff` at **35,867 bytes, 887 lines, 11 files**. Every modification was isolated to the open
-kernel-module component; no closed binaries were altered. The recommended safe handling was to delete
-the shipped open-modules folder, `git clone` upstream, apply `patch.diff`, recompile, and only then
-run `install.sh`.
+把发货源码对 `NVIDIA/open-gpu-kernel-modules` 标签 `610.43.03` 做 diff 产出 `patch.diff`、**35,867 字节、887 行、11 个文件**。每个修改都隔离在开源内核模块组件里；没有封闭二进制被改动。推荐的安全处理是删除发货的 open-modules 文件夹、`git clone` 上游、应用 `patch.diff`、重编译、然后才跑 `install.sh`。
 
-Archive size is reported inconsistently (537.2 MB in the account that also gives the inner `.run` at
-461.5 MB, roughly 520 MB in another), and a second filename `cmp170hx-unlock-610.43.03.tar.zst`
-appears in one source. Both filenames may be real, the same payload redistributed twice.
+档案大小报告不一致（537.2 MB、在那个也给出内部 `.run` 461.5 MB 的账户里；约 520 MB、在另一个里）、而一个第二个文件名 `cmp170hx-unlock-610.43.03.tar.zst` 出现在一个来源里。两个文件名都可能是真的、同一个载荷被重分发两次。
 
-A holder of both artifacts reported the diff to be **word-for-word identical** to the code in the
-private Driver Modification Guides. Confidence: **high** for the archive structure and the diff size
-(multiple reviewers, the diff file itself archived); **medium** for the "leaked rather than
-rediscovered" attribution, which rests on a single byte comparison from one side of a contested
-attribution.
+一个持有两样工件的人报告 diff 与私有驱动修改指南里的代码**逐字相同**。置信度：**高**针对档案结构和 diff 大小（多位审查者、diff 文件本身被归档）；**中等**针对 "泄露而非重新发现" 的归因、它建立在一次来自一个有争议归因一方的单一字节比较上。
 
-Two further points about the redistributed unlocker, from independent inspection: it writes exactly
-the same privilege-level-mask table as the public repository, unlocks no extra feature, does **not**
-enable PCIe Gen2, and recognises only the 8 GB card ("currently this unlocker only supports 8G cards
-and can't recognize the 10G card").
+关于重分发解锁器再两点、来自独立检查：它写与公共仓库完全相同的权限级别掩码表、不解锁额外功能、**不**启用 PCIe Gen2、只识别 8 GB 卡（"currently this unlocker only supports 8G cards and can't recognize the 10G card"）。
 
-### The leaked shell script
+### 泄露的 shell 脚本
 
-Separately, a compute-unlock shell script leaked publicly as `CMP170HX_Compute_Unlock_v8_3.sh`,
-posted to a public GitHub repository on 2026-07-14 and quickly deleted. Its author described it as
-"just the compute only logic that was posted here, with some minor modifications to attempt to run on
-multiple GPU's vs 1. Nothing new sadly", implemented by duplicating the injection block per card with
-hardcoded PCIe IDs. It contained nothing about the memory unlock.
+分开地、一个算力解锁 shell 脚本以 `CMP170HX_Compute_Unlock_v8_3.sh` 公开泄露、2026-07-14 贴到一个公共 GitHub 仓库、很快被删除。它的作者把它描述为"just the compute only logic that was posted here、with some minor modifications to attempt to run on multiple GPU's vs 1. Nothing new sadly"（只是这里贴过的算力逻辑、带一些尝试跑多 GPU 而非 1 个的小改动。可惜没有新东西）、通过每卡重复注入块、带硬编码 PCIe ID 实现。它不含任何关于显存解锁的东西。
 
-### The blog claim
+### 博客声称
 
-A Chinese blog covering the event claimed two hackers had independently unlocked the memory, and
-showed a screenshot of the team's `booter_load` code with entirely different function names and
-comments. Different names are consistent with either an independent disassembly-plus-annotation pass
-(exactly how the clean room's own names were produced) or with re-annotation of copied material.
+一个报道此事的中国博客声称两名黑客独立解锁了显存、并展示了一个团队 `booter_load` 代码的截图、带完全不同的函数名和注释。不同的名字既与一次独立反汇编加注释趟（恰好是净室自己的名字如何被产出的）一致、也与对复制材料的重新加注释一致。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> Whether that screenshot was independently decrypted using the public hints was never settled.
-> Next step: compare the screenshot's instruction addresses against
-> `booter_load_ga100_dbg_seccode.fuc5.asm`. If they match a debug build, the author would have had
-> to decrypt it with the public Jetson test key, which is the clean path.
+> 那张截图是否用公开提示被独立解密从未定论。下一步：把截图里的指令地址对 `booter_load_ga100_dbg_seccode.fuc5.asm` 对比。如果它们匹配一个调试构建、作者就得用公开 Jetson 测试密钥解密它、那是干净路径。
 
 ---
 
-## The 70-minute adoption window
+## 70 分钟采纳窗口
 
-This is the part of the record that the contemporaneous assessment could not have known, and it is
-established by git author timestamps, `diff -Naur` header mtimes, and decoded message snowflakes.
+这是当时的评估不可能知道的部分、它由 git 作者时间戳、`diff -Naur` 头 mtime 和解码的消息 snowflake 确立。
 
-| Time (UTC) | Event |
+| 时间（UTC） | 事件 |
 |---|---|
-| 2026-07-18T18:01:15Z | `patch.diff` posted to `#general-how-to-cleanroom` |
-| 2026-07-18T18:26:26Z | Every file in the shipping `cmpunlocker` patch set carries this `diff -Naur` header mtime (`2026-07-18 11:26:26 -0700`). One tree, written at one instant, 25 minutes after the posting |
-| 2026-07-18T18:40:16Z | The provenance assessment is posted, in the middle of the window |
-| 2026-07-18T19:11:01Z | `06fabf2 "WORKING MEMORY UNLOCK"` authored on the `memory` branch, **70 minutes** after the posting |
+| 2026-07-18T18:01:15Z | `patch.diff` 贴到 `#general-how-to-cleanroom` |
+| 2026-07-18T18:26:26Z | 出货 `cmpunlocker` 补丁集里每个文件都携带这个 `diff -Naur` 头 mtime（`2026-07-18 11:26:26 -0700`）。一棵树、写于一个瞬间、贴出后 25 分钟 |
+| 2026-07-18T18:40:16Z | 来源评估被贴出、在窗口中间 |
+| 2026-07-18T19:11:01Z | `06fabf2 "WORKING MEMORY UNLOCK"` 在 `memory` 分支被编写、贴出后 **70 分钟** |
 | 2026-07-18T20:51:36Z | `6b7d9ee "FULL WORKING THING"` |
-| 2026-07-18T21:46:49Z | `e4026e5 "Memory working!"` merged to `master` |
+| 2026-07-18T21:46:49Z | `e4026e5 "Memory working!"` 合并进 `master` |
 
-Direction of derivation is not ambiguous: the shipping repository contained **no driver patch of any
-kind** before `06fabf2`, and `patch.diff` supports only the 8 GB `0x20C2` card.
+推导方向不模糊：出货仓库在 `06fabf2` 前**不含任何种类的驱动补丁**、而 `patch.diff` 只支持 8 GB `0x20C2` 卡。
 
-### What actually differs between the two
+### 两者实际差什么
 
-Comparing every added line of the archived `patch.diff` against the concatenation of
-`driver/patches/0001` through `0006`:
+把归档 `patch.diff` 的每个添加行对 `driver/patches/0001` 到 `0006` 的拼接对比：
 
-| Measure | Value |
+| 量 | 值 |
 |---|---|
-| `patch.diff` | 35,867 B, 887 lines, 11 files |
-| `cmpunlocker` patch set | 890 lines, 6 patch files, 10 target files |
-| Added lines byte-identical between them | **638** |
-| Lines unique to `patch.diff` | **19** |
-| Lines unique to `cmpunlocker` | **43** |
+| `patch.diff` | 35,867 B、887 行、11 个文件 |
+| `cmpunlocker` 补丁集 | 890 行、6 个补丁文件、10 个目标文件 |
+| 它们之间逐字节相同的添加行 | **638** |
+| `patch.diff` 独有的行 | **19** |
+| `cmpunlocker` 独有的行 | **43** |
 
-Every one of the 19 `patch.diff`-only lines is either the 8 GB-only hardcoded form of something
-`cmpunlocker` made per-profile, a log line `cmpunlocker` extended with the device ID, or the single
-line `+    return NV_OK;` in `gpuValidateRegOps`:
+19 行 `patch.diff` 独有行中每一行、要么是 `cmpunlocker` 做成每档位形式的某物的 8 GB 专属硬编码形式、要么是 `cmpunlocker` 用设备 ID 扩展的日志行、要么是 `gpuValidateRegOps` 里那单行 `+    return NV_OK;`：
 
 ```c
 #define SEC2_POSTBL_TIMING_CMP_170HX_PCI_DEVICE_ID 0x20C2
 NvU32 cfg1Value    = 0x02779000U;
 NvU32 lmrValue     = 0x0000020BU;
 NvU64 targetFbBytes = 0x0000001000000000ULL;  /* 64GB */
-/* plus the devId == 0x20C2 guards */
+/* 加 devId == 0x20C2 守卫 */
 ```
 
-Every one of the 43 `cmpunlocker`-only lines is the 10 GB (`0x2082`) counterpart: the split into
-`SEC2_POSTBL_TIMING_CMP_170HX_8GB_PCI_DEVICE_ID 0x20C2` and
-`SEC2_POSTBL_TIMING_CMP_170HX_10GB_PCI_DEVICE_ID 0x2082`, the `cfg1Value = 0x02669000U` /
-`lmrValue = 0x0000028AU` branch, `targetFbBytes ... : 0x0000000A00000000ULL`, and the dual device-ID
-guards. Nothing else differs. Those geometry values are the canonical ones documented on
-[memory geometry](../unlock/memory-geometry.md).
+43 行 `cmpunlocker` 独有行中每一行都是 10 GB（`0x2082`）对应物：拆成 `SEC2_POSTBL_TIMING_CMP_170HX_8GB_PCI_DEVICE_ID 0x20C2` 和 `SEC2_POSTBL_TIMING_CMP_170HX_10GB_PCI_DEVICE_ID 0x2082`、`cfg1Value = 0x02669000U` / `lmrValue = 0x0000028AU` 分支、`targetFbBytes ... : 0x0000000A00000000ULL`、和双设备 ID 守卫。其它什么都不差。那些几何值是[显存几何布局](../unlock/memory-geometry.md) 文档化的规范值。
 
 ---
 
-## Two readings, unresolved
+## 两种读法、未解决
 
-The evidence is in genuine tension with itself, and the source set cannot resolve it. Both readings
-are stated here in full because a reader is entitled to weigh them.
+证据与自己真实地处于张力中、而源集无法解决它。两种读法都在此完整陈述、因为读者有权权衡它们。
 
-=== "Side A: clean by the room's own rule"
+=== "A 面：按房间自己的规则干净"
 
-    Every constant in the shipping ROP payload is independently derivable from dated public or
-    clean-room-derived material that predates `patch.diff`: gadget addresses from a disassembly
-    published 2026-07-01, gadget semantics from an atlas published 2026-07-10, the frame grid from a
-    public git commit at 2026-07-15T04:47Z, and the buffer, guard, fill and size constants from the
-    June 2026 paper. The clean room had independently built a working ROP chain on the same grid,
-    with the same buffer, the same guard address and the same `reg_write_indirect` BAR0 write
-    primitive (entered at `0x10b9`, where the shipping chain enters at `0x10aa`), and had shipped it
-    publicly four days earlier. On this reading the clean room satisfied its own rule ("secret
-    knowledge is admissible only if the same information can be shown to be derivable from public
-    sources"), and the assessment's negative verdict is correct and in fact understated.
+    出货 ROP 载荷里每个常量都可从早于 `patch.diff` 的、带日期的公开或净室派生材料独立推导：gadget 地址来自 2026-07-01 发布的反汇编、gadget 语义来自 2026-07-10 发布的图谱、帧网格来自 2026-07-15T04:47Z 的一个公开 git 提交、缓冲区、守卫、填充和大小常量来自 2026 年 6 月论文。净室已独立地在同一网格上、用同一个缓冲区、同一个守卫地址和同一个 `reg_write_indirect` BAR0 写原语（从 `0x10b9` 进入、出货链从 `0x10aa` 进入）构建了一条工作 ROP 链、并已四天前公开发货它。按此读法、净室满足了它自己的规则（"secret knowledge is admissible only if the same information can be shown to be derivable from public sources"（机密知识只有能展示同一信息可从公开来源推导才被采信））、而评估的负面裁决是对的、事实上还被低估了。
 
-=== "Side B: not clean"
+=== "B 面：不干净"
 
-    The shipping code is not a clean-room reimplementation of `patch.diff`. It **is** `patch.diff`,
-    adopted verbatim 70 minutes after it appeared, with one hostile change removed and one device-ID
-    branch added. Derivability in principle is not derivation in fact, and the clean-room rule as
-    several participants read it ("it is dirty, 100%") barred use of the artifact regardless of
-    whether the information in it was independently obtainable. The material was purged rather than
-    adjudicated, and the tool adopted the code anyway.
+    出货代码不是 `patch.diff` 的净室重新实现。它**就是** `patch.diff`、在它出现后 70 分钟逐字采纳、移除一处敌对改动、加一个设备 ID 分支。原则上的可推导性不是事实上的推导、而净室规则正如几位参与者所读的（"it is dirty, 100%"（它是脏的、100%））禁止使用那个工件、无论其中的信息是否可独立获得。材料被清除而非裁决、而工具反正采纳了代码。
 
-**What would settle it.** Nothing in the available material. The two private Driver Modification
-Guides would establish whether `patch.diff` is genuinely the private group's code, and a statement
-from the adopting maintainer would establish whether the code was copied or convergently written.
-Neither exists in the source set.
+**什么会定论它。** 现有材料里没有。两份私有驱动修改指南会确立 `patch.diff` 是否真的是私人群组的代码、而采纳维护者的一份陈述会确立代码是被复制还是收敛书写。两者都不存在于源集里。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
-> A narrower, tractable version of the same question: are patches `0004` (BAR0 PRAMIN clamp) and
-> `0005` (CE scrub workarounds) original to `cmpunlocker`, or were they in the private Guides too?
-> Their content is byte-identical between `patch.diff` and `cmpunlocker`, so they came in together,
-> but the community summaries of `patch.diff` describe only the signature hijack, PLM opens,
-> register pokes, signature rebuild, `fb_length` spoof and the late-PMA extension. They do not
-> mention the PRAMIN clamp or the CE scrub workarounds. Only the Guides would settle it.
+> 同一个问题的一个更窄、可处理的版本：补丁 `0004`（BAR0 PRAMIN 钳制）和 `0005`（CE 清扫变通方案）对 `cmpunlocker` 是原创的、还是也在私有指南里？它们的内容在 `patch.diff` 和 `cmpunlocker` 之间逐字节相同、所以它们一起进来、但 `patch.diff` 的社区摘要只描述签名劫持、PLM 打开、寄存器 poke、签名重建、`fb_length` 欺骗和晚期-PMA 扩展。它们没提 PRAMIN 钳制或 CE 清扫变通方案。只有指南能定论它。
 
 ---
 
-## The academic paper and its disclosure stance
+## 学术论文及其披露立场
 
-The preprint is the effort's single designated clean input and its methodological foundation. Its
-abstract states that the CMP 170HX is "the same die as a flagship A100 but is fuse-crippled on three
-commercial axes: SM math rate (throttled to 1/32), memory capacity (10 GB instead of 80 GB), and PCIe
-link (Gen1 instead of Gen4)", that "all three caps are soft", and gives headline gains of "roughly
-31-62x compute, 8x capacity, 2x link". It is a different paper from `arXiv:2505.03782`, which it
-cites as reference [13].
+预印本是努力的唯一指定干净输入、也是它的方法论基础。它的摘要陈述 CMP 170HX 是"the same die as a flagship A100 but is fuse-crippled on three commercial axes: SM math rate (throttled to 1/32)、memory capacity (10 GB instead of 80 GB)、and PCIe link (Gen1 instead of Gen4)"（与旗舰 A100 同一颗晶片、却在三个商业轴上被熔丝削弱：SM 数学速率（节流到 1/32）、显存容量（10 GB 而非 80 GB）、和 PCIe 链路（Gen1 而非 Gen4））、"all three caps are soft"（三个 cap 都是软的）、并给出约 "roughly 31-62x compute、8x capacity、2x link"（约 31-62x 算力、8x 容量、2x 链路）的头条增益。它是与 `arXiv:2505.03782` 不同的一篇论文、后者被它引用为参考 [13]。
 
-The authors deliberately declined a pre-publication embargo. Section 10 records that the work was
-lab-only on a single card, with no resale, no persistent silicon change, no extracted signing key and
-no forged signature, and that the card was restored to native configuration after measurement. The
-vendor's product-security team was notified **concurrently with publication** rather than in advance.
-The stated reasoning, recorded here as what the authors argued and not as an endorsement:
+作者们刻意拒绝发表前禁运。第 10 节记录工作是单张卡上的实验室专属、无转售、无持久硅片改动、无提取签名密钥、无伪造签名、而且卡在测量后被恢复到原生配置。厂商的产品安全团队在**与发表同时**而非事先被通知。陈述的推理、在此记录为作者所论证的、而非一种背书：
 
-> Coordinated disclosure assumes the vendor's remedy protects the user, which does not hold in an
-> inverted threat model where the defender is the device and the adversary is its owner. A private
-> embargo window would let the vendor burn the relevant anti-rollback fuses on already-shipped
-> hardware, permanently removing that capability from the very users this work concerns, before those
-> users could learn of it or act.
+> Coordinated disclosure assumes the vendor's remedy protects the user、which does not hold in an inverted threat model where the defender is the device and the adversary is its owner. A private embargo window would let the vendor burn the relevant anti-rollback fuses on already-shipped hardware、permanently removing that capability from the very users this work concerns、before those users could learn of it or act.（协调披露假设厂商的补救保护用户、这在一个防御者是设备、对手是其拥有者的颠倒威胁模型里不成立。一个私有禁运窗口会让厂商在已发货硬件上烧掉相关的反回滚熔丝、在那些用户能得知或行动前、永久地从这些工作所关切的用户身上移除那个能力。）
 
-The paper also describes a static checker built by its authors over the booter instruction stream: it
-lifts DMA-as-copy summaries into an IR, treats DMA as a taint source, applies a bounded-write check
-at DMA sinks (`L <= S - o`), and escalates on link-map-aware layout adjacency. Run as a differential
-gate it flags the open-kernel-era booter's signature-read transfer as its single unbounded sink and
-passes the older booter family with no false positives. Confidence: **medium**. The checker is not
-published in the archived material and no independent party has reproduced it.
+论文还描述了一个作者们建在 booter 指令流上的静态检查器：它把 DMA-as-copy 摘要提升进一个 IR、把 DMA 当污染源、在 DMA 汇处应用一个有界写检查（`L <= S - o`）、并在带链接映射感知的布局邻接处升级。作为一个差分门运行、它把开源内核时代 booter 的签名读传输标记为其单一无界汇、并以零误报通过更老的 booter 家族。置信度：**中等**。检查器没有发布在归档材料里、也没有独立方复现它。
 
-Practical footnote for implementers: the paper's "3-4 BAR0 value changes" framing misled every
-independent reproducer. The three or four writes are trivial; the whole difficulty is opening the
-four PLMs first. See [privilege level masks](../unlock/privilege-level-masks.md).
+给实现者的实用脚注：论文的 "3-4 BAR0 value changes"（3-4 个 BAR0 值改动）框架误导了每个独立复现者。三或四次写微不足道；全部难点是**先**打开四个 PLM。见[权限级别掩码](../unlock/privilege-level-masks.md)。
 
 ---
 
-## A downstream legal event
+## 一个下游法律事件
 
-**NVIDIA issued a DMCA takedown against at least one `cmpunlocker` fork on 2026-07-17**, taking that
-repository offline. The recipient stated the notice came from NVIDIA directly and stopped public work
-on the project. Others speculated it was automated filter-triggered enforcement and noted that many
-forks already existed; advice circulated to rename and rewrite forks. Confidence: **medium**. The
-report is first-hand and the repository was observably down, but no takedown document is in the source
-set. Nothing here is legal advice, and this wiki takes no position on the merits.
+**NVIDIA 于 2026-07-17 对至少一个 `cmpunlocker` fork 发出 DMCA 删除通知**、把那个仓库带下线。接收方说通知直接来自 NVIDIA 并停止了项目的公开工作。其它人推测它是自动化过滤器触发的执法、并指出许多 fork 已存在；建议流传要重命名和重写 fork。置信度：**中等**。报告是一手的、仓库可观察到下线、但源集里没有任何删除文档。这里没有任何东西是法律建议、而这个维基不对是非曲直采取立场。
 
 ---
 
-## Provenance hygiene for readers of this wiki
+## 本维基读者的来源卫生
 
-Three cautions that follow directly from the record above.
+三条直接跟在上面记录之后的警告。
 
 > [!CAUTION]
-> **Do not cite the project's `docs` branch**
+> **不要引用项目的 `docs` 分支**
 >
-> `docs/ARCHITECTURE.md` states that `cmpunlocker` writes `0xffffffff` to both SS0 and SS1. The
-> shipping patch writes `0x0082381c = 0x88888888` and `0x00823820 = 0x00000008`. The same branch
-> invents acronym expansions found nowhere in the code or the transcripts (SS as "Suspension
-> State", PLM as "Program Logic Modules", PMM as "Permute Mask Model", LMR as "LM (Local Memory)
-> Request register", PMA as "Power Management Array"), asserts a nonexistent
-> `SEC2_DEBUG: Executing unlock sequence...` log line, and instructs users to run
-> `sudo ./uninstall.sh --yes` when the shipping script is `remove.sh`. It is seven commits and it
-> is not authoritative.
+> `docs/ARCHITECTURE.md` 陈述 `cmpunlocker` 对 SS0 和 SS1 都写 `0xffffffff`。出货补丁写 `0x0082381c = 0x88888888` 和 `0x00823820 = 0x00000008`。同一个分支杜撰代码或转写里任何地方都不存在的缩写展开（SS 作 "Suspension State"、PLM 作 "Program Logic Modules"、PMM 作 "Permute Mask Model"、LMR 作 "LM (Local Memory) Request register"、PMA 作 "Power Management Array"）、断言一条不存在的 `SEC2_DEBUG: Executing unlock sequence...` 日志行、并在出货脚本是 `remove.sh` 时指示用户跑 `sudo ./uninstall.sh --yes`。它七个提交、而且它不是权威。
 
 > [!WARNING]
-> **The most-circulated architecture notes are self-rated at about 10 percent proven**
+> **流传最广的架构笔记自评约 10% 被证明**
 >
-> Their author posted them with the caveat: "I do hold some notes. I try to double-check each
-> statement, but this work can not be given to LLMs, so it is goes REALLY slow. This is what I have
-> now. I do not state that this information is accurate, I would say, just ~10% has reliable
-> proofs/sources." A parallel warning was given to anyone attempting a consolidated writeup: "most
-> of things known about throttling mechanism are based on hypotheses and some experiments that do
-> not contradict them... if you simply collect all points mentioned in chat you will likely get
-> many wrong conclusions and it will get your llm insane." The three sources named as reliable
-> priming material were the Zenodo paper, the public GA100 fuse reference table, and the annotated
-> `booter_load` assembly. Attach this caveat to the architecture notes specifically, not to the
-> register dumps or the disassembly, which are demonstrably better supported.
+> 它们的作者带这个警告发布它们："I do hold some notes. I try to double-check each statement、but this work can not be given to LLMs、so it is goes REALLY slow. This is what I have now. I do not state that this information is accurate、I would say、just ~10% has reliable proofs/sources."（我确实持有一些笔记。我尽量双重检查每条陈述、但这工作不能交给 LLM、所以它进行得真的非常慢。这是我现在的。我不声称这信息准确、我会说、只有约 10% 有可靠的证明/来源。）一个平行的警告给了任何尝试一份合并写稿的人："most of things known about throttling mechanism are based on hypotheses and some experiments that do not contradict them... if you simply collect all points mentioned in chat you will likely get many wrong conclusions and it will get your llm insane."（对节流机制已知的大部分东西基于假设和一些不矛盾的实验……如果你简单收集聊天里提到的所有点、你很可能得到许多错误结论、还会把你的 llm 搞疯。）被点名作可靠启动材料的三个来源是 Zenodo 论文、公开 GA100 熔丝参考表、和带注释的 `booter_load` 汇编。把这个警告特别附到架构笔记、不要附到寄存器转储或反汇编、后者被可证明地更好支持。
 
-Function names used across the project are inferred from behaviour, not read from a symbol table: the
-binary has no symbols. One pair is named inconsistently between documents. `0xd66` and `0xccb` are
-`regtable_reverse_lookup` and `regtable_rw_indexed` in the LLM overview, but ACR mutex acquire and
-release in the ROP writeup. The code supports the mutex reading, and the shipping chain places
-`0x00000ccb` at `D[0xFFF4]` immediately before its clean-exit `0x00007f2f`, so the mutex reading is
-the one the shipping code relies on.
+项目全篇使用的函数名是从行为推断的、不是从一个符号表读的：二进制没有符号。一对在两个文档之间命名不一致。`0xd66` 和 `0xccb` 在 LLM 概览里是 `regtable_reverse_lookup` 和 `regtable_rw_indexed`、在 ROP 写稿里却是 ACR 互斥锁获取和释放。代码支持互斥锁读法、而出货链把 `0x00000ccb` 放在它的干净退出 `0x00007f2f` 紧前的 `D[0xFFF4]`、所以互斥锁读法是出货代码依赖的那个。
 
 ---
 
-## Dated artifact index
+## 带日期工件索引
 
-Everything on this page that carries a decoded timestamp, in order.
+本页每个携带解码时间戳的东西、按顺序。
 
-| Date and time (UTC) | Artifact or event |
+| 日期和时间（UTC） | 工件或事件 |
 |---|---|
-| 2026-05-05 / 2026-05-07 | Two physical CMP 170HX 10 GB cards probed (120 registers each) |
-| 2026-05-31 | Drive A100 32 GB (PG199) probed; the 15-card fuse reference table is complete |
-| 2026-06-26 | The Canary preprint circulated in the unlocker server |
-| 2026-06-27 | Clean-room rule set stated as channel policy |
-| 2026-06-30 | Public AES-128-ECB test key and `rijndael-tool.zip` published in-channel |
-| 2026-07-01T12:40:37Z | Raw debug booter disassembly posted (545,149 B) |
-| 2026-07-02 | Debug-versus-production equivalence settled; register provenance standard accepted |
-| 2026-07-03T17:12:52Z | Annotated disassembly posted |
-| 2026-07-09T03:03:21Z | Annotated disassembly v2 posted (607,702 B, 11,875 lines) |
-| 2026-07-10T13:40:14Z | Register Gadget Atlas posted |
-| 2026-07-14T21:47:02-07:00 | `cmpunlocker` initial commit `9b9fb2f`, carrying the frame-grid constants |
-| 2026-07-15T18:48:10Z | `ROP_CHAINS_1180f8` writeup, documenting `+0x18 DMEM per write` |
-| 2026-07-16T06:07:12Z | The paper posted into the clean-room server as `main.pdf` |
-| 2026-07-17 | DMCA takedown against at least one fork |
-| 2026-07-18T18:01:15Z | `patch.diff` posted |
-| 2026-07-18T18:26:26Z | Shipping patch-set file mtimes |
-| 2026-07-18T18:40:16Z | LAPSUS$ provenance assessment posted |
+| 2026-05-05 / 2026-05-07 | 两块物理 CMP 170HX 10 GB 卡被探测（各 120 个寄存器） |
+| 2026-05-31 | Drive A100 32 GB（PG199）被探测；15 卡熔丝参考表完成 |
+| 2026-06-26 | Canary 预印本在解锁器服务器里传阅 |
+| 2026-06-27 | 净室规则集被陈述为频道政策 |
+| 2026-06-30 | 公开 AES-128-ECB 测试密钥和 `rijndael-tool.zip` 在频道内发布 |
+| 2026-07-01T12:40:37Z | 原始调试 booter 反汇编被贴出（545,149 B） |
+| 2026-07-02 | 调试对比生产等价被定论；寄存器来源标准被接受 |
+| 2026-07-03T17:12:52Z | 带注释反汇编被贴出 |
+| 2026-07-09T03:03:21Z | 带注释反汇编 v2 被贴出（607,702 B、11,875 行） |
+| 2026-07-10T13:40:14Z | 寄存器 Gadget 图谱被贴出 |
+| 2026-07-14T21:47:02-07:00 | `cmpunlocker` 初始提交 `9b9fb2f`、携带帧网格常量 |
+| 2026-07-15T18:48:10Z | `ROP_CHAINS_1180f8` 写稿、记录 "每次写 +0x18 DMEM" |
+| 2026-07-16T06:07:12Z | 论文作为 `main.pdf` 贴进净室服务器 |
+| 2026-07-17 | DMCA 对至少一个 fork 的删除 |
+| 2026-07-18T18:01:15Z | `patch.diff` 被贴出 |
+| 2026-07-18T18:26:26Z | 出货补丁集文件 mtime |
+| 2026-07-18T18:40:16Z | LAPSUS$ 来源评估被贴出 |
 | 2026-07-18T19:11:01Z | `06fabf2 "WORKING MEMORY UNLOCK"` |
-| 2026-07-18T21:46:49Z | `e4026e5 "Memory working!"` merged to `master` |
+| 2026-07-18T21:46:49Z | `e4026e5 "Memory working!"` 合并进 `master` |
 
 ---
 
-## See also
+## 参见
 
-- [Project timeline](timeline.md), the full dated sequence including the technical milestones
-- [Tool lineage](tool-lineage.md), which tools superseded which, and which are dead
-- [Dead ends](dead-ends.md), approaches that were tried and refuted
-- [The ROP chain](../unlock/rop-chain.md), the payload whose provenance is the subject of this page
-- [The six driver patches](../unlock/driver-patches.md)
-- [Falcon and the Booter](../unlock/falcon-and-booter.md)
-- [Fuses and OTP](../hardware/fuses-and-otp.md), the 120-register differential corpus
-- [Methodology](../appendix/methodology.md) and [external sources](../appendix/external-sources.md)
+- [项目时间线](timeline.md)、完整的带日期序列包括技术里程碑
+- [工具谱系](tool-lineage.md)、哪些工具取代了哪些、哪些死了
+- [死路](dead-ends.md)、试过并反驳的方法
+- [ROP 链](../unlock/rop-chain.md)、其来源是本页主题的载荷
+- [六个驱动补丁](../unlock/driver-patches.md)
+- [Falcon 与 Booter](../unlock/falcon-and-booter.md)
+- [熔丝与 OTP](../hardware/fuses-and-otp.md)、120 寄存器差分语料库
+- [方法论](../appendix/methodology.md) 和[外部来源](../appendix/external-sources.md)

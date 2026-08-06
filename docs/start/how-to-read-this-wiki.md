@@ -1,257 +1,159 @@
-# How to read this wiki
+# 如何阅读本维基
 
-**What this page covers.** The conventions this wiki uses to separate settled fact from
-active speculation, what each admonition box means, how claims were gathered and
-adjudicated, why no individual is ever named, and what the phrase "as of 2026-07-28" is
-doing at the bottom of pages.
+**本页内容。** 本维基用来区分"已证实的事实"和"活跃的猜测"的约定、每种警示框的含义、论断如何被收集和裁决、为什么从不点名任何个人，以及"as of 2026-07-28"这句话为什么出现在页面底部。
 
-Read this once. Everything else on the site assumes you have.
+读一遍即可。站上其它一切内容都假设你读过这一篇。
 
-The headline: **plain prose means the claim is confirmed.** If a statement is not wrapped in
-a coloured box and does not carry an inline hedge, it has been checked against source code
-or against multiple independent measurements. Anything less certain than that is marked, and
-the marking tells you exactly how much less certain.
+要旨：**普通叙述意味着论断已确认。** 如果某句陈述没有包在彩色框里、也没有带行内修饰语，那它已经对照源码或多条独立测量核对过。任何不确定程度更高的内容都会被标记，而标记会精确告诉你到底有多不确定。
 
 ---
 
-## The confidence system
+## 置信度体系
 
-### Level 1: plain prose
+### 级别 1：普通叙述
 
-Unmarked prose is a confirmed fact. In practice that means one of the following was true
-during adjudication:
+未标记的叙述是已确认的事实。实际操作中，这意味着裁决时以下情况之一是成立的：
 
-- The claim was **settled from source code**. The shipping `cmpunlocker` tree and 12
-  unreleased branch snapshots were read directly. Where documentation and code disagreed,
-  the code won, every time, and the correction is stated in the text.
-- The claim was **measured on hardware by two or more independent parties**, with the
-  measurements agreeing.
-- The claim is **arithmetic** derived from values in the first two categories, with the
-  derivation shown.
+- 论断**从源码中得到定论**。当前的 `cmpunlocker` 树和 12 个未发布分支快照被直接阅读。当文档和代码冲突时，代码每次都赢，并且正文中会注明这一更正。
+- 论断**由两个或更多独立方在硬件上测量**，且测量结果一致。
+- 论断是**算术推导**，由前两类中的数值推导得出，且推导过程有展示。
 
-### Level 2: inline hedges
+### 级别 2：行内修饰语
 
-Some facts rest on a single report from a single machine. Those are never presented as
-settled, but they are also not hidden, because a single good measurement is far more useful
-than silence. They are hedged in the sentence itself:
+有些事实只来自单台机器的单次报告。这些从不被当作已定论，但也不会被隐藏，因为一次好的单一测量远比沉默有用。它们会在句子本身中加以修饰：
 
-> "one tester reported ...", "observed once, on 2026-07-26, on one rig", "a single
-> capture exists", "medium confidence".
+> "一位测试者报告……"、"仅观察到一次，2026-07-26，在一台机器上"、"仅有一份捕获存在"、"中等置信度"。
 
-When you see that phrasing, treat the number as a data point, not a specification. It has
-not been reproduced.
+当你看到这类措辞，请把数值当作一个数据点，而非规格。它尚未被复现。
 
-### Level 3: admonitions
+### 级别 3：警示框
 
-Four box types carry specific meanings. They are used sparingly and consistently.
+四种框各有特定含义。它们被克制而一致地使用。
 
 > [!WARNING]
-> **Experimental**
+> **实验性**
 >
 >
-> The material inside is on an unreleased branch, or rests on a single report, or both.
-> It is not part of the shipping unlocker. PCIe Gen2, the 80 GB memory profile, the MIG
-> enable and the multi-card handling all lived here at various times. Expect it to work
-> on some hosts and not others, and expect the details to change.
+> 框内内容位于未发布分支上，或基于单次报告，或两者兼有。它不是当前发布版解锁器的一部分。PCIe Gen2、80 GB 显存档位、MIG 启用和多卡处理在不同时期都曾属于这里。请预期它在某些主机上可用、另一些不可用，也请预期细节会变化。
 
 > [!CAUTION]
 >
-> Following the instructions inside can destroy hardware or lose data. This box is
-> reserved for physical and irreversible risk: connector mis-mating, VBIOS flashing,
-> thermal runaway, soldering, and allocations that fault the card. It is not used for
-> "this might not work".
+> 遵循框内说明可能损坏硬件或丢失数据。此框专用于物理性和不可逆的风险：接口错接、VBIOS 刷写、热失控、焊接，以及会让卡报故障的分配。它不用来表示"这可能不奏效"。
 
 > [!NOTE]
-> **Open problem**
+> **未解问题**
 >
 >
-> Nobody knows. The box states what is known, what has been tried, why the investigation
-> stalled, and what one experiment would settle it. Every open item is collected and ranked
-> by tractability on [Open questions](../frontier/open-questions.md) and tracked on the
-> [Status board](../frontier/status-board.md). Thirteen of them can be settled by neither
-> the documents nor the source trees.
+> 没人知道。此框说明已知什么、尝试过什么、调查为什么停滞，以及哪一项实验能定论它。所有未解事项都被收集并按可实现度排序在[未解问题](../frontier/open-questions.md)上，并在[状态板](../frontier/status-board.md)上跟踪。其中有十三项既无法由文档定论，也无法由源码树定论。
 
-### What "unknown" means
+### "未知"意味着什么
 
-If a number is not known, this wiki says it is not known. It never fills the gap with a
-plausible figure. A page that says "no CFM, static-pressure or fin-pitch figure for the stock
-heatsink exists in any source" is more useful than one that quotes an invented number, and
-the distinction matters more on this hardware than most, because several of the numbers in
-public circulation are wrong.
+如果一个数值未知，本维基就说它未知。它从不用一个貌似合理的数值去填空。一页写"在任何来源中都找不到原厂散热器的 CFM、静压或鳍片间距数值"远比引用一个编造数字更有用，而这个区别在这块硬件上比大多数情况更重要，因为公开流传的几个数字是错的。
 
 ---
 
-## Where the facts came from
+## 事实从哪里来
 
-### The corpus
+### 语料库
 
-The underlying material is a mined archive of the community effort that produced the unlock:
-project chat channels (clean-room and post-release), long-form write-ups, raw `dmesg`
-captures, register dumps, screenshots, published tooling source, external references such as
-teardowns and fuse tables, and the shipping and branch source trees themselves. Individual
-claims in the working documents carry citation tags of the form
-`[artifacts__cleanroom_writeups#082]` or `[chat__unlocker__testing_general__01#039]`, plus a
-confidence rating and the date the claim was established.
+底层素材是一个对催生解锁的那段社区努力的挖掘档案：项目聊天频道（净室阶段和发布后）、长文论述、原始 `dmesg` 捕获、寄存器转储、截图、已发布的工具源码、外部参考资料（如拆解和熔丝表），以及当前发布版和分支的源码树本身。工作文档中的单条论断带有形如
+`[artifacts__cleanroom_writeups#082]` 或 `[chat__unlocker__testing_general__01#039]` 的引用标签，外加一个置信度评级和该论断确立的日期。
 
-### The domain documents
+### 领域文档
 
-Raw claims were adjudicated into **24 domain documents**, one per subject area (memory in
-four parts, firmware in four, compute in two, driver in two, PCIe in two, plus performance,
-thermal and power, VBIOS, tooling, provenance, troubleshooting, mods, NVLink, LLM inference
-and a miscellany). Each document separates canonical facts from dead ends, open questions,
-unresolved contradictions, corrections to the record, and a table of measured values.
+原始论断被裁决成 **24 份领域文档**，每个主题一份（显存分四部分、固件分四部分、算力分两部分、驱动分两部分、PCIe 分两部分，外加性能、热与供电、VBIOS、工具链、来源溯源、排障、改装、NVLink、LLM 推理和一个杂项）。每份文档把规范事实和死路、未解问题、未解决矛盾、对记录的更正，以及一张实测值表格区分开。
 
-Two of those sections deserve special mention because they are unusual and useful:
+其中两节因其不寻常而有用，值得特别一提：
 
-- **Dead ends.** Every failed hypothesis, with why it was plausible and what disproved it.
-  Twenty-five in troubleshooting alone. These exist so the same wrong idea is not
-  re-litigated. They surface on [Dead ends](../history/dead-ends.md).
-- **Corrections to the record.** Places where project documentation, a public guide or a
-  widely repeated claim is provably wrong against the source. Several of these are still
-  circulating in third-party forks and AI-generated guides.
+- **死路。** 每一个失败的假设，以及它为何貌似合理、又是什么否证了它。仅排障就有二十五条。它们的存在是为了让同一个错误想法不被反复纠缠。它们呈现在[死路](../history/dead-ends.md)上。
+- **对记录的更正。** 项目文档、公开指南或广泛传播的论断被证伪、与源码相悖的地方。其中几条仍在第三方分支和 AI 生成的指南里流传。
 
-### The authority ranking
+### 权威排序
 
-When sources conflict, this order decides:
+当来源冲突时，按这个顺序裁决：
 
-| Rank | Source | Example |
+| 排名 | 来源 | 例子 |
 |---|---|---|
-| 1 | Shipping source code, read directly | `plmTable[]` in `0001-sec2-postbl-plm-ss-cfg.patch` |
-| 2 | Branch source snapshots | `0007-pcie-gen2.patch` on `Gen2` |
-| 3 | Direct measurement with a posted capture | a verbatim `dmesg` block, a register readback |
-| 4 | First-hand report without a capture | "one tester reported" |
-| 5 | Project documentation | `README.md`, `docs/ARCHITECTURE.md` |
-| 6 | Reasoned inference | explicitly labelled as such |
+| 1 | 直接阅读的当前发布源码 | `0001-sec2-postbl-plm-ss-cfg.patch` 中的 `plmTable[]` |
+| 2 | 分支源码快照 | `Gen2` 上的 `0007-pcie-gen2.patch` |
+| 3 | 附捕获的直接测量 | 一段逐字的 `dmesg` 块、一次寄存器回读 |
+| 4 | 无捕获的一手报告 | "一位测试者报告" |
+| 5 | 项目文档 | `README.md`、`docs/ARCHITECTURE.md` |
+| 6 | 推理推断 | 明确标注为如此 |
 
-Project documentation ranks **below** measurement deliberately. The `docs` branch diverged
-from the code: it invents acronym expansions, quotes the wrong SS0/SS1 values, references a
-script that does not exist, and over-generalises the PLM readback rule. See the
-[Glossary](glossary.md#corrected-expansions-do-not-repeat-these).
+项目文档**故意**排在测量之下。`docs` 分支偏离了代码：它杜撰缩写展开、引用错误的 SS0/SS1 数值、引用一个并不存在的脚本，并把 PLM 回读规则过度泛化。参见[术语表](glossary.md#corrected-expansions-do-not-repeat-these)。
 
-### The cross-check
+### 交叉核对
 
-A final pass compared every number that appears in more than one domain document against
-every other occurrence, re-deriving code-settleable disputes from the source trees rather
-than quoting the documents. It found **14 conflicts: 8 settled from code, 6 weighed on
-evidence.** The result is a canonical value table that this wiki treats as authoritative.
-Where a page quotes a number that was disputed, it quotes the canonical value and, where the
-dispute is instructive, says what the disagreement was.
+最后一轮把每一份领域文档中出现不止一次的每个数值与所有其它出现处逐一对比，对可被代码定论的争议直接从源码树重新推导，而不是引用文档。它发现 **14 处冲突：8 处由代码定论，6 处按证据权衡。** 结果是本维基视为权威的一份规范值表。凡某页引用了曾有争议的数值，就引用规范值，并在争议有启发性的地方说明分歧是什么。
 
-A worked example of why this matters: the archived `80` branch carries `lmr: "0x0000028B"` in
-`common/constants.yaml`, and several documents repeat that as the value the branch programs.
-It is not. `build.sh` never reads `constants.yaml`; the build sets `0x0000028A`, the installer
-prints `0x0000028A`, and patch `0001` bakes `0x0000028A`. Every tester who ran that branch
-programmed a three-way-inconsistent geometry, which is itself the leading suspect for the
-instability. Only reading the code exposes that.
+一个说明为何这很重要的实例：被归档的 `80` 分支在 `common/constants.yaml` 里带有 `lmr: "0x0000028B"`，多个文档把它当作该分支编程的值重复引用。其实不是。`build.sh` 从不读 `constants.yaml`；构建设置的是 `0x0000028A`，安装器打印 `0x0000028A`，补丁 `0001` 也烘焙了 `0x0000028A`。每个跑过该分支的测试者都在编程一个三处不一致的几何布局，而这本身就是不稳定的头号嫌疑人。只有读代码才能暴露这一点。
 
 ---
 
-## Why nobody is named
+## 为什么不点名任何人
 
-No Discord handle, display name, real name or user ID appears anywhere on this site. Where
-attribution is load-bearing to the claim, this wiki writes "a researcher", "one tester",
-"two independent testers", "the maintainers", or "the tool author". Gendered pronouns are not
-used for anyone; they/them is used throughout.
+本站任何地方都不出现 Discord 句柄、显示名、真名或用户 ID。当归属对论断至关重要时，本维基会写"一位研究者"、"一位测试者"、"两位独立测试者"、"维护者"或"工具作者"。不为任何人使用性别化代词；通篇使用 they/them。
 
-There are three reasons, and only the first is about politeness:
+有三个原因，其中只有第一个关乎礼貌：
 
-1. **The work was done under clean-room rules.** The governing standard was that no vendor
-   secrets be discussed, that knowledge be admissible only where the same information is
-   demonstrably derivable from public sources, and that posting leaked material was a
-   bannable offence. An earlier server was destroyed because it may have contained leaked
-   vendor material. Attribution invites exactly the kind of provenance argument those rules
-   were designed to avoid.
-2. **There is live legal exposure.** A takedown notice was reported against at least one
-   public fork on 2026-07-17, and the repository was observably offline. The report is
-   first-hand but no takedown document is in the source set, so this one is medium
-   confidence. Naming contributors adds risk to individuals without adding a single fact to
-   the record.
-3. **Attribution is not evidence.** What matters for a technical claim is the capture, the
-   register readback or the line of code, not who posted it. Removing names forces every
-   claim to stand on its own basis, which is the correct outcome.
+1. **这项工作是在净室规则下完成的。** 主导标准是：不得讨论任何厂商机密；知识只有在能从公开来源明显推导出相同信息时才被采信；发布泄露材料是会被封禁的违规。早期一个服务器因为它可能包含泄露的厂商材料而被销毁。归属恰恰会招来这些规则想要避免的那种来源溯源争论。
+2. **存在现实的法律风险。** 2026-07-17 曾报告针对至少一个公开分支的删除通知，且该仓库可观察到已离线。该报告是一手的，但来源集中没有删除文件，所以这是中等置信度。点名贡献者会给个人增加风险，却不给记录增加任何一条事实。
+3. **归属不是证据。** 对技术论断重要的是捕获、寄存器回读或那行代码，而不是谁发布的。去掉名字迫使每个论断立足于自身依据，这才是正确结果。
 
-Community history is documented in [Clean room and provenance](../history/clean-room-and-provenance.md)
-without personalities. Prices, sellers, procurement and community disputes are out of scope
-entirely.
+社区历史在[净室与来源溯源](../history/clean-room-and-provenance.md)中记录，不涉及个人。价格、卖家、采购和社区纠纷完全不在范围内。
 
 ---
 
-## What "as of 2026-07-28" means
+## "as of 2026-07-28"意味着什么
 
-That is the **adjudication date**: the day the corpus was frozen, the source trees were read,
-and the cross-check was run. It is not the date the hardware was released, nor the date any
-individual claim was established.
+那是**裁决日期**：语料库被冻结、源码树被阅读、交叉核对被运行的那一天。它不是硬件发布的日期，也不是任何单条论断确立的日期。
 
-Read it as "through the end of 2026-07-27". The capture happened just after midnight UTC, so
-2026-07-28 itself contributes only three off-topic messages and no code. See
-[methodology](../appendix/methodology.md).
+把它读作"截至 2026-07-27 末尾"。捕获发生在 UTC 午夜刚过，所以 2026-07-28 本身只贡献了三则离题消息和零代码。参见[方法论](../appendix/methodology.md)。
 
-Three separate timelines run underneath it:
+其下并行着三条时间线：
 
-| Timeline | Range | What it covers |
+| 时间线 | 范围 | 覆盖内容 |
 |---|---|---|
-| Hardware and board-repair record | from 2023-10-25 | Teardowns, die markings, power-rail repair, the A100 board comparison |
-| VBIOS and fuse characterisation | from 2024-07, concentrated 2026-03 to 2026-05 | ROM diffs, fuse tables, cross-flash attempts |
-| The unlock effort | 2026-06-27 to 2026-07-28 | Clean-room exploit work, then the shipping in-driver patch set |
+| 硬件与板卡维修记录 | 自 2023-10-25 | 拆解、晶片标记、供电轨维修、A100 板卡对比 |
+| VBIOS 与熔丝表征 | 自 2024-07，集中于 2026-03 至 2026-05 | ROM 差异、熔丝表、交叉刷写尝试 |
+| 解锁工作 | 2026-06-27 至 2026-07-28 | 净室利用工作，随后是当前的驱动内补丁集 |
 
-Individual facts in the domain documents carry their own "established" date, and several
-carry a second date where they were corrected or code-confirmed during the 2026-07-28 pass.
-Where a date is significant to interpreting a claim, this wiki states it inline.
+领域文档中的单条事实带自己的"确立"日期，有几条还带第二个日期，即它们在 2026-07-28 那一轮中被更正或经代码确认的日期。凡某日期对解读某个论断至关重要，本维基会行内说明。
 
-**What the date implies for you, practically:**
+**这个日期对你实际意味着什么：**
 
-- The shipping unlocker as described here accepts exactly nvidia-open `610.43.03` and
-  `610.43.02`. If you are reading this after a newer driver has shipped, that whitelist has
-  either been extended or the approach has moved. Check
-  [Driver versions](../procedures/driver-versions.md).
-- Anything marked Experimental was still moving on the freeze date. The PCIe Gen2 hardcoded
-  BDF bug, for instance, was root-caused on 2026-07-27 and fixed on one branch the same day,
-  with several open reports never re-tested against the fix.
-- The open-question list is a snapshot. Some of those items need one boot test to close.
-- Nothing here has been re-verified against hardware after the freeze date.
+- 这里所描述的当前发布版解锁器只接受 nvidia-open `610.43.03` 和 `610.43.02`。如果你是在更新的驱动发布之后读到这里，那个白名单要么已扩展，要么方案已经变了。请查[驱动版本](../procedures/driver-versions.md)。
+- 任何标为实验性的内容在冻结日期仍在变动。例如，PCIe Gen2 硬编码 BDF 的 bug 在 2026-07-27 定位根因并于当天在一个分支上修复，而几份未决报告从未针对该修复重新测试。
+- 未解问题列表是一份快照。其中几项只需一次启动测试就能关闭。
+- 冻结日期之后，这里的一切都没有再对照硬件重新验证。
 
 ---
 
-## Reading a typical page
+## 阅读一个典型页面
 
-Every substantive page follows the same shape:
+每个有实质内容的页面都遵循相同结构：
 
-1. **What this page covers**, one short paragraph, plus the key result stated in the first
-   two paragraphs. Nothing important is buried.
-2. Substance, densest first. Register maps and measured values are in tables. Commands, code
-   and log output are in fenced blocks with a language tag, and are reproduced verbatim
-   including addresses and error codes.
-3. Cross-links to the pages that go deeper. Links are relative and always end in `.md`.
-4. Open problems and superseded material, boxed.
+1. **本页覆盖内容**，一段短文，外加在前两段就陈述的关键结果。没有重要的东西被埋起来。
+2. 正文，最密集的放在最前。寄存器图和实测值放在表格里。命令、代码和日志输出放在带语言标签的围栏块里，并逐字复现，包括地址和错误码。
+3. 通往更深入页面的交叉链接。链接是相对的，且总是以 `.md` 结尾。
+4. 未解问题和已被取代的内容，用框括起来。
 
-Two structural conventions worth knowing:
+有两个值得知道的结构约定：
 
-- **Speed and width are never conflated.** PCIe generation (Gen1 to Gen2) is a
-  driver-side software change that modifies no firmware image. Link width (x4 to x16)
-  requires hand-soldering 24 missing 0402 capacitors. They are separate achievements with
-  separate evidence, and no page mixes them. See [PCIe Gen2](../unlock/pcie-gen2.md) and
-  [Physical mods](../operations/physical-mods.md).
-- **The two SKUs are never mixed.** The 8 GB card (`10de:20c2`) unlocks to **64 GB**. The
-  10 GB card (`10de:2082`) unlocks to **40 GB**. The 80 GB configuration for 10 GB cards was
-  attempted and found unusable above roughly 40 GB. If a page seems to be talking about your
-  card and quotes the other capacity, you are reading about the other SKU. Start at
-  [Identify your card](identify-your-card.md).
+- **速率和位宽从不被混为一谈。** PCIe 代数（Gen1 到 Gen2）是驱动侧的软件改动，不修改任何固件映像。链路位宽（x4 到 x16）需要手工焊接 24 颗缺失的 0402 电容。它们是各自有各自证据的独立成果，没有任何页面把它们混在一起。参见[PCIe Gen2](../unlock/pcie-gen2.md) 和[物理改装](../operations/physical-mods.md)。
+- **两个 SKU 从不混在一起。** 8 GB 卡（`10de:20c2`）解锁到 **64 GB**。10 GB 卡（`10de:2082`）解锁到 **40 GB**。10 GB 卡的 80 GB 配置被尝试过，并被发现超过约 40 GB 就不可用。如果某页看起来在讲你的卡却引用了另一个容量，那你读的其实是另一个 SKU。从[Identify your card](identify-your-card.md)开始。
 
 ---
 
-## If you find an error
+## 如果你发现错误
 
-Every claim on this site is traceable to a domain document, a citation tag and a date. The
-most valuable corrections are the ones that come with a capture: a `dmesg` block, a register
-readback with `lspci -nn` in the same paste, or a byte comparison. Several of the open
-questions listed on [Open questions](../frontier/open-questions.md) would close with a
-single such capture from a single card.
+本站的每一条论断都可追溯到一份领域文档、一个引用标签和一个日期。最有价值的更正来自附捕获的更正：一段 `dmesg` 块、同一次粘贴里带 `lspci -nn` 的寄存器回读，或一次字节比较。[未解问题](../frontier/open-questions.md)上列出的几个未解问题，只需单张卡的这样一次捕获就能关闭。
 
 ---
 
-## See also
+## 参见
 
-- [Glossary](glossary.md) for every acronym and term, including the ones commonly expanded
-  wrongly.
-- [Risks](risks.md) for what can go wrong before you start.
-- [Methodology](../appendix/methodology.md) for the full adjudication procedure.
+- [术语表](glossary.md) 用于每个缩写和术语，包括那些常被错误展开的。
+- [Risks](risks.md) 用于你开始之前可能出错的事。
+- [方法论](../appendix/methodology.md) 用于完整的裁决流程。

@@ -1,273 +1,145 @@
-# Methodology
+# 方法论
 
-**What this page covers.** How this wiki was actually built: what the source material is, how
-roughly 2,400 raw claims were reduced to a canonical fact set, which source beats which when they
-disagree, what the confidence markers on every other page really mean, why nobody is named, and,
-at the end and in detail, what this method cannot guarantee. Read it if you are about to act on
-something you found here.
+**本页覆盖内容。** 这个维基实际是怎么建的：源材料是什么、约 2,400 条原始声称如何被还原成一个规范事实集、当它们冲突时哪个来源胜过哪个、每页上的置信度标记真的意味着什么、为什么没人被点名、以及末尾、详细地、这个方法不能保证什么。如果你正要按在这里找到的东西行动、读它。
 
-The short version: **this wiki is a synthesis of a five-week technical conversation, adjudicated
-against the source code that conversation produced.** Where a claim is expressible in code, the
-code was read and the code decided, even when the chat consensus said otherwise, and it repeatedly
-did. Where a claim is a hardware measurement, no such tiebreaker exists, and the wiki falls back on
-counting independent reports. That asymmetry is the single most important thing to understand
-about how much weight to put on any given sentence: **the firmware and driver material is close to
-verifiable; the electrical, thermal and performance material is a small pile of field reports.**
+短版：**这个维基是一次五周技术对话的合成、对着那次对话产生的源码裁决。** 凡一个声称能用代码表达、代码就被读了、代码做了决定、即使聊天共识说别的、而且它反复那么做。凡一个声称是一个硬件测量、不存在这样的决胜者、维基就回退到数独立报告。那种不对称是理解给任何具体句子多少份量时最重要的一件事：**固件和驱动材料接近可验证；电气、热和性能材料是一小堆现场报告。**
 
 ---
 
-## 1. The corpus
+## 1. 语料库
 
-Everything here derives from a frozen snapshot of primary material, captured **just after midnight
-UTC on 2026-07-28**. That granularity matters: substantive coverage ends **2026-07-27 at 23:59**,
-and only three messages in the whole archive fall on 2026-07-28, at 00:00, 00:00 and 00:01, all of
-them wiki-link and research-resource chatter. Read "2026-07-28" as "through the end of 2026-07-27",
-not as a full day of coverage. Anything that happened later, including repository changes, is
-outside the snapshot.
+这里一切都来自对原始材料的一个冻结快照、于**2026-07-28 午夜刚过 UTC** 捕获。那个粒度要紧：实质性覆盖在 **2026-07-27 23:59** 结束、而整个档案只有三条消息落在 2026-07-28、在 00:00、00:00 和 00:01、全部是 wiki 链接和研究资源闲聊。把 "2026-07-28" 读作"到 2026-07-27 末尾"、不是一个整天覆盖。之后发生的任何事、包括仓库改动、都在快照之外。
 
-| Component | Extent | Notes |
+| 组件 | 范围 | 备注 |
 |---|---|---|
-| Chat archive | **26,123 messages**, **20 channels**, two public Discord servers, **2026-06-22 to 2026-07-28** | Split into 35 working chunks; 21 marked high priority (technical channels), 14 low (off-topic, welcome, procurement). The last substantive message is dated 2026-07-27 23:59 |
-| File attachments | **1,121 files** archived | Fetched before their signed CDN URLs expired. 131 are text or code (disassembly listings, ROP payloads, probe scripts, register dumps, `dmesg` captures, long-form write-ups); the remainder are images, ROMs and binaries |
-| Unlock tool source | **17 branch refs**, of which 13 full trees were read | Shipping `master` plus **12** unreleased branch snapshots. The refs `code-simplification`, `dual-geometry-fix`, `fix` and `v0.1` exist in the repository but were not snapshotted and were **not** analysed |
-| Reference gists | 2 | The GA100 fuse and register reference table with `probe.sh`, and the GA100 VBIOS comparison table with its dump and parse scripts. Both were deleted after release; the archived copies are what this wiki used |
-| External references | Teardown, papers, upstream driver, tooling | An independent 2023-10-25 teardown review predating all unlock work, the June 2026 Falcon stack-protection paper (Zenodo 20916112), arXiv:2505.03782, the NVIDIA open kernel modules, envytools and the Falcon tooling family |
+| 聊天档案 | **26,123 条消息**、**20 个频道**、两个公开 Discord 服务器、**2026-06-22 到 2026-07-28** | 分成 35 个工作块；21 个标高优先级（技术频道）、14 个低（离题、欢迎、采购）。最后实质性消息日期是 2026-07-27 23:59 |
+| 文件附件 | **1,121 个文件**归档 | 在它们签名的 CDN URL 过期前被抓取。131 个是文本或代码（反汇编清单、ROP 载荷、探测脚本、寄存器转储、`dmesg` 捕获、长文写稿）；其余是图片、ROM 和二进制 |
+| 解锁工具源码 | **17 个分支 ref**、其中 13 棵完整树被读 | 出货 `master` 加 **12** 个未发布分支快照。ref `code-simplification`、`dual-geometry-fix`、`fix` 和 `v0.1` 存在于仓库里却没被快照、也**没**被分析 |
+| 参考 gist | 2 | GA100 熔丝和寄存器参考表带 `probe.sh`、和 GA100 VBIOS 对比表带它的转储和解析脚本。两者发布后都被删除；归档副本就是这个维基用的 |
+| 外部参考 | 拆解、论文、上游驱动、工具 | 一份独立、先于所有解锁工作的 2023-10-25 拆解回顾、2026 年 6 月的 Falcon 栈保护论文（Zenodo 20916112）、arXiv:2505.03782、NVIDIA 开源内核模块、envytools 和 Falcon 工具族 |
 
-The two servers play different roles and are weighted differently. The clean-room server (1,539 of
-the extracted claims) is where the exploit was developed under rules that admitted exactly one
-input document; it is dense with disassembly and register work. The post-release server (800
-claims) is where the tool met other people's hardware; it is where nearly all the failure modes,
-thermals and benchmarks come from, and it is much noisier. A further 59 claims come from external
-documents.
+两个服务器扮演不同角色、被不同加权。净室服务器（提取声称中的 1,539 条）是利用在只承认恰好一个输入文档的规则下被开发的地方；它充满反汇编和寄存器工作。发布后服务器（800 条声称）是工具遇到别人硬件的地方；几乎所有失败模式、热和基准都来自那里、而且它嘈杂得多。另有 59 条声称来自外部文档。
 
-Deliberately out of scope and stripped at ingest: prices, sellers, shipping, procurement, and
-community disputes. See [external sources](external-sources.md) for the annotated bibliography
-and [preserved artifacts](artifacts.md) for the file-level inventory.
+刻意超出范围、在摄取时被剥离：价格、卖家、运输、采购、和社区纠纷。带注释书目见[外部来源](external-sources.md)、文件级库存见[保留工件](artifacts.md)。
 
 ---
 
-## 2. The pipeline
+## 2. 流水线
 
-Four passes, each one narrowing and each one leaving an audit trail.
+四次通过、每次收窄、每次留下一条审计轨迹。
 
-**Pass 1: extraction.** Every chunk was read under a fixed brief and reduced to structured claim
-records: a one-sentence falsifiable assertion, a dense technical detail field, a verbatim evidence
-quote with attribution stripped, a date, a channel, a status and a confidence rating. This produced
-**2,398 claims**. The brief supplied a small ground-truth table (the two SKUs, their geometry
-values, the compute registers) so that early wrong guesses would be recorded as refuted rather than
-propagated.
+**通过 1：提取。** 每块在一个固定简报下被读、并还原成结构化声称记录：一个一句可证伪断言、一个密集技术细节字段、一条剥离归属的逐字证据引文、一个日期、一个频道、一个状态和一个置信度评级。这产出 **2,398 条声称**。简报提供一个小地面真表（两个 SKU、它们的几何值、算力寄存器）、这样早期错误猜测会被记录为被反驳、而非被传播。
 
-| Status | Count | Meaning |
+| 状态 | 计数 | 含义 |
 |---|---|---|
-| `confirmed` | 1,426 | Someone ran it and reported a concrete result, or it matches code, or it was independently reproduced |
-| `likely` | 331 | Well-reasoned and unchallenged, but never directly demonstrated |
-| `open-question` | 232 | Still unsolved |
-| `refuted` | 182 | Later shown false, with the disproof recorded |
-| `disputed` | 126 | Knowledgeable people disagreed and it was never settled |
-| `superseded` | 101 | True of an earlier approach that a better method replaced |
+| `confirmed` | 1,426 | 有人跑了它并报告一个具体结果、或它匹配代码、或被独立复现 |
+| `likely` | 331 | 推理良好且未受挑战、但从没被直接演示 |
+| `open-question` | 232 | 仍未解决 |
+| `refuted` | 182 | 后来被显示为假、带反驳被记录 |
+| `disputed` | 126 | 知情者不同意、从未定论 |
+| `superseded` | 101 | 对一个被更好方法取代的早期方法是真的 |
 
-Confidence was tracked separately: 1,534 high, 708 medium, 156 low.
+置信度被分开跟踪：1,534 高、708 中、156 低。
 
-**Pass 2: adjudication.** The claims were partitioned into 24 domains (memory in four parts,
-firmware in four, compute, driver and PCIe in two each, plus performance, thermal and power, VBIOS,
-tooling, provenance, troubleshooting, mods, NVLink, LLM inference and a miscellany) and each domain
-was resolved against the authority ranking below into canonical facts, an evolution and
-supersession section, dead ends, open questions, unresolved contradictions, and a table of measured
-values. Output: about **1,458 canonical facts**, **507 recorded dead ends** and **266 open
-questions**.
+**通过 2：裁决。** 声称被分成 24 个领域（显存四部分、固件四部分、算力、驱动和 PCIe 各两部分、加性能、热与供电、VBIOS、工具、来源、排障、改装、NVLink、LLM 推理和一个杂项）而每个领域被对照下面的权威排序解析成规范事实、一个演进和取代节、死路、开放问题、未解决矛盾和一张实测值表。输出：约 **1,458 条规范事实**、**507 条记录死路**和 **266 个开放问题**。
 
-**Pass 3: cross-check.** Every quantity appearing in more than one domain document was compared
-against every other occurrence, and every code-settleable dispute was **re-derived from the source
-trees rather than quoted from the documents**. This found **14 conflicts: 8 settled from code, 6
-weighed on evidence**. The result is a canonical value table that overrides the domain documents
-wherever they disagree with it.
+**通过 3：交叉核对。** 每个出现在多于一个领域文档里的量都对照每个其它出现处比较、而每个可被代码定论的争议都**从源码树重新推导**、而非从文档引用。这发现 **14 个冲突：8 个从代码定论、6 个按证据权衡**。结果是一张规范值表、它在任何地方与领域文档不一致时覆盖它们。
 
-**Pass 4: writing.** Pages were written under a style brief that forbids inventing values, forbids
-naming anyone, and requires the canonical value for any cross-referenced number. A scripted gate
-then checks every published page against a list of **1,036 handles** seen in the corpus, resolves
-every relative link, verifies navigation integrity, spot-checks the geometry and compute constants
-for transcription errors, and flags style violations.
+**通过 4：写作。** 页面在一个禁止发明值、禁止点名任何人、并要求任何交叉引用数字用规范值的风格简报下写。一个脚本门随后对照语料库里见到的 **1,036 个句柄**列表检查每个已发布页面、解析每个相对链接、验证导航完整性、抽查几何和算力常量求转写错误、并标记风格违规。
 
 > [!WARNING]
-> **Experimental**
+> **实验性**
 >
-> Passes 1 and 2 were carried out by language-model agents working to a fixed brief, not by hand.
-> That is precisely why pass 3 exists and why it re-derives from source rather than trusting the
-> documents: agents summarising a conversation reproduce the conversation's confident errors.
-> Pass 3 caught 14 of those. It is not safe to assume it caught all of them.
+> 通过 1 和 2 由语言模型代理按固定简报执行、而非手工。那恰是通过 3 存在、且它从源码而非信任文档重新推导的原因：总结对话的代理会复现对话自信的错误。通过 3 抓到其中 14 个。假设它抓到了全部是不安全的。
 
 ---
 
-## 3. The authority ranking
+## 3. 权威排序
 
-When two sources conflict, this order decides, top wins:
+当两个来源冲突、此顺序决定、上面赢：
 
-| Rank | Source | Why it ranks there |
+| 排名 | 来源 | 为什么它排在那里 |
 |---|---|---|
-| 1 | Shipping source code (`master`) | This is what actually runs on people's cards |
-| 2 | Unreleased branch snapshots | Real code, but unmerged and sometimes internally inconsistent. Always labelled Experimental |
-| 3 | Independently reproduced empirical results | The same measurement from two or more testers, or a posted capture |
-| 4 | Single-tester empirical results | Useful, never treated as settled |
-| 5 | Reasoned analysis by someone who understood the system | Labelled as inference |
-| 6 | Speculation | Recorded only when notable and later resolved |
+| 1 | 出货源码（`master`） | 这是实际跑在人们卡上的东西 |
+| 2 | 未发布分支快照 | 真实代码、但未合并、有时内部不一致。总是标实验性 |
+| 3 | 独立复现的实证结果 | 来自两个或更多测试者的同一测量、或一份贴出的捕获 |
+| 4 | 单测试者实证结果 | 有用、从不当作定论 |
+| 5 | 懂系统的人的推理分析 | 标为推断 |
+| 6 | 猜测 | 只在值得注意且后来解决时记录 |
 
-Project documentation is not on this list as a rank of its own. It sits below measurement, because
-the project's own documentation branch is a known source of errors.
+项目文档不在这个列表上作为它自己的排名。它坐在测量之下、因为项目自己的文档分支是一个已知错误来源。
 
-### Why chat consensus kept losing
+### 为什么聊天共识持续输
 
-A group of skilled people working fast will converge on a confident shared belief that is wrong in
-a way nobody re-checks, because re-checking means reading a diff instead of reading a sentence. Two
-worked examples, both of which changed what this wiki says:
+一群熟练的人快速工作会收敛到一个自信的共享信念、它以一种没人复查的方式是错的、因为复查意味着读一个 diff 而非读一个句子。两个工作示例、都改变了这个维基说什么：
 
-**Example 1: the compute unlock values.** The project's `docs` branch states that both SM
-speed-select registers are written `0xffffffff`. That reading circulated and was repeated. The
-shipping patch `0001-sec2-postbl-plm-ss-cfg.patch` writes `SS0 0x0082381c = 0x88888888` and
-`SS1 0x00823820 = 0x00000008`, and all 16 copies of that patch across `master` and every branch are
-identical on this point. The documentation is simply wrong, and this wiki says so on
-[compute throttle](../unlock/compute-throttle.md).
+**示例 1：算力解锁值。** 项目 `docs` 分支声明两个 SM 速度选择寄存器都被写成 `0xffffffff`。那个读法流传并被重复。出货补丁 `0001-sec2-postbl-plm-ss-cfg.patch` 写 `SS0 0x0082381c = 0x88888888` 和 `SS1 0x00823820 = 0x00000008`、而跨 `master` 和每个分支的那个补丁的全部 16 份副本在这点上相同。文档就是错的、这个维基在[算力节流](../unlock/compute-throttle.md) 上这么说。
 
-**Example 2: what the `80` branch programs.** Four independent working documents, following the
-branch's own `common/constants.yaml` and its commit titled "Correct LMR for 80GB", reported that
-the 80 GB attempt sets `LMR = 0x0000028B`. It does not. `build.sh` never reads `constants.yaml`;
-`80/driver/build.sh` line 93 sets `LMR="0x0000028A"`, `80/install.sh` line 138 prints
-`CFG1=0x02779000 LMR=0x0000028A`, and patch `0001` line 144 bakes `lmrValue = 0x0000028AU`. The
-commit changed inert metadata only. Every tester who ran that branch therefore programmed a
-three-way-inconsistent geometry, which is the leading suspect for the instability, and that
-conclusion only exists because somebody read the file instead of the changelog. See
-[the 80 GB question](../frontier/80gb.md).
+**示例 2：`80` 分支编程什么。** 四份独立工作文档、跟随分支自己的 `common/constants.yaml` 和它题为 "Correct LMR for 80GB" 的提交、报告 80 GB 尝试设置 `LMR = 0x0000028B`。它没有。`build.sh` 从不读 `constants.yaml`；`80/driver/build.sh` 第 93 行设 `LMR="0x0000028A"`、`80/install.sh` 第 138 行打印 `CFG1=0x02779000 LMR=0x0000028A`、而补丁 `0001` 第 144 行烘焙 `lmrValue = 0x0000028AU`。那个提交只改惰性元数据。因此每个跑过那个分支的测试者都编程了一个三方不一致几何布局、那是不稳定性的头号嫌疑、而那个结论只因某人读了文件而非变更日志才存在。见[80 GB 问题](../frontier/80gb.md)。
 
-Other rulings of the same kind, all re-derived during pass 3: a claim that no patch file on the
-`80` branch differs from `master` (two lines differ); 24 reported patch byte sizes, all wrong
-against `wc -c`; the count of unreleased branch *snapshots*, reported variously as thirteen and
-fourteen (**12** were snapshotted, out of **16** unreleased refs, the other four being
-`code-simplification`, `dual-geometry-fix`, `fix` and `v0.1`); the size of the Gen2 PLM table,
-reported as one added entry (it adds five, for a total
-of nine); and the README's claim that the unlock is gated on device ID `0x20C2` alone, when the
-in-driver gate accepts `0x20C2` and `0x2082`.
+同类的其它裁决、全部在通过 3 期间重新推导：一个声称 `80` 分支上没有补丁文件不同于 `master`（两行不同）；24 个报告的补丁字节大小、全部对 `wc -c` 是错的；未发布分支*快照*数、被报告为十三和十四（**12** 个被快照、来自 **16** 个未发布 ref、其它四个是 `code-simplification`、`dual-geometry-fix`、`fix` 和 `v0.1`）；Gen2 PLM 表的大小、被报告为加一个条目（它加五个、共九个）；以及 README 声称解锁门控在设备 ID `0x20C2` 单独上、而驱动内门接受 `0x20C2` 和 `0x2082`。
 
-### What code cannot settle
+### 代码不能定论什么
 
-Six of the 14 conflicts were not code-settleable, because the quantity in dispute does not exist in
-any source file. PCIe link width, bandwidth, clocks and thermals are in this category. Those were
-weighed on evidence, and the honest outcome was usually to **lower** a confidence rating rather
-than pick a winner:
+14 个冲突中 6 个不可被代码定论、因为有争议的量不存在于任何源文件里。PCIe 链路位宽、带宽、时钟和热在这个类别里。那些按证据权衡、而诚实的结果通常是**降低**一个置信度评级、而非选一个赢家：
 
-- **Gen2 at x16** was recorded in two documents as an established result. It rests on one rig, one
-  day, one screenshot. It is now stated as observed once on 2026-07-26 at medium confidence, with
-  stability explicitly unestablished.
-- **A 1935 MHz maximum SM clock** was carried as high confidence. It is a reported field, not an
-  achievable clock: the VBIOS ceiling is 1695 MHz and every sustained measurement sits at 1410 MHz
-  nominal. It is now low confidence.
+- **Gen2 在 x16** 被两份文档记录为一个已确立结果。它压在一架机、一天、一张截图上。它现在被陈述为 2026-07-26 以中等置信度观察一次、稳定性被显式未确立。
+- **一个 1935 MHz 最大 SM 时钟**被当作高置信度携带。它是一个报告字段、不是一个可达时钟：VBIOS 上限是 1695 MHz、而每个持续测量都坐在 1410 MHz 标称。它现在是低置信度。
 
 ---
 
-## 4. Confidence taxonomy and how it maps to the page markers
+## 4. 置信度分类、以及它如何映射到页面标记
 
-| Underlying basis | How it appears on a page |
+| 底层基础 | 它如何在页面上出现 |
 |---|---|
-| Settled from shipping code, or reproduced by two or more testers, or arithmetic from either | Plain prose, no marker |
-| Unreleased-branch code, or a single report | a `> [!WARNING]` alert titled **Experimental**, or an inline hedge naming the limitation |
-| One report, one machine, one capture | Hedged in the sentence itself: "one tester reported", "observed once, on 2026-07-26" |
-| Can destroy hardware or lose data | a `> [!CAUTION]` alert, reserved for physical and irreversible risk, never for "this might not work" |
-| Genuinely unsolved | a `> [!NOTE]` alert titled **Open problem**, stating what was tried and what one experiment would close it |
-| Unknown | The word "unknown", never a plausible-looking number |
+| 从出货代码定论、或被两个或更多测试者复现、或从任一算术 | 普通叙述、无标记 |
+| 未发布分支代码、或单一报告 | 一个题为 **Experimental** 的 `> [!WARNING]` alert、或一个命名限制的行内对冲 |
+| 一份报告、一台机器、一次捕获 | 在句子本身里对冲："一位测试者报告"、"仅观察到一次、于 2026-07-26" |
+| 能损坏硬件或丢失数据 | 一个 `> [!CAUTION]` alert、保留给物理和不可逆风险、绝不用来"这可能不奏效" |
+| 真的未解决 | 一个题为 **Open problem** 的 `> [!NOTE]` alert、陈述试过什么和一个实验会关闭它 |
+| 未知 | "未知"这个词、绝不是一个貌似合理的数字 |
 
-The reader-facing version of this table, with examples, is on
-[how to read this wiki](../start/how-to-read-this-wiki.md). The items that survived every pass as
-genuinely unknown are collected on [open questions](../frontier/open-questions.md), ranked by how
-cheaply each one could be closed.
+读者面对的这个表、带示例、在[如何阅读本维基](../start/how-to-read-this-wiki.md) 上。挺过每轮、作为真正未知保留下来的项、被收集在[未解问题](../frontier/open-questions.md) 上、按每一项能多便宜地被关闭排序。
 
 ---
 
-## 5. Anonymisation
+## 5. 匿名化
 
-This documents two public servers, and **no individual is named anywhere on this site**: no handle,
-display name, real name or user ID. Claims are attributed to a **date and a channel**, or to a
-file, a commit or a register readback. Where the number of people matters to the weight of a claim,
-this wiki writes "one tester", "two independent testers", "a researcher", "the maintainers".
-Gendered pronouns are not used for anyone.
+这文档化两个公开服务器、而**本网站任何地方都没点名任何个人**：没有句柄、显示名、真名或用户 ID。声称被归因到一个**日期和一个频道**、或到一个文件、一个提交或一次寄存器回读。人数要紧到声称份量时、这个维基写"一位测试者"、"两位独立测试者"、"一位研究者"、"维护者"。不为任何人用性别化代词。
 
-Three reasons, and only the first is courtesy. The work was done under clean-room rules where
-provenance arguments were a live hazard. There is live legal exposure: a takedown notice was issued
-against at least one public fork on 2026-07-17. And attribution is not evidence: stripping names
-forces every claim to stand on its capture, its code line or its measurement. The community history
-is recorded without personalities on
-[clean room and provenance](../history/clean-room-and-provenance.md).
+三个原因、只有第一个是礼貌。工作是在净室规则下做的、那里来源论证是一个活危险。存在活的法律风险：2026-07-17 对至少一个公开 fork 发出了一次删除通知。而归属不是证据：剥离名字迫使每个声称站在它的捕获、它的代码行或它的测量上。社区历史在[净室与来源溯源](../history/clean-room-and-provenance.md) 上不带个人地被记录。
 
 ---
 
-## 6. Limitations
+## 6. 限制
 
-Stated plainly, because they bound everything else on this site.
+直白陈述、因为它们束缚本网站其它一切。
 
-1. **This is a synthesis of a conversation, not a controlled study.** Nothing here was designed as
-   an experiment. Measurements arrived when someone happened to run something and happened to post
-   the output, on their own hardware, with their own cooling, PSU, host platform and workload.
-   There is no control group and no protocol.
-2. **The physical sample is tiny.** The 120-register fuse and register survey that underpins much
-   of the hardware chapter was run on **two** physical 170HX units, both 10 GB cards, against 11
-   rented comparison cards and two Drive A100 boards. Most other results come from a handful of
-   cards belonging to a handful of testers.
-3. **No 8 GB card was ever put through the full fuse survey.** Every 8 GB fuse and topology value
-   in this wiki is a single-point probe, not a differential reading. Where 8 GB and 10 GB values
-   differ, as they do for `NV_PTOP_FS4 0x0002241c`, the difference is asserted on thinner evidence
-   than the 10 GB side.
-4. **Several measurements are single-report.** Gen2 at x16, the 80 GB failure signature, most
-   thermal figures and several benchmark numbers each rest on one capture from one machine. They
-   are marked, but marked is not the same as reproduced.
-5. **Some register semantics are inferred, not read from a header.** No NVIDIA internal header was
-   available. Field widths and bit meanings were reconstructed from observed values and arithmetic
-   that fits them. The clearest live case: the LMR magnitude field is treated as 6 bits at [9:4]
-   because that is exact for all five encodings in real use, but the width has never been read from
-   `dev_fb.h`, and one open question hangs on it. Inferred semantics can be exactly right about
-   every value anyone has tried and still wrong about the field.
-6. **Register names are not always the vendor's names.** Some are the code's names, some are
-   clean-room tooling names, and at least one register carries two names in the corpus. The
-   [register reference](../unlock/register-reference.md) carries aliases rather than pretending to
-   a single authority.
-7. **Absence of a report is not absence of a problem.** Failure modes that nobody hit on the small
-   set of hosts represented here are simply invisible to this method.
-8. **The project was still moving when the corpus was frozen.** Gen2, multi-card and IOMMU work
-   were unmerged and actively changing. Two separate Gen2 fixes landed in the last two days of the
-   archive: commit `8854d3e` "Remove clamp link to Gen1" on branch `far`, authored
-   2026-07-26 local time and 2026-07-27T06:46Z, and branch `deced` published 2026-07-27 evening to
-   remove a hardcoded PCI address that the maintainer called "the big bug". Several open reports
-   were never re-tested against either. **"As of 2026-07-28" is load-bearing in every status claim
-   on this site**, and nothing here has been re-verified against hardware after that date.
-   Repository drift began immediately: the remote `ecc` branch was force-updated roughly sixteen
-   hours after the snapshot, so this wiki's description of it is a snapshot description. The driver
-   whitelist in particular
-   (`610.43.03` and `610.43.02` exactly) is the most perishable fact in the wiki. See
-   [driver versions](../procedures/driver-versions.md).
+1. **这是对一次对话的合成、不是一项受控研究。** 这里没有任何东西被设计成一个实验。测量在某人恰好跑点什么、恰好贴出输出时到来、在他们的硬件、他们自己的散热、PSU、宿主平台和工作负载上。没有对照组、没有协议。
+2. **物理样本极小。** 支撑硬件章大部分的 120 寄存器熔丝和寄存器调查在**两张**物理 170HX 单元上跑、都是 10 GB 卡、对 11 张租用对比卡和两块 Drive A100 板。其它大多数结果来自少数测试者拥有的少数卡。
+3. **没有 8 GB 卡被完整跑过熔丝调查。** 这个维基里每个 8 GB 熔丝和拓扑值是一个单点探测、不是一个差分读数。凡 8 GB 和 10 GB 值不同、如 `NV_PTOP_FS4 0x0002241c` 那样、那个差以比 10 GB 侧更薄的证据被断言。
+4. **几个测量是单一报告。** Gen2 在 x16、80 GB 失败签名、大多数热数字和几个基准数字每个压在一次来自一台机器的捕获上。它们被标记、但标记不同于复现。
+5. **一些寄存器语义被推断、而非从一个头文件读。** 没有任何 NVIDIA 内部头文件可用。字段宽度和位含义从观察值和适合它们的算术重建。最清晰的活案例：LMR 幅值字段被当作 [9:4] 处的 6 位、因为那对真实使用里全部五种编码精确、但宽度从没从 `dev_fb.h` 读过、一个开放问题挂在它上。推断的语义可以对每个有人试过的值恰好正确、仍对那个字段是错的。
+6. **寄存器名不总是厂商的名字。** 有些是代码的名字、有些是净室工具名、而至少一个寄存器在语料库里带两个名字。[寄存器参考](../unlock/register-reference.md) 携带别名而非假装单一权威。
+7. **一份报告的缺席不是问题的不存在。** 在这代表的主机小集合上没人撞上的失败模式、对这个方法就是不可见的。
+8. **语料库冻结时项目仍在移动。** Gen2、多卡和 IOMMU 工作未合并、正在积极变化。两个分开的 Gen2 修复落在档案最后两天：提交 `8854d3e` "Remove clamp link to Gen1" 在分支 `far` 上、作者时间 2026-07-26 当地时间、2026-07-27T06:46Z、和分支 `deced` 于 2026-07-27 晚间发布以移除一个硬编码 PCI 地址、维护者叫它 "the big bug"。几个开放报告从没对任何一个重新测试过。**"截至 2026-07-28" 在本网站每个状态声称里承重**、而此后这里没有任何东西对硬件被重新验证过。仓库漂移立即开始：远程 `ecc` 分支在快照后约十六小时被强制更新、所以这个维基对它的描述是一个快照描述。尤其驱动白名单（`610.43.03` 和 `610.43.02` 精确）是维基里最易腐烂的事实。见[驱动版本](../procedures/driver-versions.md)。
 
-### What this method can and cannot guarantee
+### 这个方法能、不能保证什么
 
-**It can reasonably guarantee** that a register address, value, offset, patch line, file path,
-version string, command or error code quoted in plain prose is what the shipping tool actually
-contains, because those were re-derived from the source trees rather than from the conversation
-about the source trees. It can guarantee that a documented dead end really was tried and really did
-fail. It can guarantee that no claim was upgraded in confidence during writing.
+**它能合理地保证**、普通叙述里引用的寄存器地址、值、偏移量、补丁行、文件路径、版本字符串、命令或错误码是出货工具实际含有的、因为它们被从源码树重新推导、而非从关于源码树的对话。它能保证一条文档化死路真的被试过、真的失败了。它能保证写作期间没有任何声称被升级置信度。
 
-**It cannot guarantee** that any performance, thermal, power or link-width number generalises
-beyond the specific card and host that produced it. It cannot guarantee that an unmarked absence
-means the thing does not exist, rather than that nobody looked. It cannot guarantee that an
-inferred register field is inferred correctly. And it cannot guarantee that the extraction and
-adjudication passes did not lose or distort claims that the cross-check had no reason to examine,
-because the cross-check only sees quantities that appear in more than one place.
+**它不能保证**任何性能、热、功耗或链路位宽数字推广到产出它的具体卡和宿主之外。它不能保证一个未标记的缺失意味着那个东西不存在、而非没人看。它不能保证一个推断的寄存器字段被正确推断。而它不能保证提取和裁决通过没丢失或扭曲交叉核对没有理由检查的声称、因为交叉核对只看到出现在多于一个地方的量。
 
-Treat plain prose about code as near-certain, treat every hedged sentence as a single data point,
-and treat the [status board](../frontier/status-board.md) as the current, perishable state of
-things rather than as a specification.
+把关于代码的普通叙述当近乎确定、把每个对冲句子当一个单一数据点、并把[状态板](../frontier/status-board.md) 当作当前、易腐烂的事态、而非一个规格。
 
 ---
 
-## Related pages
+## 相关页面
 
-- [How to read this wiki](../start/how-to-read-this-wiki.md)
-- [External sources](external-sources.md)
-- [Preserved artifacts](artifacts.md)
-- [Open questions](../frontier/open-questions.md)
-- [Dead ends](../history/dead-ends.md)
-- [Clean room and provenance](../history/clean-room-and-provenance.md)
-- [Timeline](../history/timeline.md)
+- [如何阅读本维基](../start/how-to-read-this-wiki.md)
+- [外部来源](external-sources.md)
+- [保留工件](artifacts.md)
+- [未解问题](../frontier/open-questions.md)
+- [死路](../history/dead-ends.md)
+- [净室与来源溯源](../history/clean-room-and-provenance.md)
+- [时间线](../history/timeline.md)

@@ -1,151 +1,114 @@
-# Fuses and OTP
+# 熔丝与 OTP
 
-## What this page covers
+## 本页覆盖内容
 
-Every documented one-time-programmable (OTP) fuse and fuse-shadow register on the CMP 170HX,
-what each one gates, what it reads on this card, what the same register reads on an A100 and on
-consumer Ampere, and whether it can be overridden. The data comes from a cross-card BAR0 survey
-run in May 2026 across 15 Ampere cards, re-checked here register by register against the
-published table.
+CMP 170HX 上每一个有记录的 OTP 熔丝和熔丝影子寄存器、每个门控什么、在这张卡上读什么、同一寄存器在 A100 和消费级 Ampere 上读什么，以及能否被覆盖。数据来自 2026 年 5 月跨 15 张 Ampere 卡运行的一次 BAR0 调查，这里对照已发布表格逐寄存器重新核对。
 
-Two results dominate everything else on this page:
+有两个结果压倒本页的其它一切：
 
-1. **The 170HX is a fully-configured GA100 that has been fused down, not a smaller die.** Every
-   scalability register reports the full A100 topology, and every restriction (arithmetic
-   throughput, PCIe generation, NVLink, ECC, memory capacity) is an OTP fuse value, not missing
-   silicon. See [GA100 silicon](ga100-silicon.md).
-2. **The one fuse that would have made all of it permanent is unblown.**
-   `FUSE_FEAT_OVR_DIS` at `0x008203F0` reads `0x00000000` on every card ever probed. That is the
-   master kill for the feature-override block, and because it is clear, the feature-override
-   registers at `0x8238xx` remain live. The entire compute unlock rests on this one zero.
+1. **170HX 是一颗被熔断降级的完整 GA100，不是更小的晶片。** 每一个规模寄存器都报告完整的 A100 拓扑，而每一个限制（算力吞吐、PCIe 代数、NVLink、ECC、显存容量）都是一个 OTP 熔丝值，而非缺失的硅片。参见[GA100 硅片](ga100-silicon.md)。
+2. **那个会让这一切都永久化的熔丝没有烧断。** 每张被探测过的卡上 `0x008203F0` 处的 `FUSE_FEAT_OVR_DIS` 都读 `0x00000000`。那是特性覆盖块的灭杀主开关，而因为它干净，`0x8238xx` 处的特性覆盖寄存器仍然活着。整个算力解锁就压在这个零上。
 
-A third result is the one that aged: the survey concluded in bold that the
-**host-level register write approach was "CONFIRMED DEAD" for compute unlock**. That conclusion
-was correct for what it tested and was overturned six to eight weeks later, not by finding a
-host write path but by changing the privilege level mask first from inside a Falcon. See
-[How the survey's conclusion was overturned](#how-the-surveys-conclusion-was-overturned).
+第三个结果已经过时了：调查以黑体下结论说，对算力解锁而言**主机级寄存器写入路径 "CONFIRMED DEAD"（已确认死亡）**。那个结论对它测试过的东西是对的，并在六到八周后被推翻——不是通过找到主机写入路径，而是通过先在 Falcon 内部改变权限级别掩码。参见[调查结论如何被推翻](#调查结论如何被推翻)。
 
 ---
 
-## Reading this page
+## 如何阅读本页
 
-### Register families
+### 寄存器族
 
-GA100 exposes fuse state at three layers. The probe reads all three, and comparing them is how
-you tell a fuse from a software override.
+GA100 在三个层暴露熔丝状态。探测读取全部三层，比较它们就是区分熔丝与软件覆盖的方法。
 
-| Prefix | Meaning | Writable? |
+| 前缀 | 含义 | 可写？ |
 |---|---|---|
-| `FUSE_*` / `OPT_*` | Raw OTP fuse readout, sensed at boot into a shadow register | No. Burning fuses requires the fuse-programming path, which is closed on production parts |
-| `CTRL_OPT_*` | Effective control word: the merge of fuse value, critical-path mask and defective mask. Documented as writable | Only if `FUSE_EN_SW_OVERRIDE` is set. It is not, on this card |
-| `STATUS_OPT_*` | Final effective state after all merging. Read-only | Never |
+| `FUSE_*` / `OPT_*` | 原始 OTP 熔丝读出，启动时感测进一个影子寄存器 | 否。烧熔丝需要熔丝编程路径，它在量产部件上是关闭的 |
+| `CTRL_OPT_*` | 有效控制字：熔丝值、关键路径掩码和有缺陷掩码的合并。记录为可写 | 仅当 `FUSE_EN_SW_OVERRIDE` 置位。这张卡上它不是 |
+| `STATUS_OPT_*` | 全部合并后的最终有效状态。只读 | 永不 |
 
-The resolution order, as the register naming implies and as the measured values confirm:
+解析顺序，如寄存器命名所暗示、实测值所确认：
 
 ```text
-OTP fuse array
-   |  (sensed at power-on, FUSECTRL.SENSE_DONE)
+OTP 熔丝阵列
+   |  （上电时感测，FUSECTRL.SENSE_DONE）
    v
-FUSE_* shadow  ----+
-                   |
-CTRL_OPT_* override|--> merge --> STATUS_OPT_*  --> consumed by DevInit / GSP-RM / driver
-   (gated by       |
-    FUSE_EN_SW_OVERRIDE = 0 on this card)
-                   |
-DEFECTIVE masks ---+
+FUSE_* 影子  ----+
+                 |
+CTRL_OPT_* 覆盖 |--> 合并 --> STATUS_OPT_*  --> 被 DevInit / GSP-RM / 驱动消费
+   （被          |
+    FUSE_EN_SW_OVERRIDE = 0 门控，这张卡上）
+                 |
+DEFECTIVE 掩码 ---+
 ```
 
-On the CMP 170HX every `CTRL_OPT_*` register reads `0x00000000` and every `STATUS_OPT_*`
-register is **bit-for-bit identical to its raw `FUSE_*` counterpart**. Verified here for all four
-floorsweep pairs on both physical units. Nothing has been overridden; the restrictions arrive
-straight out of the fuse array.
+在 CMP 170HX 上，每个 `CTRL_OPT_*` 寄存器都读 `0x00000000`，而每个 `STATUS_OPT_*` 寄存器与其原始 `FUSE_*` 对应物**逐位相同**。这里在两块物理单元的全部四个地板清扫对上验证过。没有任何东西被覆盖；限制直接来自熔丝阵列。
 
-### PRI sentinel values
+### PRI 毒哨兵值
 
-A read that returns a value beginning `0xBADF` is not a register value. GA100 uses several
-distinct sentinels and they mean different things:
+返回以 `0xBADF` 开头的值的读，不是寄存器值。GA100 使用几个不同的哨兵，它们意思不同：
 
-| Sentinel | Meaning | Where it shows up in this survey |
+| 哨兵 | 含义 | 在这份调查里出现在哪 |
 |---|---|---|
-| `0xBADF5040` | Privilege violation or undecoded space in a priv-gated block | `FECS_FEAT_OVERRIDE` `0x00409664` and `FECS_FEAT_READOUT_1` `0x00409668` on **every** card; `CTRL_OPT_FBPA`, `FUSE_DIS_PROGRAM`, `FUSE_BYPASS_STATUS`, `FUSE_FBPA_DISABLE` and the whole IEEE 1500 block on GA10x parts |
-| `0xBADF1100` | Target does not exist / not decoded | `PMC_BOOT_42` `0x0000A800` on all Ampere; `FUSE_OPT_FBIO_OLD` `0x00021C14` on GA100; per-FBPA reads beyond the part's FBPA count |
-| `0xBADF1201` | Privilege error, or an engine that has not been ungated | All five SKED registers and `SM_ISSUE_RATE_MODIFIER` on a stock 170HX with **no driver loaded**; this survey read them successfully because `probe.sh` runs `nvidia-smi` and brings the driver up before it mmaps BAR0 |
-| `0xBADF20xx` | Floorswept partition, low byte encodes the unit | Per-FBPA `CSTATUS_RAMAMOUNT` and `CFG0` for disabled FBPAs |
-| `BAR0` (literal) | Register lies outside the card's BAR0 aperture | Every row at or above offset `0x40000` on the A16, whose BAR0 is only 256 KB |
+| `0xBADF5040` | 权限违规，或一个特权门控块里的未解码空间 | **每一张**卡上的 `FECS_FEAT_OVERRIDE` `0x00409664` 和 `FECS_FEAT_READOUT_1` `0x00409668`；GA10x 部件上的 `CTRL_OPT_FBPA`、`FUSE_DIS_PROGRAM`、`FUSE_BYPASS_STATUS`、`FUSE_FBPA_DISABLE` 和整个 IEEE 1500 块 |
+| `0xBADF1100` | 目标不存在 / 未解码 | 全部 Ampere 上的 `PMC_BOOT_42` `0x0000A800`；GA100 上的 `FUSE_OPT_FBIO_OLD` `0x00021C14`；超出部件 FBPA 数的每-FBPA 读 |
+| `0xBADF1201` | 权限错误，或一个尚未被取消门控的引擎 | **没加载驱动**的出厂 170HX 上全部五个 SKED 寄存器和 `SM_ISSUE_RATE_MODIFIER`；这份调查成功读取它们是因为 `probe.sh` 在 mmap BAR0 之前先跑 `nvidia-smi` 把驱动带起来 |
+| `0xBADF20xx` | 被地板清扫的分区，低字节编码单元 | 被禁用 FBPA 的每-FBPA `CSTATUS_RAMAMOUNT` 和 `CFG0` |
+| `BAR0`（字面值） | 寄存器落在卡的 BAR0 孔径之外 | A16 上偏移量 `0x40000` 及以上的每一行，它的 BAR0 只有 256 KB |
 
-Any tool that buckets all `BADF*` reads as "unreadable" throws away the difference between a
-floorswept unit, an undecoded address and a privilege denial.
+任何把所有 `BADF*` 读取归为"不可读"的工具，都扔掉了被地板清扫单元、未解码地址和权限拒绝之间的区别。
 
-### The cohort
+### 队列
 
-| Column | Part | Basis |
+| 列 | 部件 | 依据 |
 |---|---|---|
-| 170HX A / 170HX B | 2 × CMP 170HX 10 GB (`10de:2082`) | Physical hardware, 2026-05-05 and 2026-05-07 |
-| A100 SXM4 40G, A100 PCIe 40G, A100 PCIe 80G, A10, A16, A5000, A6000, RTX 3080, RTX 3080 Ti, RTX 3090, RTX 3090 Ti | 11 parts | Cloud rentals |
-| Drive | 2 × DRIVE A100 32 GB (PG199, `GA100-550F-A1`, `10de:20bb`) | Physical hardware, 2026-05-31, merged into one column |
-| ES | An Ampere engineering sample | **No data.** The column exists in the source table and is empty in all 121 rows |
+| 170HX A / 170HX B | 2 × CMP 170HX 10 GB（`10de:2082`） | 物理硬件，2026-05-05 和 2026-05-07 |
+| A100 SXM4 40G、A100 PCIe 40G、A100 PCIe 80G、A10、A16、A5000、A6000、RTX 3080、RTX 3080 Ti、RTX 3090、RTX 3090 Ti | 11 个部件 | 云端租赁 |
+| Drive | 2 × DRIVE A100 32 GB（PG199、`GA100-550F-A1`、`10de:20bb`） | 物理硬件，2026-05-31，合并成一列 |
+| ES | 一个 Ampere 工程样品 | **无数据。** 该列存在于源表里，在所有 121 行都是空的 |
 
 > [!WARNING]
-> **Two limits on the cohort you must know before quoting it**
+> **引用前你必须知道的两条队列限制**
 >
-> **Both physical 170HX units in this survey are 10 GB (`0x2082`) cards.** No 8 GB (`0x20C2`)
-> card was probed. Where the 8 GB SKU differs (notably `NV_PTOP_FS4`, see
-> [Chip ID and PTOP](#chip-id-and-ptop)) this table cannot settle it.
+> **这份调查里的两块物理 170HX 单元都是 10 GB（`0x2082`）卡。** 没有探测过 8 GB（`0x20C2`）卡。凡 8 GB SKU 不同的地方（尤其是 `NV_PTOP_FS4`，参见[芯片 ID 与 PTOP](#芯片-id-与-ptop)），这张表都无法定论。
 >
-> **The `ES` column carries no values at all.** Documents that attribute a specific reading to
-> "the ES part" have miscounted the columns by one; the ES cell is empty in every row of the
-> published table. This was re-verified programmatically for this page.
+> **`ES` 列根本没有任何值。** 把特定读数归给"ES 部件"的文档，把列数错了一个；发布表里每一行的 ES 单元格都是空的。本页以编程方式重新验证过。
 
-### What was actually read
+### 实际读了什么
 
-`probe.sh` mmaps `/sys/bus/pci/devices/<bdf>/resource0` read-only and issues 32-bit loads. Per
-card it reads **120 named registers** plus **24 per-FBPA `CSTATUS_RAMAMOUNT`** plus **24 per-FBPA
-`CFG0`** = 168 reads. The published table tabulates **118 unique registers in 121 rows** (three
-NVLink registers appear in two sections each) and silently drops two registers the script reads:
-`FUSE_FB_FALCON_PRI_DIS` (`0x00820670`) and `PTOP_SCAL_FBPA_PER_FBP` (`0x00022458`). Their 170HX
-values are therefore **unknown**, which is a real gap: the first of those decides whether a Falcon
-can touch FB PRI registers at all.
+`probe.sh` 只读地 mmap `/sys/bus/pci/devices/<bdf>/resource0` 并发出 32 位加载。每张卡它读取 **120 个具名寄存器** 加 **24 个每-FBPA `CSTATUS_RAMAMOUNT`** 加 **24 个每-FBPA `CFG0`** = 168 次读取。发布的表在 121 行里制表了 **118 个唯一寄存器**（三个 NVLink 寄存器各出现在两个部分），并静默丢弃脚本读的两个寄存器：`FUSE_FB_FALCON_PRI_DIS`（`0x00820670`）和 `PTOP_SCAL_FBPA_PER_FBP`（`0x00022458`）。它们的 170HX 值因此**未知**，这是个真缺口：其中第一个决定一个 Falcon 能否碰 FB PRI 寄存器。
 
 ---
 
-## Cross-unit comparison: which fuses are product-line and which are per-die
+## 跨单元对比：哪些熔丝是产品线、哪些是按晶片
 
-Comparing the two physical 170HX units answers a question that no single dump can: which of these
-values is a *product decision* and which is *this particular die*.
+对比两块物理 170HX 单元回答了任何单一转储都答不了的问题：这些值里哪些是*产品决定*、哪些是*这块特定晶片*。
 
-Re-counted for this page: of the 121 named-register rows, **108 are byte-identical between the two
-units and 13 differ**. The 13 are:
+为本页重新计数：121 个具名寄存器行里，**108 个在两单元之间逐字节相同，13 个不同**。这 13 个是：
 
-| Register | Address | 170HX A | 170HX B | Class |
+| 寄存器 | 地址 | 170HX A | 170HX B | 类别 |
 |---|---|---|---|---|
-| `FEAT_OVR_QUADRO` | `0x00823808` | `0x00000182` | `0x00000181` | runtime/per-die |
-| `FEAT_OVR_SM_SPD` | `0x0082381C` | `0x51261070` | `0x10206152` | runtime state, not fuse state |
-| `FEAT_OVR_SM_SPD_1` | `0x00823820` | `0x00000002` | `0x00000006` | runtime state, not fuse state |
-| `FUSE_GPC_DISABLE` | `0x00820350` | `0x000000d0` | `0x00000023` | per-die binning |
-| `FUSE_FBP_DISABLE` | `0x00820364` | `0x00000180` | `0x00000009` | per-die binning |
-| `FUSE_FBPA_DISABLE` | `0x00820368` | `0x0003c000` | `0x000000c3` | per-die binning |
-| `FUSE_FBIO_DISABLE` | `0x0082036C` | `0x0003c000` | `0x000000c3` | per-die binning |
-| `STATUS_FBPA` | `0x00820C18` | `0x0003c000` | `0x000000c3` | mirror of the above |
-| `STATUS_FBP` | `0x00820D38` | `0x00000180` | `0x00000009` | mirror |
-| `STATUS_OPT_FBIO` | `0x00820C14` | `0x0003c000` | `0x000000c3` | mirror |
-| `STATUS_OPT_GPC` | `0x00820C1C` | `0x000000d0` | `0x00000023` | mirror |
-| `I1500_DATA` | `0x009A3CBC` | `0xde79ffc1` | `0xc631ffc1` | HBM silicon ID |
-| `I1500_SHADOW_WDR` | `0x009A3CC4` | `0xbcf3ff83` | `0x8c63ff83` | HBM silicon ID |
+| `FEAT_OVR_QUADRO` | `0x00823808` | `0x00000182` | `0x00000181` | 运行时 / 按晶片 |
+| `FEAT_OVR_SM_SPD` | `0x0082381C` | `0x51261070` | `0x10206152` | 运行时状态，不是熔丝状态 |
+| `FEAT_OVR_SM_SPD_1` | `0x00823820` | `0x00000002` | `0x00000006` | 运行时状态，不是熔丝状态 |
+| `FUSE_GPC_DISABLE` | `0x00820350` | `0x000000d0` | `0x00000023` | 按晶片分级 |
+| `FUSE_FBP_DISABLE` | `0x00820364` | `0x00000180` | `0x00000009` | 按晶片分级 |
+| `FUSE_FBPA_DISABLE` | `0x00820368` | `0x0003c000` | `0x000000c3` | 按晶片分级 |
+| `FUSE_FBIO_DISABLE` | `0x0082036C` | `0x0003c000` | `0x000000c3` | 按晶片分级 |
+| `STATUS_FBPA` | `0x00820C18` | `0x0003c000` | `0x000000c3` | 上面的镜像 |
+| `STATUS_FBP` | `0x00820D38` | `0x00000180` | `0x00000009` | 镜像 |
+| `STATUS_OPT_FBIO` | `0x00820C14` | `0x0003c000` | `0x000000c3` | 镜像 |
+| `STATUS_OPT_GPC` | `0x00820C1C` | `0x000000d0` | `0x00000023` | 镜像 |
+| `I1500_DATA` | `0x009A3CBC` | `0xde79ffc1` | `0xc631ffc1` | HBM 硅片 ID |
+| `I1500_SHADOW_WDR` | `0x009A3CC4` | `0xbcf3ff83` | `0x8c63ff83` | HBM 硅片 ID |
 
-Every restriction fuse matches exactly across the two units: all nine speed-select fuses, both
-PCIe fuses, `MAGIC_D`, the NVLink fuses, `FBPA_CFG1_BROADCAST`, `FUSE_SKU_ID`, both device-ID
-fuses. **Restriction fuses are product-line; floorsweep fuses are per-die.** That is the single
-most useful structural finding in the survey, and it is why one card's floorsweep mask tells you
-nothing about another card's, while one card's `FUSE_SS_FFMA` tells you every 170HX's.
+每一个限制熔丝在两单元之间都精确匹配：全部九个速度选择熔丝、两个 PCIe 熔丝、`MAGIC_D`、NVLink 熔丝、`FBPA_CFG1_BROADCAST`、`FUSE_SKU_ID`、两个设备 ID 熔丝。**限制熔丝是产品线的；地板清扫熔丝是按晶片的。** 这是这份调查里最有用的一条结构性发现，也是为什么一张卡的地板清扫掩码告诉你另一张卡的什么、而一张卡的 `FUSE_SS_FFMA` 却告诉你每张 170HX 的。
 
-The published summary says "107 of 120 registers identical". The differing count of 13 is right;
-the ratio is off by one on each side because of the three duplicated NVLink rows.
+发布的摘要说 "120 个寄存器中 107 个相同"。13 这个不同的数字是对的；比率因三个重复的 NVLink 行而在两边各差一。
 
 ---
 
-## Fuse controller and the master switches
+## 熔丝控制器与主开关
 
-| Register | Address | 170HX A | 170HX B | A100 (all 3) | A10 / A5000 / A6000 | RTX 30-series | Drive |
+| 寄存器 | 地址 | 170HX A | 170HX B | A100（全部 3） | A10 / A5000 / A6000 | RTX 30 系列 | Drive |
 |---|---|---|---|---|---|---|---|
 | `FUSECTRL` | `0x00820000` | `0xe0040000` | `0xe0040000` | `0xe0040000` | `0xe0040000` | `0xe0040000` | `0xe0040000` |
 | `FUSE_EN_SW_OVERRIDE` | `0x00820040` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000001` | `0x00000001` | `0x00000000` |
@@ -158,48 +121,27 @@ the ratio is off by one on each side because of the three duplicated NVLink rows
 | `FUSE_DEVID_SW_OVR_DIS` | `0x00820584` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` |
 | `FUSE_INTERNAL_SKU` | `0x008203F4` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` |
 
-What each one means for you:
+每一个对你意味着什么：
 
-- **`FUSECTRL` `0xe0040000`** decodes as `CMD[1:0]` = 0 (idle), `STATE[20:16]` = 4,
-  `SENSE_DONE[30]` = 1, plus bits 29 and 31 set (not named in the probe catalogue). Identical on
-  all 14 cards with data. The fuse array has been sensed and the controller is idle.
-- **`FUSE_EN_SW_OVERRIDE` = `0x00000000`** is the reason the `CTRL_OPT_*` path is a dead end on
-  this card. This is the cleanest architecture-versus-tier split in the whole survey: **zero on
-  every GA100 datacentre part (both 170HX units, all three A100 SKUs, the Drive A100), one on
-  every consumer and professional GA10x part.** The 170HX is not specially locked relative to a
-  normal A100 here; the whole GA100 datacentre line ships this way. The corollary is that the
-  25-entry `NV_FUSE_CTRL_OPT_*` table sitting at offset `0x47341` in the unsigned FwSec VBIOS
-  tail is inert on this hardware, and reads all zero on 13 probed GA100 cards. See
-  [VBIOS](vbios.md).
-- **`FUSE_DIS_SW_OVR` = `0x00000001`** on all cards. Best current reading: it locks
-  `EN_SW_OVERRIDE` at whatever value it already holds. That interpretation has never been tested
-  with a write probe and remains an inference.
-- **`FUSE_QUADRO_WR_SEC` = `0x00000001`** seals the privilege level mask at `0x00823804`. This is
-  the self-sealing part of the chain: the fuse protects the PLM, the PLM protects the override
-  registers.
-- **`FUSE_FEAT_OVR_DIS` = `0x00000000`** is the load-bearing zero. Blown, it would permanently
-  lock every feature override and there would be no compute unlock and no wiki.
-- **`FUSE_DEVID_SW_OVR_DIS` = `0x00000001`** on every card. Software cannot change the presented
-  PCI device ID. Every "flash it as an A100" plan dies here, at the fuse level, before firmware
-  signing even becomes relevant.
+- **`FUSECTRL` `0xe0040000`** 解码为 `CMD[1:0]` = 0（空闲）、`STATE[20:16]` = 4、`SENSE_DONE[30]` = 1，加位 29 和 31 置位（探测目录里没命名）。在全部 14 张有数据的卡上相同。熔丝阵列已被感测、控制器空闲。
+- **`FUSE_EN_SW_OVERRIDE` = `0x00000000`** 是 `CTRL_OPT_*` 路径在这张卡上成为死路的原因。这是整份调查里最干净的架构对档位划分：**在每个 GA100 数据中心部件上都是零（两块 170HX 单元、全部三个 A100 SKU、Drive A100），在每个消费级和专业级 GA10x 部件上都是一。** 170HX 在这里相对普通 A100 没有特别锁定；整个 GA100 数据中心产线都这样发货。推论是，位于未签名 FwSec VBIOS 尾部偏移量 `0x47341` 的 25 项 `NV_FUSE_CTRL_OPT_*` 表在这块硬件上是惰性的，在 13 块被探测的 GA100 卡上都读全零。参见[VBIOS](vbios.md)。
+- **`FUSE_DIS_SW_OVR` = `0x00000001`** 在所有卡上。当前最佳解读：它把 `EN_SW_OVERRIDE` 锁定在它已持有的任何值上。这个解读从未用写入探测测试过，仍是一个推断。
+- **`FUSE_QUADRO_WR_SEC` = `0x00000001`** 封死了 `0x00823804` 处的权限级别掩码。这是链条里自封的部分：熔丝保护 PLM，PLM 保护覆盖寄存器。
+- **`FUSE_FEAT_OVR_DIS` = `0x00000000`** 是承重零。烧断它，会永久锁定每一个特性覆盖，也就没有算力解锁、没有维基。
+- **`FUSE_DEVID_SW_OVR_DIS` = `0x00000001`** 在每张卡上。软件不能改变呈现的 PCI 设备 ID。每一个 "把它刷成 A100" 的计划都在这里、在熔丝层死去，甚至在固件签名变得相关之前。
 
 > [!CAUTION]
-> **Do not write the fuse-programming registers**
+> **不要写熔丝编程寄存器**
 >
-> `FUSE_EN_PROGRAM` reads `0x00000001` on every card and the probe catalogue annotates it
-> "do not use". `FUSECTRL`, `FUSE_EN_PROGRAM`, `FUSE_DIS_PROGRAM` and the fuse data registers
-> drive an OTP array. A successful write is permanent and unrecoverable, and a partial burn can
-> leave the card unable to sense a valid configuration at power-on. Nothing in this project has
-> ever needed a fuse write, and nothing in the shipping unlocker attempts one.
+> `FUSE_EN_PROGRAM` 在每张卡上都读 `0x00000001`，探测目录把它标注为 "do not use"（不要使用）。`FUSECTRL`、`FUSE_EN_PROGRAM`、`FUSE_DIS_PROGRAM` 和熔丝数据寄存器驱动一个 OTP 阵列。一次成功的写入是永久且不可恢复的，而一次部分烧断可能让卡在上电时无法感测有效配置。这个项目里没有任何东西需要过熔丝写入，出货解锁器里也没有任何东西尝试一次。
 
 ---
 
-## SM speed select OTP fuses
+## SM 速度选择 OTP 熔丝
 
-These are the arithmetic throttle. Each is a 3-bit field where `0` is full rate and `5` is
-divide-by-32, except `FUSE_SS_DP`, which is a single bit where `1` means reduced.
+这些就是算力节流。每个是一个 3 位字段，`0` 是全速、`5` 是除以 32，除了 `FUSE_SS_DP` 是单一位、`1` 意味着降低。
 
-| Register | Address | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | A10 | A5000 | A6000 | RTX 3080 | RTX 3080 Ti | RTX 3090 | RTX 3090 Ti | Drive |
+| 寄存器 | 地址 | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | A10 | A5000 | A6000 | RTX 3080 | RTX 3080 Ti | RTX 3090 | RTX 3090 Ti | Drive |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `FUSE_SS_DP` | `0x00820224` | `0x00000001` | `0x00000001` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` |
 | `FUSE_SS_FFMA` | `0x0082059C` | `0x00000005` | `0x00000005` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` |
@@ -212,46 +154,31 @@ divide-by-32, except `FUSE_SS_DP`, which is a single bit where `1` means reduced
 | `FUSE_SS_IMLA4` | `0x008207EC` | `0x00000005` | `0x00000005` | `0` | `0` | `0` | `0` | `0` | `0` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0` |
 | `FUSE_SS_PLM` | `0x008200FC` | `0xffffffff` | `0xffffffff` | `0xffffffff` | `0xffffffff` | `0xffffffff` | `0xffffffff` | `0xffffffff` | `0xffffffff` | `0xffffffff` | `0xffffffff` | `0xffffffff` | `0xffffffff` | `0xffffffff` |
 
-The pattern across the whole Ampere line:
+跨整个 Ampere 产线的模式：
 
-- **CMP**: eight fuses at `0x5` (divide-by-32) plus DP at `0x1`. Maximum throttle on every
-  arithmetic unit the fuse block can reach.
-- **Consumer GeForce** (RTX 3080, 3080 Ti, 3090, 3090 Ti): `FMLA32` and `IMLA4` at `0x1`, all
-  others zero. This is the well-known consumer FP32-accumulate tensor restriction, and it is
-  fused, not driver-side.
-- **Professional and datacentre** (A100 ×3, A10, A5000, A6000, Drive A100): all nine at zero.
+- **CMP**：八个熔丝在 `0x5`（除以 32）加 DP 在 `0x1`。熔丝块够得到的每个算术单元上都最大节流。
+- **消费级 GeForce**（RTX 3080、3080 Ti、3090、3090 Ti）：`FMLA32` 和 `IMLA4` 在 `0x1`，其它全零。这是众所周知的消费级 FP32 累加张量限制，而且是熔断的、不是驱动侧的。
+- **专业级和数据中心**（A100 ×3、A10、A5000、A6000、Drive A100）：全部九个在零。
 
 > [!NOTE]
-> **Correction to the survey's own headline**
+> **对调查自身标题的更正**
 >
-> The published key findings say "ALL 9 speed select fuses at `0x5`". Eight read `0x5`;
-> `FUSE_SS_DP` reads `0x1` because it is a 1-bit fuse, and `0x1` is its maximum. The
-> substance ("every arithmetic unit is maximally throttled, CMP-exclusive") is correct.
+> 发布的关键发现说 "ALL 9 speed select fuses at `0x5`"（全部 9 个速度选择熔丝在 `0x5`）。八个读 `0x5`；`FUSE_SS_DP` 读 `0x1`，因为它是一个 1 位熔丝，而 `0x1` 是它的最大值。实质（"每个算术单元都被最大节流、CMP 专属"）是对的。
 
-**Are these overridable? No, but they are bypassable.** Nothing can un-blow them. The
-feature-override block at `0x8238xx` sits downstream of the fuse readout and takes precedence,
-and that is what the shipping unlock uses. `FUSE_SS_PLM` (`0x008200FC`, also called `OPT_PLM` in
-the branch source) is the shared privilege level mask for the speed-select fuses; it already
-reads `0xffffffff` here, and **the shipping unlocker never writes it**. Full mechanism on
-[Compute throttle](../unlock/compute-throttle.md).
+**这些能覆盖吗？不能，但能被绕过。** 没有任何东西能反烧它们。`0x8238xx` 处的特性覆盖块坐在熔丝读出下游并取得优先权，而出货解锁用的正是它。`FUSE_SS_PLM`（`0x008200FC`，分支源码里也叫 `OPT_PLM`）是速度选择熔丝的共享权限级别掩码；它在这里已经读 `0xffffffff`，**出货解锁器从不写它**。完整机制在[算力节流](../unlock/compute-throttle.md)。
 
 > [!NOTE]
-> **Open problem: what does `0x008200FC` actually read on a cold card?**
+> **未解问题：冷卡上 `0x008200FC` 到底读什么？**
 >
-> This survey reads `0xffffffff` on all 14 cards. A separate 2026-07-09 read on a 170HX
-> recorded `0x000003FF`. A nine-PLM branch variant that tries to write it logs
-> `status=0xffff` with no readback captured, and `0xffff` is the Booter's status for every run
-> regardless of outcome. Whether the register is writable, and what it reads before any tooling
-> has touched it, is unresolved.
+> 这份调查在全部 14 张卡上都读 `0xffffffff`。一次独立的 2026-07-09 读取在一块 170HX 上记录了 `0x000003FF`。一个尝试写它的九-PLM 分支变体记录 `status=0xffff` 且没捕获回读，而 `0xffff` 是 Booter 对每次运行的状态、无论结果。该寄存器是否可写、在任何工具碰它之前读什么，未解决。
 
 ---
 
-## Feature override chain
+## 特性覆盖链
 
-The block at `0x00823800` to `0x0082382C`. This is where the unlock happens, so it is worth
-having every value.
+`0x00823800` 到 `0x0082382C` 的块。这是解锁发生的地方，所以值得拥有每一个值。
 
-| Register | Address | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | A10 | A5000 | A6000 | RTX 3080 | RTX 3080 Ti | RTX 3090 | RTX 3090 Ti | Drive |
+| 寄存器 | 地址 | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | A10 | A5000 | A6000 | RTX 3080 | RTX 3080 Ti | RTX 3090 | RTX 3090 Ti | Drive |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `FEAT_OVR_ECC_PLM` | `0x00823800` | `0xffffff8f` | `0xffffff8f` | `0x0000abcf` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` |
 | `FEAT_OVR_PLM` | `0x00823804` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` | `0xffffff8f` |
@@ -266,63 +193,36 @@ having every value.
 | `FEAT_READOUT_2` | `0x00823828` | `0x00000000` | `0x00000000` | `0x00000007` | `0x00000007` | `0x00000007` | `0x0000000b` | `0x0000000b` | `0x0000000b` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000001` | `0x00000007` |
 | `FEAT_OVR_ECC_2` | `0x0082382C` | `0x0000000a` | `0x0000000a` | `0x00000001` | `0x00000000` | `0x00000000` | `0x00000009` | `0x00000008` | `0x00000008` | `0x00000008` | `0x00000008` | `0x00000008` | `0x0000000a` | `0x00000000` |
 
-Notes that matter:
+要紧的注记：
 
-- **`FEAT_OVR_PLM` `0x00823804` = `0xffffff8f` is universal.** Level-3 access only. It is
-  identical on an A100 with no restrictions and on a 170HX, so this PLM is not the restriction,
-  it is just the lock on the toolbox. Opening it to `0xffffffff` is the first of the two things
-  the compute unlock does. It is an always-on-island register and **survives FLR**, which is
-  exactly why compute shipped before memory. See
-  [Privilege level masks](../unlock/privilege-level-masks.md).
-- **`FEAT_OVR_ECC_PLM` `0x00823800` is a different register** and is easy to confuse with the
-  one above. Note the one outlier in the entire cohort: the A100 SXM4 40 GB reads `0x0000abcf`
-  where all 13 other cards read `0xffffff8f`. Unexplained.
-- **`FEAT_READOUT_1` `0x00823818` is the effective throttle readout and the best unlock test.**
-  Read-only. `0x016db6ed` on both 170HX units, `0x00000000` on every part whose speed-select
-  fuses are all zero, `0x00400080` on all four consumer parts whose `FMLA32`/`IMLA4` fuses read
-  `0x1`. After a successful compute unlock a 170HX reads `0x00000000` here. The internal field
-  layout is not documented anywhere in the corpus, but the three-way correlation with fuse state
-  is exact, and `0x00823818 == 0` is the cleanest available "is this card unthrottled" test.
-- **`FEAT_OVR_SM_SPD` / `_1` read-backs are runtime state, not fuse state.** They differ between
-  the two 170HX units in this very survey (`0x51261070` vs `0x10206152`), and two archived dumps
-  of the same A100 80 GB device ID disagree with each other. Do not use them as a per-part
-  reference target; use `0x00823818`. The unlock writes `0x88888888` and `0x00000008` here.
-- **`FEAT_OVR_QUADRO` `0x00823808`** differs between the two units and also differs across every
-  recorded 170HX state: `0x00100183` on a stock card in one dump, `0x00000081` after unlock,
-  `0x01000282` on a genuine A100 80 GB. Something in the unlock or the driver version touches the
-  Quadro-versus-consumer classification word. Nobody has chased it.
-- Undecoded space in this block returns `0xBADF5040` from `0x823830` to `0x823FFC` on a stock
-  170HX, which is how the block's extent was established. `0x00823B00`, the row-remapper PLM,
-  reads `0xffffff8f` and lies outside the tabulated range.
+- **`FEAT_OVR_PLM` `0x00823804` = `0xffffff8f` 是普遍的。** 仅第三级访问。在一个没有任何限制的 A100 上和在 170HX 上相同，所以这个 PLM 不是限制，它只是工具箱上的锁。把它打开到 `0xffffffff` 是算力解锁做的第一件事。它是一个常电域寄存器并**挺过 FLR**，这恰是算力先于显存发货的原因。参见[权限级别掩码](../unlock/privilege-level-masks.md)。
+- **`FEAT_OVR_ECC_PLM` `0x00823800` 是一个不同的寄存器**，容易与上面那个混淆。注意整个队列里的一个离群值：A100 SXM4 40 GB 读 `0x0000abcf`，而其它 13 张卡读 `0xffffff8f`。未解释。
+- **`FEAT_READOUT_1` `0x00823818` 是有效节流读出，也是最好的解锁测试。** 只读。两块 170HX 单元上 `0x016db6ed`，每个速度选择熔丝全零的部件上 `0x00000000`，四个 `FMLA32`/`IMLA4` 熔丝读 `0x1` 的消费级部件上 `0x00400080`。一次成功的算力解锁后，170HX 在这里读 `0x00000000`。内部字段布局在语料库里没有任何地方记录，但与熔丝状态的三路相关性是精确的，`0x00823818 == 0` 是可用的最干净的 "这张卡被取消节流了吗" 测试。
+- **`FEAT_OVR_SM_SPD` / `_1` 回读是运行时状态，不是熔丝状态。** 它们在这份调查里就因两块 170HX 单元而异（`0x51261070` 对 `0x10206152`），而同一 A100 80 GB 设备 ID 的两份归档转储彼此不一致。不要拿它们当按部件参考目标；用 `0x00823818`。解锁在这里写 `0x88888888` 和 `0x00000008`。
+- **`FEAT_OVR_QUADRO` `0x00823808`** 在两单元之间不同，也跨每一个记录的 170HX 状态不同：一份转储里出厂卡上 `0x00100183`、解锁后 `0x00000081`、真 A100 80 GB 上 `0x01000282`。解锁或驱动版本的某个东西碰了 Quadro-对-消费级分类字。没人追过它。
+- 这个块里的未解码空间从 `0x823830` 到 `0x823FFC` 在一张出厂 170HX 上返回 `0xBADF5040`，这就是块的范围如何确立的。`0x00823B00`，行重映射器 PLM，读 `0xffffff8f`，在制表范围之外。
 
 ---
 
-## The throttle red herrings
+## 节流的障眼法
 
-Two registers were pursued hard as the throttle and are not.
+有两个寄存器被当作节流使劲追过，其实不是。
 
-| Register | Address | 170HX A | 170HX B | Everything else with data |
+| 寄存器 | 地址 | 170HX A | 170HX B | 其它所有有数据的 |
 |---|---|---|---|---|
-| `SM_ISSUE_RATE_MODIFIER` | `0x00504204` | `0x00000005` | `0x00000005` | `0x00000005` on all 12 other cards, including every A100 |
-| `FECS_FEAT_OVERRIDE` | `0x00409664` | `0xbadf5040` | `0xbadf5040` | `0xbadf5040` on all 12 |
-| `FECS_FEAT_READOUT_1` | `0x00409668` | `0xbadf5040` | `0xbadf5040` | `0xbadf5040` on all 12 |
+| `SM_ISSUE_RATE_MODIFIER` | `0x00504204` | `0x00000005` | `0x00000005` | 其它 12 张卡（包括每个 A100）上 `0x00000005` |
+| `FECS_FEAT_OVERRIDE` | `0x00409664` | `0xbadf5040` | `0xbadf5040` | 全部 12 张上 `0xbadf5040` |
+| `FECS_FEAT_READOUT_1` | `0x00409668` | `0xbadf5040` | `0xbadf5040` | 全部 12 张上 `0xbadf5040` |
 
-`SM_ISSUE_RATE_MODIFIER` reads `0x00000005` on an unthrottled A100 as well as on the 170HX, so it
-cannot be the differentiator. It is host-writable at the right privilege level and zeroing it
-produces no measurable performance change. The shipping unlocker never touches it. A GA104
-RTX 3070 control card reads `0x7` here, further confirming the value is architectural rather
-than a restriction. Note also that this register reads `0xbadf1201` on a stock 170HX with **no
-driver loaded**, and reads cleanly once the driver has brought the engines up, which is the state
-`probe.sh` leaves the card in before it takes its readings.
+`SM_ISSUE_RATE_MODIFIER` 在一个未节流的 A100 上和 170HX 上都读 `0x00000005`，所以它不可能是判别因素。它在正确的权限级别下主机可写，清零它不产生可测的性能变化。出货解锁器从不碰它。一张 GA104 RTX 3070 对照卡在这里读 `0x7`，进一步确认该值是架构性的而非限制。还要注意，这个寄存器在**没加载驱动**的出厂 170HX 上读 `0xbadf1201`，一旦驱动把引擎带起来就读干净，这正是 `probe.sh` 在读数前让卡所处的状态。
 
-The two `FECS_*` registers return the privilege-violation sentinel on **every** Ampere card
-probed, so they carry no information about the 170HX at all.
+那两个 `FECS_*` 寄存器在每一张被探测的 Ampere 卡上都返回权限违规哨兵，所以它们完全不携带关于 170HX 的信息。
 
 ---
 
-## PCIe fuses
+## PCIe 熔丝
 
-| Register | Address | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | A10 | A5000 | A6000 | RTX 3080 | RTX 3080 Ti | RTX 3090 | RTX 3090 Ti | Drive |
+| 寄存器 | 地址 | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | A10 | A5000 | A6000 | RTX 3080 | RTX 3080 Ti | RTX 3090 | RTX 3090 Ti | Drive |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `FUSE_PCIE_GEN23_DIS` | `0x0082057C` | `0x00000001` | `0x00000001` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` |
 | `FUSE_PCIE_GEN3_DIS` | `0x00820580` | `0x00000001` | `0x00000001` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` |
@@ -331,47 +231,24 @@ probed, so they carry no information about the 170HX at all.
 | `FUSE_PCIE_DEVIDB` | `0x0082056C` | `0x000020c2` | `0x000020c2` | `0x000020f1` | `0x000020f1` | `0x000020f5` | `0x00002276` | `0x00002271` | `0x00002270` | `0x00002256` | `0x00002248` | `0x00002244` | `0x00002243` | `0x000020fb` |
 | `FUSE_PCIE_LANE_DIS` | `0x00820394` | `0x00000000` | `0x00000000` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` |
 
-- **Both speed fuses are blown on the 170HX and clear on all 12 comparison parts.** It is one of
-  the handful of places where the 170HX stands alone against every A100 *and* the Drive A100; the
-  speed-select fuses, `FUSE_SKU_ID`, `FEAT_READOUT_1` and `FBPA_CFG1_BROADCAST` do the same.
-- **`FUSE_PCIE_MAGIC_D` `0x16680000` has bit 25 set**, annotated `GEN4_SPEED_DISABLED` and
-  referenced to an internal NVIDIA bug number. The A100 and Drive A100 read `0x00200000`, bit 21
-  only, with bit 25 clear.
-- **The lane fuses are clean.** `FUSE_PCIE_LANE_DIS`, `CTRL_OPT_PCIE_LANE` (`0x0082082C`) and
-  `STATUS_OPT_PCIE_LANE` (`0x00820C2C`) all read `0x00000000`. This is independent silicon-side
-  confirmation that the x4 link width is a **board** problem (12 of 16 lanes ship with their
-  AC-coupling capacitors depopulated) and not a fuse. Speed and width are two separate
-  restrictions with two separate fixes and must never be conflated. See
-  [PCIe subsystem](pcie-subsystem.md) and [Physical mods](../operations/physical-mods.md).
+- **两个速度熔丝在 170HX 上烧断、在全部 12 个对比部件上干净。** 它是 170HX 相对每一个 A100 *以及* Drive A100 单独站立的少数几个地方之一；速度选择熔丝、`FUSE_SKU_ID`、`FEAT_READOUT_1` 和 `FBPA_CFG1_BROADCAST` 也这样做。
+- **`FUSE_PCIE_MAGIC_D` `0x16680000` 置了位 25**，标注为 `GEN4_SPEED_DISABLED`，引用一个内部 NVIDIA bug 号。A100 和 Drive A100 读 `0x00200000`，只置位 21、位 25 干净。
+- **通道熔丝是干净的。** `FUSE_PCIE_LANE_DIS`、`CTRL_OPT_PCIE_LANE`（`0x0082082C`）和 `STATUS_OPT_PCIE_LANE`（`0x00820C2C`）都读 `0x00000000`。这是独立的硅片侧确认：x4 链路位宽是一个**板卡**问题（16 条通道中 12 条出厂交流耦合电容缺件），不是熔丝。速度和位宽是两个独立的限制、两种独立的修复，绝不可混为一谈。参见[PCIe 子系统](pcie-subsystem.md) 和[物理改装](../operations/physical-mods.md)。
 
 > [!NOTE]
-> **Correction: `DEVIDB` is not 'the 8 GB device ID'**
+> **更正：`DEVIDB` 不是 "8 GB 设备 ID"**
 >
-> The survey highlights that both 10 GB units read `FUSE_PCIE_DEVIDB = 0x20C2`, the 8 GB card's
-> PCI ID, and reads significance into it. Checking all 11 parts with data,
-> **`DEVIDB = DEVIDA + 0x40` on every single one**: `0x2082`→`0x20c2`, `0x20b1`→`0x20f1`,
-> `0x20b5`→`0x20f5`, `0x2236`→`0x2276`, `0x2231`→`0x2271`, `0x2230`→`0x2270`,
-> `0x2216`→`0x2256`, `0x2208`→`0x2248`, `0x2204`→`0x2244`, `0x2203`→`0x2243`,
-> `0x20bb`→`0x20fb`. `DEVIDB` is a mechanical +0x40 alternate ID, and the coincidence that
-> `0x2082 + 0x40` lands on the other 170HX SKU's ID carries no SKU information. **Testable
-> prediction:** an 8 GB card should read `DEVIDA = 0x20c2` and `DEVIDB = 0x2102`. No 8 GB card
-> was probed, so this is unverified.
+> 调查强调两块 10 GB 单元都读 `FUSE_PCIE_DEVIDB = 0x20C2`、即 8 GB 卡的 PCI ID，并从中读出意义。检查全部 11 个有数据的部件，**`DEVIDB = DEVIDA + 0x40` 在每一个上都成立**：`0x2082`→`0x20c2`、`0x20b1`→`0x20f1`、`0x20b5`→`0x20f5`、`0x2236`→`0x2276`、`0x2231`→`0x2271`、`0x2230`→`0x2270`、`0x2216`→`0x2256`、`0x2208`→`0x2248`、`0x2204`→`0x2244`、`0x2203`→`0x2243`、`0x20bb`→`0x20fb`。`DEVIDB` 是一个机械的 +0x40 备用 ID，而 `0x2082 + 0x40` 恰好落在另一个 170HX SKU 的 ID 上这个巧合，不携带任何 SKU 信息。**可测试的预测：** 一张 8 GB 卡应读 `DEVIDA = 0x20c2` 和 `DEVIDB = 0x2102`。没有探测过 8 GB 卡，所以这未经验证。
 
-**Overridable?** `OPT_GEN23` at `0x0082057c` was targeted directly, twice, from a Booter-mediated
-high-secure write and the readback stayed `0x00000001` every time. Gen2 was eventually reached
-anyway, through the `CYA_0` / `LINK_CONFIG_0` / XP3G / `PRIV_MISC_1` overrides, **without ever
-clearing the fuse shadow**. The fuse is not the lever. Whether `FUSE_PCIE_MAGIC_D` is writable has
-never been tested and is a five-minute experiment nobody has published. See
-[PCIe Gen 2](../unlock/pcie-gen2.md) and [Gen 3 and Gen 4](../frontier/pcie-gen3-gen4.md).
+**能覆盖吗？** `0x0082057c` 处的 `OPT_GEN23` 被直接从一次 Booter 介导的高安全写里瞄准了两次，回读每次仍 `0x00000001`。Gen2 最终还是通过 `CYA_0` / `LINK_CONFIG_0` / XP3G / `PRIV_MISC_1` 覆盖达到了，**从未清除熔丝影子**。熔丝不是杠杆。`FUSE_PCIE_MAGIC_D` 是否可写从未被测试过，是一个没人发布过的五分钟实验。参见[PCIe Gen 2](../unlock/pcie-gen2.md) 和[Gen 3 和 Gen 4](../frontier/pcie-gen3-gen4.md)。
 
 ---
 
-## NVLink fuses
+## NVLink 熔丝
 
-Summarised here; the full treatment including the physical connectors and the boot log is on
-[NVLink hardware](nvlink-hardware.md).
+在此汇总；完整的处理包括物理连接器和启动日志，在[NVLink 硬件](nvlink-hardware.md)。
 
-| Register | Address | 170HX A | 170HX B | A100 (all 3) | A10 / A5000 / A6000 | RTX 3080 / 3080 Ti | RTX 3090 / 3090 Ti | Drive |
+| 寄存器 | 地址 | 170HX A | 170HX B | A100（全部 3） | A10 / A5000 / A6000 | RTX 3080 / 3080 Ti | RTX 3090 / 3090 Ti | Drive |
 |---|---|---|---|---|---|---|---|---|
 | `FUSE_NVLINK_DIS` | `0x00820684` | `0x00000007` | `0x00000007` | `0x00000000` | `0x00000000` | `0x00000001` | `0x00000000` | `0x00000007` |
 | `FUSE_NVLINK_DEFECTIVE` | `0x0082068C` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` |
@@ -383,14 +260,13 @@ Summarised here; the full treatment including the physical connectors and the bo
 | `STATUS_OPT_NVLINK` | `0x00820DB8` | `0x00000007` | `0x00000007` | `0x00000000` | `0x00000000` | `0x00000001` | `0x00000000` | `0x00000007` |
 | `PTOP_SCAL_NUM_NVLINK` | `0x0002246C` | `0x0000000c` | `0x0000000c` | `0x0000000c` | `0x00000004` | `0x00000004` | `0x00000004` | `0x0000000c` |
 
-Disabled, not damaged, and not unique to the mining SKU: the Drive A100 32 GB reads the identical
-`0x7` / `0x7` pair. **Not overridable by any known route.**
+被禁用，而非损坏，且不专属挖矿 SKU：Drive A100 32 GB 读相同的 `0x7` / `0x7` 对。**没有任何已知路径可覆盖。**
 
 ---
 
-## ECC and memory capacity fuses
+## ECC 与显存容量熔丝
 
-| Register | Address | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | A10 | A5000 | A6000 | RTX 3080 | RTX 3080 Ti | RTX 3090 | RTX 3090 Ti | Drive |
+| 寄存器 | 地址 | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | A10 | A5000 | A6000 | RTX 3080 | RTX 3080 Ti | RTX 3090 | RTX 3090 Ti | Drive |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `FUSE_ECC_EN` | `0x00820228` | `0x00000000` | `0x00000000` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0` | `0` | `0` | `0` | `0x00000001` |
 | `FUSE_HALF_FBPA_EN` | `0x0082049C` | `0x00000000` | `0x00000000` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` |
@@ -400,112 +276,78 @@ Disabled, not damaged, and not unique to the mining SKU: the Drive A100 32 GB re
 | `FUSE_FBPA_MEM_WR_SEC` | `0x00820618` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` | `0x00000001` |
 | `FUSE_SKU_ID` | `0x00821060` | `0x00000068` | `0x00000068` | `0x0000005b` | `0x00000054` | `0x0000007b` | `0x00000039` | `0x00000020` | `0x00000038` | `0x0000000f` | `0x0000000b` | `0x0000000d` | `0x0000003c` | `0x0000008e` |
 
-- **`FUSE_ECC_EN` = `0x00000000`.** ECC is fused off. The split is clean: `1` on every
-  professional and datacentre part, `0` on every consumer part **and** on the CMP. No override
-  register exists, there is no ECC entry in the feature-override block that anyone has found a
-  use for, there is no ECC telemetry, and the branch named `ecc` in the unlocker repository
-  contains no ECC code at all (its single commit is "Fixed dual geometry support"). See
-  [ECC](../frontier/ecc.md).
-- **`FUSE_HALF_FBPA_EN` = `0`, and so do `CTRL_HALF_FBPA` and `STATUS_HALF_FBPA`.** There is no
-  half-capacity fusing on this card. This kills the theory that the 512 MiB reported per FBPA is
-  a half-FBPA effect, and with it the proposal that clearing a half-capacity fuse would yield
-  96 GB or 128 GB.
-- **`FUSE_MEM_LOCKED` = `0x00000001` on every card in the cohort, including cards whose memory
-  geometry is demonstrably rewritten at runtime.** The shipping unlock changes `FBPA_CFG1` and the
-  MMU local-memory range at runtime with this fuse set. Whatever `OPT_MEMORY_LOCKED_ENABLED`
-  gates, it is not the `CFG1` write path once the FBPA privilege level mask is open.
-- **`FUSE_FBPA_MEM_WR_SEC` = `1` everywhere**, which is what makes the FBPA memory-config
-  registers privilege-locked and is why the unlock has to open `0x009a0148` before writing
-  `0x009a0204`.
-- **`FUSE_SKU_ID` = `0x68`** on both units and distinct from every other Ampere part recorded. A
-  separately probed PG199 board reads `0x69`. `FUSE_INTERNAL_SKU` is zero everywhere, so none of
-  the probed parts is flagged internal.
-- `FUSE_SPARE_FS` and `STATUS_SPARE_FS` split cleanly GA100 (`0`) versus GA10x (`1`), which reads
-  as an architecture-era field rather than a product restriction.
+- **`FUSE_ECC_EN` = `0x00000000`。** ECC 熔断关闭。划分是干净的：每个专业级和数据中心部件上 `1`，每个消费级部件上 `0` **以及** CMP 上 `0`。不存在覆盖寄存器，特性覆盖块里没人找到任何用处的 ECC 条目，没有 ECC 遥测，而解锁器仓库里名为 `ecc` 的分支根本不含任何 ECC 代码（它唯一的提交是 "Fixed dual geometry support"）。参见[ECC](../frontier/ecc.md)。
+- **`FUSE_HALF_FBPA_EN` = `0`，`CTRL_HALF_FBPA` 和 `STATUS_HALF_FBPA` 也是。** 这张卡上没有半容量熔断。这杀死了"每 FBPA 报告的 512 MiB 是一个半-FBPA 效应"的理论，连带"清除一个半容量熔丝会得到 96 GB 或 128 GB"的提案。
+- **`FUSE_MEM_LOCKED` = `0x00000001` 在队列里的每一张卡上，包括显存几何布局被演示为在运行时重写的卡。** 出货解锁在置位这个熔丝的情况下在运行时改变 `FBPA_CFG1` 和 MMU 本地显存范围。`OPT_MEMORY_LOCKED_ENABLED` 门控什么，都不会是 FBPA 权限级别掩码打开之后的 `CFG1` 写入路径。
+- **`FUSE_FBPA_MEM_WR_SEC` = 到处都是 `1`**，这正是让 FBPA 显存配置寄存器被特权锁定的原因，也是解锁必须在写 `0x009a0204` 之前打开 `0x009a0148` 的原因。
+- **`FUSE_SKU_ID` = 两块单元上 `0x68`**，与记录的每个其它 Ampere 部件都不同。一块单独探测的 PG199 板读 `0x69`。`FUSE_INTERNAL_SKU` 到处是零，所以被探测的部件没有一个是内部标记的。
+- `FUSE_SPARE_FS` 和 `STATUS_SPARE_FS` 干净地划分 GA100（`0`）对 GA10x（`1`），读起来像一个架构时代字段而非产品限制。
 
 ---
 
-## Floorsweep fuses
+## 地板清扫熔丝
 
-Raw OTP disable masks. These are the per-die binning fuses, and they are the 13 registers that
-differ between the two 170HX units.
+原始 OTP 禁用掩码。这些是按晶片分级熔丝，也是两块 170HX 单元之间不同的 13 个寄存器。
 
-| Register | Address | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | A10 | A5000 | A6000 | RTX 3080 | RTX 3080 Ti | RTX 3090 | RTX 3090 Ti | Drive |
+| 寄存器 | 地址 | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | A10 | A5000 | A6000 | RTX 3080 | RTX 3080 Ti | RTX 3090 | RTX 3090 Ti | Drive |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `FUSE_GPC_DISABLE` | `0x00820350` | `0x000000d0` | `0x00000023` | `0x00000008` | `0x00000008` | `0x00000080` | `0x00000020` | `0x00000008` | `0x00000000` | `0x00000001` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000044` |
 | `FUSE_FBP_DISABLE` | `0x00820364` | `0x00000180` | `0x00000009` | `0x00000012` | `0x00000840` | `0x00000840` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000008` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000852` |
 | `FUSE_FBPA_DISABLE` | `0x00820368` | `0x0003c000` | `0x000000c3` | `0x0000030c` | `0x00c03000` | `0x00c03000` | `0xbadf5040` | `0xbadf5040` | `0xbadf5040` | `0xbadf5040` | `0xbadf5040` | `0xbadf5040` | `0xbadf5040` | `0x00c0330c` |
 | `FUSE_FBIO_DISABLE` | `0x0082036C` | `0x0003c000` | `0x000000c3` | `0x0000030c` | `0x00c03000` | `0x00c03000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000008` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00c0330c` |
 
-Decoded for the two 170HX units:
+为两块 170HX 单元解码：
 
-| Unit | GPC mask | GPCs disabled | FBP mask | FBPs disabled | FBPA mask | FBPAs disabled | Active FBPAs |
+| 单元 | GPC 掩码 | 禁用的 GPC | FBP 掩码 | 禁用的 FBP | FBPA 掩码 | 禁用的 FBPA | 活动 FBPA |
 |---|---|---|---|---|---|---|---|
-| 170HX A | `0x000000d0` | 4, 6, 7 | `0x00000180` | 7, 8 | `0x0003c000` | 14, 15, 16, 17 | 20 of 24 |
-| 170HX B | `0x00000023` | 0, 1, 5 | `0x00000009` | 0, 3 | `0x000000c3` | 0, 1, 6, 7 | 20 of 24 |
+| 170HX A | `0x000000d0` | 4、6、7 | `0x00000180` | 7、8 | `0x0003c000` | 14、15、16、17 | 24 中的 20 |
+| 170HX B | `0x00000023` | 0、1、5 | `0x00000009` | 0、3 | `0x000000c3` | 0、1、6、7 | 24 中的 20 |
 
-Both units disable **exactly three of eight GPCs and two of twelve FBPs**, but different ones.
-The FBP mask and the FBPA mask agree with each other on both units, at two FBPAs per FBP, which is
-a useful internal consistency check (FBP 7 owns FBPAs 14 and 15; FBP 8 owns 16 and 17; FBP 0 owns
-0 and 1; FBP 3 owns 6 and 7).
+两块单元都恰好禁用**八个 GPC 中的三个和十二个 FBP 中的两个**，但是不同的那些。两块单元上的 FBP 掩码和 FBPA 掩码彼此一致，每 FBP 两个 FBPA，这是一个有用的内部一致性检查（FBP 7 拥有 FBPA 14 和 15；FBP 8 拥有 16 和 17；FBP 0 拥有 0 和 1；FBP 3 拥有 6 和 7）。
 
-Five GPCs at 8 TPCs per GPC and 2 SMs per TPC would allow up to 80 SMs. A live 8 GB card reports
-**70** SMs to CUDA, so a further five TPCs must be swept at TPC granularity. `probe.sh` does not
-read any TPC disable register, so the TPC mask on this card is **unknown**. The same arithmetic
-sanity-checks against the A100 SXM4 40 GB in the cohort: one GPC disabled leaves 112 SMs
-available at GPC granularity against the A100's shipped 108, so two TPCs are swept there too.
+每 GPC 8 个 TPC、每 TPC 2 个 SM 的五个 GPC 最多允许 80 个 SM。一张活的 8 GB 卡向 CUDA 报告 **70** 个 SM，所以必须有另外五个 TPC 在 TPC 粒度被清扫。`probe.sh` 不读任何 TPC 禁用寄存器，所以这张卡上的 TPC 掩码**未知**。同样的算术对照队列里的 A100 SXM4 40 GB 自洽：在 GPC 粒度禁用一个 GPC 留下 112 个 SM 可用，对 A100 发货的 108，所以那里也清扫了两个 TPC。
 
-Comparison capacities, all confirmed by the arithmetic:
+对比容量，全部由算术确认：
 
-| Part | Active FBPAs | Per-FBPA `CSTATUS` | Capacity |
+| 部件 | 活动 FBPA | 每-FBPA `CSTATUS` | 容量 |
 |---|---|---|---|
-| CMP 170HX 10 GB | 20 | `0x200` (512 MiB) | 10240 MiB |
+| CMP 170HX 10 GB | 20 | `0x200`（512 MiB） | 10240 MiB |
 | A100 SXM4 40 GB | 20 | `0x7ff` | 40 GB |
 | A100 PCIe 40 GB | 20 | `0x7ff` | 40 GB |
 | A100 PCIe 80 GB | 20 | `0xfff` | 80 GB |
-| Drive A100 32 GB | 16 (mask `0x00c0330c` disables 2, 3, 8, 9, 12, 13, 22, 23) | `0x7ff` | 32 GB |
-| RTX 3080 | 5 (one partition swept, `fbpa03`) | `0x800` | 10 GB |
+| Drive A100 32 GB | 16（掩码 `0x00c0330c` 禁用 2、3、8、9、12、13、22、23） | `0x7ff` | 32 GB |
+| RTX 3080 | 5（一个分区被清扫，`fbpa03`） | `0x800` | 10 GB |
 
-The 170HX therefore has the **same number of active memory partitions as an A100 40 GB** and each
-one reports one quarter of the capacity. That is the whole memory story in one line, and it is
-what the unlock reverses. See [Memory subsystem](memory-subsystem.md) and
-[Memory geometry](../unlock/memory-geometry.md).
+因此 170HX 有**与 A100 40 GB 相同数量的活动显存分区**，而每一个都报告四分之一的容量。那整句就是整个显存故事，也正是解锁所逆转的。参见[显存子系统](memory-subsystem.md) 和[显存几何布局](../unlock/memory-geometry.md)。
 
 > [!NOTE]
-> **The GA10x `0xbadf5040` on `FUSE_FBPA_DISABLE`**
+> **GA10x 在 `FUSE_FBPA_DISABLE` 上的 `0xbadf5040`**
 >
-> Every GA10x part returns the privilege sentinel for `0x00820368` while returning a real value
-> for `0x0082036C` (FBIO). The floorsweep on those parts has to be read from the FBIO mask
-> instead. This is an architecture difference in PRI gating, not a measurement failure.
+> 每个 GA10x 部件对 `0x00820368` 返回权限哨兵，同时对 `0x0082036C`（FBIO）返回真值。那些部件上的地板清扫必须改从 FBIO 掩码读。这是 PRI 门控的架构差异，不是测量失败。
 
 ---
 
-## Effective CTRL
+## 有效 CTRL
 
-Every one of these reads `0x00000000` on both 170HX units, and on every other card except where
-noted.
+这些在块 170HX 单元上、以及除注明外的每一张其它卡上都读 `0x00000000`。
 
-| Register | Address | 170HX | Exceptions in the cohort |
+| 寄存器 | 地址 | 170HX | 队列里的例外 |
 |---|---|---|---|
-| `CTRL_HALF_FBPA` | `0x00820800` | `0x00000000` | none |
-| `CTRL_FB_CONFIG` | `0x00820834` | `0x00000000` | none |
-| `CTRL_OPT_FBIO` | `0x00820814` | `0x00000000` | none |
-| `CTRL_OPT_FBPA` | `0x00820818` | `0x00000000` | `0xbadf5040` on all seven GA10x parts |
-| `CTRL_OPT_GPC` | `0x0082081C` | `0x00000000` | none |
-| `CTRL_OPT_PERLINK` | `0x00820820` | `0x00000000` | none |
-| `CTRL_OPT_PCIE_LANE` | `0x0082082C` | `0x00000000` | none |
-| `CTRL_OPT_FBP` | `0x00820938` | `0x00000000` | none |
-| `CTRL_OPT_NVLINK` | `0x008209B8` | `0x00000000` | none |
+| `CTRL_HALF_FBPA` | `0x00820800` | `0x00000000` | 无 |
+| `CTRL_FB_CONFIG` | `0x00820834` | `0x00000000` | 无 |
+| `CTRL_OPT_FBIO` | `0x00820814` | `0x00000000` | 无 |
+| `CTRL_OPT_FBPA` | `0x00820818` | `0x00000000` | 全部七个 GA10x 部件上 `0xbadf5040` |
+| `CTRL_OPT_GPC` | `0x0082081C` | `0x00000000` | 无 |
+| `CTRL_OPT_PERLINK` | `0x00820820` | `0x00000000` | 无 |
+| `CTRL_OPT_PCIE_LANE` | `0x0082082C` | `0x00000000` | 无 |
+| `CTRL_OPT_FBP` | `0x00820938` | `0x00000000` | 无 |
+| `CTRL_OPT_NVLINK` | `0x008209B8` | `0x00000000` | 无 |
 
-An all-zero `CTRL_OPT` block on a card with heavy floorsweeping is the proof that the disables
-arrive through the fuse and STATUS path, not through a control override somebody set. It is also
-why writing these registers is the most-cited unexplored lever in the project: they look
-writable, they are documented as the effective control, and they are empty. The reason nobody
-expects it to work is `FUSE_EN_SW_OVERRIDE = 0`.
+一张带重度地板清扫的卡上全零的 `CTRL_OPT` 块，是禁用经由熔丝和 STATUS 路径而非某个被设置的覆盖到来的证明。这也是为什么写这些寄存器是项目里被引用最多的未探索杠杆：它们看起来可写、被记录为有效控制、而且是空的。没人预期它奏效的原因是 `FUSE_EN_SW_OVERRIDE = 0`。
 
-## Effective STATUS
+## 有效 STATUS
 
-| Register | Address | 170HX A | 170HX B | Equals which raw fuse? |
+| 寄存器 | 地址 | 170HX A | 170HX B | 等于哪个原始熔丝？ |
 |---|---|---|---|---|
 | `STATUS_HALF_FBPA` | `0x00820C00` | `0x00000000` | `0x00000000` | `FUSE_HALF_FBPA_EN` |
 | `STATUS_FBPA` | `0x00820C18` | `0x0003c000` | `0x000000c3` | `FUSE_FBPA_DISABLE` |
@@ -517,20 +359,18 @@ expects it to work is `FUSE_EN_SW_OVERRIDE = 0`.
 | `STATUS_OPT_PCIE_LANE` | `0x00820C2C` | `0x00000000` | `0x00000000` | `FUSE_PCIE_LANE_DIS` |
 | `STATUS_OPT_NVLINK` | `0x00820DB8` | `0x00000007` | `0x00000007` | `FUSE_NVLINK_DIS` |
 
-Perfect agreement in all nine pairs, on both units.
+全部九对在两块单元上都完全一致。
 
 > [!NOTE]
-> **Address correction**
+> **地址更正**
 >
-> `STATUS_OPT_FBPA` is at `0x00820C18`. `0x00820C14` is `STATUS_OPT_FBIO`. On several probed
-> dies both happen to hold the same value, which is exactly why the mislabel survived for
-> months. The probe script now carries the correction inline.
+> `STATUS_OPT_FBPA` 在 `0x00820C18`。`0x00820C14` 是 `STATUS_OPT_FBIO`。在几块被探测的晶片上两者碰巧持有相同的值，这正是错误标签存活了几个月的确切原因。探测脚本现在内联携带这一更正。
 
 ---
 
-## Chip ID and PTOP
+## 芯片 ID 与 PTOP
 
-| Register | Address | 170HX A | 170HX B | A100 (all 3) | A16 | GA10x consumer/pro | Drive |
+| 寄存器 | 地址 | 170HX A | 170HX B | A100（全部 3） | A16 | GA10x 消费级/专业级 | Drive |
 |---|---|---|---|---|---|---|---|
 | `PMC_BOOT_0` | `0x00000000` | `0x170000a1` | `0x170000a1` | `0x170000a1` | `0xb77000a1` | `0xb72000a1` | `0x170000a1` |
 | `PMC_BOOT_42` | `0x0000A800` | `0xbadf1100` | `0xbadf1100` | `0xbadf1100` | `0x00000000` | `0xbadf1100` | `0xbadf1100` |
@@ -542,35 +382,22 @@ Perfect agreement in all nine pairs, on both units.
 | `PTOP_SCAL_NUM_FBPAS` | `0x0002243C` | `0x00000018` | `0x00000018` | `0x00000018` | `0x00000000` | `0x00000006` | `0x00000018` |
 | `PTOP_SCAL_NUM_LTCS` | `0x00022454` | `0x00000018` | `0x00000018` | `0x00000018` | `0x00000000` | `0x0000000c` | `0x00000018` |
 | `PTOP_SCAL_NUM_NVLINK` | `0x0002246C` | `0x0000000c` | `0x0000000c` | `0x0000000c` | `0x00000000` | `0x00000004` | `0x0000000c` |
-| `PTOP_FS_STATUS` | `0x00022470` | `0x0000003f` | `0x0000003f` | `0x0000003f` | `0x00000000` | varies (`0x63`, `0xf7`, `0x01`, `0x00`) | `0x0000003f` |
+| `PTOP_FS_STATUS` | `0x00022470` | `0x0000003f` | `0x0000003f` | `0x0000003f` | `0x00000000` | 变化（`0x63`、`0xf7`、`0x01`、`0x00`） | `0x0000003f` |
 
-`PMC_BOOT_0 = 0x170000a1` is the single strongest piece of evidence that this is a complete
-GA100: `0x170` is the GA100 chip-implementation ID, `a1` is the revision that `lspci` reports,
-and the value is byte-identical to all three A100 SKUs. GA10x parts read `0xb7`, a GA104
-RTX 3070 control reads `0xb74000a1`, and a CMP 90HX reads `0xb72000a1`, confirming the 90HX is a
-completely different die.
+`PMC_BOOT_0 = 0x170000a1` 是这是一颗完整 GA100 的最强单条证据：`0x170` 是 GA100 芯片实现 ID，`a1` 是 `lspci` 报告的修订，而该值与全部三个 A100 SKU 逐字节相同。GA10x 部件读 `0xb7`，一张 GA104 RTX 3070 对照读 `0xb74000a1`，而 CMP 90HX 读 `0xb72000a1`，确认 90HX 是一颗完全不同的晶片。
 
-Every PTOP scalability register reports the **full** GA100 configuration: 8 GPCs, 8 TPCs per GPC,
-12 FBPs, 24 FBPAs, 24 LTCs, 12 NVLinks. These describe what the silicon was built with and are
-unaffected by floorsweep or disable fuses, which is precisely why they are the reference against
-which the fuse damage is measured.
+每一个 PTOP 规模寄存器都报告**完整** GA100 配置：8 个 GPC、每 GPC 8 个 TPC、12 个 FBP、24 个 FBPA、24 个 LTC、12 条 NVLink。这些描述硅片被造来带什么，且不受地板清扫或禁用熔丝影响，这正是它们是测量熔丝损坏的参照系的原因。
 
 > [!NOTE]
-> **Open problem: `NV_PTOP_FS4` on the 8 GB card**
+> **未解问题：8 GB 卡上的 `NV_PTOP_FS4`**
 >
-> Bit 0 of `0x0002241C` is `GEN2_PCIE` and bit 7 is `GEN2_PCIE_SPEED`. Both 10 GB units in this
-> survey read `0x00000081` (both bits set), matching every A100 and every GA10x part. A
-> separate probe reports `0x00000000` on an 8 GB (`0x20C2`) card, and the current reconciliation
-> treats it as a per-SKU split: `0x00000000` on 8 GB, `0x00000081` on 10 GB. The `0x00` reading
-> is the interesting half and it rests on one probe. What would settle it: a fresh read of
-> `0x0002241C` on a known `10de:20c2` and a known `10de:2082` card, each reported alongside
-> `lspci -nn` for the same bus address.
+> `0x0002241C` 的位 0 是 `GEN2_PCIE`，位 7 是 `GEN2_PCIE_SPEED`。这份调查里的两块 10 GB 单元都读 `0x00000081`（两位都置位），匹配每个 A100 和每个 GA10x 部件。一次独立探测报告一张 8 GB（`0x20C2`）卡上 `0x00000000`，而当前的和解把它当作一个按 SKU 的划分：8 GB 上 `0x00000000`、10 GB 上 `0x00000081`。`0x00` 读数是更有意思的那一半，它压在一次探测上。什么能定论它：对一张已知的 `10de:20c2` 和一张已知的 `10de:2082` 卡各新鲜读一次 `0x0002241C`，每个都配同一总线地址的 `lspci -nn` 一起报告。
 
 ---
 
 ## SKED
 
-| Register | Address | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G / 80G | GA10x | Drive |
+| 寄存器 | 地址 | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G / 80G | GA10x | Drive |
 |---|---|---|---|---|---|---|---|
 | `SKED_UNK54` | `0x00407054` | `0x60000600` | `0x60000600` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` |
 | `SKED_TRAP` | `0x00407020` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` |
@@ -578,81 +405,53 @@ which the fuse damage is measured.
 | `SKED_HW_BLK` | `0x00407000` | `0x00000000` | `0x00000000` | `0x00004042` | `0x00004042` | `0x00004042` | `0x00004042` |
 | `SKED_PM_UNK10` | `0x00407010` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` |
 
-Two 170HX-only readings here, both taken before any graphics-engine init:
+这里有两个 170HX 专属读数，都在任何图形引擎初始化之前取得：
 
-- **`SKED_UNK54` = `0x60000600`**, the only non-zero reading in the entire 13-card comparison
-  set. It is cleared by the driver at graphics-engine init, so this is pre-init fuse-loaded state
-  only. A separate probe on an **unlocked 8 GB** card records `0x600000c0` at the same address,
-  which is a different value under different conditions, not a contradiction of this one. It is
-  the most-referenced undocumented SKED register in the GSP firmware, with 13 references, and
-  nobody has diffed those references against the observed values.
-- **`SKED_HW_BLK` = `0x00000000`** on both 170HX units where all 12 comparison parts read
-  `0x00004042`. A later probe on an unlocked card reads `0x00004042`, so this too appears to be a
-  pre-init state rather than a permanent difference.
+- **`SKED_UNK54` = `0x60000600`**，整个 13 卡对比集合里唯一的非零读数。它被驱动在图形引擎初始化时清除，所以这只是初始化前的熔丝加载状态。一次独立的、在**解锁的 8 GB** 卡上的探测在相同地址记录 `0x600000c0`，那是在不同条件下的不同值，不是对这个的矛盾。它是 GSP 固件里被引用最多的未文档化 SKED 寄存器，有 13 处引用，而没人把这些引用对观察值做过 diff。
+- **`SKED_HW_BLK` = 两块 170HX 单元上 `0x00000000`**，而全部 12 个对比部件读 `0x00004042`。一次更晚的解锁卡探测读 `0x00004042`，所以这也像是一个初始化前状态而非永久差异。
 
-Bit 31 of `SKED_TRAP_EN` splits cleanly: clear on all GA100, set on all GA10x. Note that on a
-stock 170HX with **no driver loaded**, all five SKED registers return `0xbadf1201`; the values
-above were read as root over an mmap of BAR0 after `probe.sh` had brought the driver up, but
-before any graphics-engine init.
+`SKED_TRAP_EN` 的位 31 干净划分：全部 GA100 上干净、全部 GA10x 上置位。注意在**没加载驱动**的出厂 170HX 上，全部五个 SKED 寄存器返回 `0xbadf1201`；上面的值是 `probe.sh` 带起驱动后、但在任何图形引擎初始化前，作为 root 通过 BAR0 的 mmap 读的。
 
 ---
 
-## FBHUB and MMU
+## FBHUB 和 MMU
 
-| Register | Address | 170HX A | 170HX B | A100 (all 3) | GA10x | Drive |
+| 寄存器 | 地址 | 170HX A | 170HX B | A100（全部 3） | GA10x | Drive |
 |---|---|---|---|---|---|---|
 | `FBHUB_NUM_ACTIVE_LTCS` | `0x00100800` | `0x00000014` | `0x00000014` | `0x00000014` | `0x0000000a`–`0x0000000c` | `0x00000010` |
 | `FBHUB_MEM_PART_BOT` | `0x00100B88` | `0x00000000` | `0x00000000` | `0x00000204` / `0x00000204` / `0x00000404` | `0x00000000` | `0x00000202` |
 | `FBHUB_MEM_PART_MID` | `0x00100B8C` | `0x00000000` | `0x00000000` | `0x0001f83d` / `0x0001f986` / `0x0003f664` | `0x00000000` | `0x0001f8bf` |
 | `FBHUB_MEM_PART_BCFG0` | `0x00100B90` | `0x00000603` | `0x00000603` | `0x00000603` | `0x00000603` | `0x00000603` |
 | `FBHUB_HSHUB_SYS_CFG` | `0x00100B98` | `0x00000003` | `0x00000003` | `0x00000003` | `0x00000001` | `0x00000003` |
-| `MMU_NUM_ACTIVE_LTCS` | `0x00100EC0` | `0x05001414` | `0x05001414` | `0x05001414` | `0x4420130c` etc. | `0x04001410` |
+| `MMU_NUM_ACTIVE_LTCS` | `0x00100EC0` | `0x05001414` | `0x05001414` | `0x05001414` | `0x4420130c` 等 | `0x04001410` |
 
-- `FBHUB_NUM_ACTIVE_LTCS = 0x14` (20) on the 170HX and on every A100, `0x10` (16) on the Drive
-  A100 with its 16 active FBPAs. LTC count tracks FBPA count one for one.
-- `MMU_NUM_ACTIVE_LTCS` is read-only; its `[4:0]` field carries the LTC count and matches
-  (`0x14` = 20 on the 170HX, `0x10` = 16 on the Drive).
-- `FBHUB_HSHUB_SYS_CFG` (`SYSMEM_HSHUB_CONNECTION_CFG`, PCIe routing, init `0x3` = BOTH) is `3`
-  on every GA100 and `1` on every GA10x. Architecture split, not a restriction.
-- The two MIG partition registers read **zero on both 170HX units** while every A100 and the
-  Drive carry values. Nothing in the corpus tests MIG on this card, so treat this as an
-  observation about probe-time state rather than proof that MIG is unavailable.
+- 170HX 和每个 A100 上 `FBHUB_NUM_ACTIVE_LTCS = 0x14`（20），带 16 个活动 FBPA 的 Drive A100 上 `0x10`（16）。LTC 数与 FBPA 数一一对应。
+- `MMU_NUM_ACTIVE_LTCS` 只读；其 `[4:0]` 字段携带 LTC 数并匹配（170HX 上 `0x14` = 20、Drive 上 `0x10` = 16）。
+- `FBHUB_HSHUB_SYS_CFG`（`SYSMEM_HSHUB_CONNECTION_CFG`，PCIe 路由，init `0x3` = BOTH）在每个 GA100 上是 `3`、每个 GA10x 上是 `1`。架构划分，不是限制。
+- 两个 MIG 分区寄存器在**两块 170HX 单元上都读零**，而每个 A100 和 Drive 携带值。语料库里没有任何东西在这张卡上测试 MIG，所以把这当作对探测时状态的观察、而非 MIG 不可用的证据。
 
 ---
 
-## FBPA configuration
+## FBPA 配置
 
-| Register | Address | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | GA10x | Drive |
+| 寄存器 | 地址 | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | GA10x | Drive |
 |---|---|---|---|---|---|---|---|---|
 | `FBPA_NUM_ACTIVE` | `0x009A0164` | `0x0000000a` | `0x0000000a` | `0x0000000a` | `0x0000000a` | `0x0000000a` | `0x00000005`–`0x00000006` | `0x00000008` |
 | `FBPA_CFG0_BROADCAST` | `0x009A0200` | `0x07981800` | `0x07981800` | `0x07981800` | `0x07981800` | `0x07981800` | `0x069f9803` / `0x06df9803` | `0x06981800` |
-| `FBPA_CFG1_BROADCAST` | `0x009A0204` | `0x02449000` | `0x02449000` | `0x02669000` | `0x02669000` | `0x02779000` | `0x4266b000` etc. | `0x22779000` |
+| `FBPA_CFG1_BROADCAST` | `0x009A0204` | `0x02449000` | `0x02449000` | `0x02669000` | `0x02669000` | `0x02779000` | `0x4266b000` 等 | `0x22779000` |
 | `FBPA_HBM_CFG0` | `0x009A038C` | `0x000000a7` | `0x000000a7` | `0x000000a7` | `0x000000a7` | `0x000000a7` | `0x000003fe` | `0x000000a6` |
 
-This one table contains the entire memory unlock in miniature:
+这一张表在缩影里包含整个显存解锁：
 
-- **`FBPA_CFG1_BROADCAST` `0x009a0204` reads `0x02449000` on a stock 170HX of either SKU.** The
-  A100 40 GB reads `0x02669000` and the A100 80 GB reads `0x02779000`. Those are exactly the two
-  values the unlocker writes: `0x02669000` for the 10 GB card (giving 40 GB) and `0x02779000` for
-  the 8 GB card (giving 64 GB). **The unlock literally programs the 170HX with an A100's
-  addressing depth.** The `[23:16]` tier byte is the field that moves: `0x44` stock,
-  `0x66` = 2048 MiB per FBPA, `0x77` = 4096 MiB per FBPA. Note the Drive A100 reads `0x22779000`,
-  the 80 GB tier byte with a different high nibble, on a 32 GB card, so the tier byte is
-  addressing depth and not capacity.
-- **`FBPA_CFG0_BROADCAST` = `0x07981800`** on the 170HX and on all three A100s, `0x06981800` on
-  the Drive. A widely circulated annotation claiming `CMP170HX = 0x24490000, A100 = 0x26690000`
-  for this register is **wrong**; it is contradicted by live reads on a 170HX (`0x07981800`) and
-  on an RTX 3070 (`0x069f9803`). Use the measurement, discard the annotation.
-- **`FBPA_HBM_CFG0`**: fields are `dual_rank[0]`, `dual_rank_bank[1]`, `SID_VAL[11]`. The 170HX
-  and all three A100s read `0xa7` (bit 0 set, dual rank); the Drive A100 32 GB reads `0xa6`
-  (bit 0 clear, single rank). GA10x reads `0x3fe`, a different memory technology with different
-  field meanings.
+- **`FBPA_CFG1_BROADCAST` `0x009a0204` 在任何 SKU 的出厂 170HX 上都读 `0x02449000`。** A100 40 GB 读 `0x02669000`，A100 80 GB 读 `0x02779000`。那些恰好是解锁器写的两个值：10 GB 卡写 `0x02669000`（得到 40 GB）、8 GB 卡写 `0x02779000`（得到 64 GB）。**解锁字面上用 A100 的寻址深度给 170HX 编程。** `[23:16]` 处的层字节是移动的字段：出厂 `0x44`、`0x66` = 每 FBPA 2048 MiB、`0x77` = 每 FBPA 4096 MiB。注意 Drive A100 在一张 32 GB 卡上读 `0x22779000`、即带不同高半字节的 80 GB 层字节，所以层字节是寻址深度而非容量。
+- **`FBPA_CFG0_BROADCAST` = 170HX 和全部三个 A100 上 `0x07981800`**、Drive 上 `0x06981800`。一个广泛流传的、声称该寄存器 `CMP170HX = 0x24490000, A100 = 0x26690000` 的注记是**错的**；它被 170HX（`0x07981800`）和 RTX 3070（`0x069f9803`）上的活读数反驳。用测量，丢弃注记。
+- **`FBPA_HBM_CFG0`**：字段是 `dual_rank[0]`、`dual_rank_bank[1]`、`SID_VAL[11]`。170HX 和全部三个 A100 读 `0xa7`（位 0 置位，双 rank）；Drive A100 32 GB 读 `0xa6`（位 0 干净，单 rank）。GA10x 读 `0x3fe`，一种带不同字段含义的不同的显存技术。
 
 ---
 
-## HBM mode registers, ECC control and IEEE 1500
+## HBM 模式寄存器、ECC 控制和 IEEE 1500
 
-| Register | Address | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | GA10x | Drive |
+| 寄存器 | 地址 | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | GA10x | Drive |
 |---|---|---|---|---|---|---|---|---|
 | `FBPA_MRS_0` | `0x009A0300` | `0x00000003` | `0x00000003` | `0x00000003` | `0x00000003` | `0x00000003` | `0x00000025` / `0x00000027` | `0x00000003` |
 | `FBPA_MRS_1` | `0x009A0304` | `0x00100000` | `0x00100000` | `0x00100000` | `0x00100000` | `0x00100000` | `0x00100000` | `0x00100000` |
@@ -670,47 +469,29 @@ This one table contains the entire memory unlock in miniature:
 | `I1500_SHADOW_WDR` | `0x009A3CC4` | `0xbcf3ff83` | `0x8c63ff83` | `0x4f00f000` | `0x3800f000` | `0x7700f000` | `0xbadf5040` | `0x7800f000` |
 | `I1500_STATUS` | `0x009A3CC8` | `0x0000000e` | `0x0000000e` | `0x00000000` | `0x00000000` | `0x00000000` | `0xbadf5040` | `0x00000000` |
 
-Reading these:
+读这些：
 
-- **The 170HX's HBM timing set is identical to the A100 40 GB's.** `FBPA_MRS_2 = 0x002000cf` and
-  `FBPA_MRS_WL_RL = 0x003000ea` match both A100 40 GB parts exactly; the A100 80 GB and the Drive
-  use a different pair. This is direct evidence that the stacks are being driven with A100-class
-  parameters, not a downgraded profile.
-- **`FBPA_TRAINING_STATUS = 0x00000000` (`FINISHED`) on every card including both 170HX units.**
-  HBM training completes cleanly. Whatever is limiting capacity, it is not a training failure.
-- **`FBPA_ECC_CTRL = 0x00000000` on the 170HX** where every A100 and the Drive read `0x00000041`
-  (`MASTER_EN[0]` plus `SIDEBAND[6]`). `MASTER_EN` is annotated read-only. This is the concrete,
-  register-level face of the ECC fuse: the master enable is not merely off, it is not writable.
-- **The IEEE 1500 block is in a different state on the 170HX than on any A100.** `MODE` reads
-  `0x52` against `0x08`, `INSTR` reads `0x00000f0e` against `0x0000000f`, `SHADOW_WIR` reads
-  `0x0000f0ef` against `0x000000f0`, and `STATUS` reads `0x0e` against `0x00`. The two are
-  therefore not in comparable bridge states at probe time, so the 170HX `DATA` and `SHADOW_WDR`
-  values should be treated only as a **per-die HBM identifier** (they are two of the 13 registers
-  that differ between the two units) and not compared numerically against the A100 column. GA10x
-  parts have no readable IEEE 1500 block at these offsets.
-- `FBPA_VEND_ID_C0` and `_C1` read zero on all 14 cards, so the HBM vendor identity is not
-  available through this path on any of them.
+- **170HX 的 HBM 时序集与 A100 40 GB 的相同。** `FBPA_MRS_2 = 0x002000cf` 和 `FBPA_MRS_WL_RL = 0x003000ea` 恰好匹配两个 A100 40 GB 部件；A100 80 GB 和 Drive 用不同的一对。这是堆叠正被用 A100 级参数驱动的直接证据，而非降级档位。
+- **`FBPA_TRAINING_STATUS = 0x00000000`（`FINISHED`）在每一张卡上，包括两块 170HX 单元。** HBM 训练干净完成。无论什么在限制容量，都不是训练失败。
+- **170HX 上 `FBPA_ECC_CTRL = 0x00000000`**，而每个 A100 和 Drive 读 `0x00000041`（`MASTER_EN[0]` 加 `SIDEBAND[6]`）。`MASTER_EN` 被标注为只读。这是 ECC 熔丝具体、寄存器级的面：主使能不只是关闭，它不可写。
+- **IEEE 1500 块在 170HX 上处于与任何 A100 都不同的状态。** `MODE` 读 `0x52` 对 `0x08`、`INSTR` 读 `0x00000f0e` 对 `0x0000000f`、`SHADOW_WIR` 读 `0x0000f0ef` 对 `0x000000f0`、`STATUS` 读 `0x0e` 对 `0x00`。两者因此在探测时不在可比的桥状态下，所以 170HX 的 `DATA` 和 `SHADOW_WDR` 值只应被当作**按晶片 HBM 标识符**（它们是两单元之间不同的 13 个寄存器之二），而非与 A100 列数值对比。GA10x 部件在这些偏移量上没有可读的 IEEE 1500 块。
+- `FBPA_VEND_ID_C0` 和 `_C1` 在全部 14 张卡上读零，所以 HBM 厂商身份在它们任何一个上都不可通过这条路径获得。
 
 ---
 
-## GSP security
+## GSP 安全
 
-| Register | Address | 170HX A | 170HX B | Everything else with data |
+| 寄存器 | 地址 | 170HX A | 170HX B | 其它所有有数据的 |
 |---|---|---|---|---|
-| `FUSE_OPT_SECURE_GSP` | `0x0082074C` | `0x00000001` | `0x00000001` | `0x00000001` on all 12 |
+| `FUSE_OPT_SECURE_GSP` | `0x0082074C` | `0x00000001` | `0x00000001` | 全部 12 张上 `0x00000001` |
 
-The GSP debug-disable fuse is blown on every Ampere card ever probed, including cards with no
-other restrictions. It is not a 170HX-specific lock and it does not distinguish this card from an
-A100. What it does mean is that no debug path into the GSP exists on any of them, which is why
-the unlock had to go through a memory-safety bug in the signature-handling path rather than
-through a debug interface. See [Falcon and Booter](../unlock/falcon-and-booter.md).
+GSP 调试禁用熔丝在每一张被探测的 Ampere 卡上都烧断，包括没有其它限制的卡。它不是 170HX 专属锁，也不区分这张卡与 A100。它实际意味着：它们任何一个上都不存在进入 GSP 的调试路径，这正是解锁必须经由签名处理路径里的内存安全 bug 而非调试接口的原因。参见[Falcon 与 Booter](../unlock/falcon-and-booter.md)。
 
 ---
 
-## Per-FBPA `CSTATUS_RAMAMOUNT`
+## 每-FBPA `CSTATUS_RAMAMOUNT`
 
-Read at `0x0090020C + n * 0x4000` for n = 0..23. This is the register that reports how much
-memory each partition believes it has.
+在 n = 0..23 的 `0x0090020C + n * 0x4000` 处读取。这是报告每个分区相信自己有多少内存的寄存器。
 
 | FBPA | 170HX A | 170HX B | A100 SXM4 40G | A100 PCIe 40G | A100 PCIe 80G | Drive |
 |---|---|---|---|---|---|---|
@@ -739,119 +520,84 @@ memory each partition believes it has.
 | 22 | `0x00000200` | `0x00000200` | `0x000007ff` | `0xbadf201b` | `0xbadf201b` | `0xbadf201b` |
 | 23 | `0x00000200` | `0x00000200` | `0x000007ff` | `0xbadf201b` | `0xbadf201b` | `0xbadf201b` |
 
-The floorswept partitions line up exactly with the `FUSE_FBPA_DISABLE` masks on every card, and
-the sentinel's low byte encodes the FBP that owns the pair (`0xbadf2010` for FBPAs 0 and 1,
-`0xbadf2013` for 6 and 7, `0xbadf2017` for 14 and 15, `0xbadf2018` for 16 and 17). That is a
-second, independent confirmation of the floorsweep decode.
+被地板清扫的分区在每一张卡上都与 `FUSE_FBPA_DISABLE` 掩码精确对齐，而哨兵的低字节编码拥有该对的 FBP（FBPAs 0 和 1 为 `0xbadf2010`、6 和 7 为 `0xbadf2013`、14 和 15 为 `0xbadf2017`、16 和 17 为 `0xbadf2018`）。那是对地板清扫解码的第二次独立确认。
 
-Consumer and professional GA10x parts, all with 6 FBPAs: A10 `0x00000efe`, A5000 `0x00000ffe`,
-A6000 `0x00001ffe`, RTX 3080 `0x00000800` with `fbpa03` swept, RTX 3080 Ti `0x00000800`,
-RTX 3090 `0x00001000`, RTX 3090 Ti `0x00000ffe`, and `0xbadf1100` (not decoded) for FBPAs 6
-through 23.
+消费级和专业级 GA10x 部件，全部带 6 个 FBPA：A10 `0x00000efe`、A5000 `0x00000ffe`、A6000 `0x00001ffe`、RTX 3080 `0x00000800` 带 `fbpa03` 被清扫、RTX 3080 Ti `0x00000800`、RTX 3090 `0x00001000`、RTX 3090 Ti `0x00000ffe`，以及 FBPAs 6 到 23 的 `0xbadf1100`（未解码）。
 
 > [!NOTE]
-> **Open problem: the exact `CSTATUS_RAMAMOUNT` encoding**
+> **未解问题：确切的 `CSTATUS_RAMAMOUNT` 编码**
 >
-> The 170HX reads exactly `0x200` = 512 and 20 × 512 MiB = 10240 MiB, which is right. But the
-> A100 40 GB reads `0x7ff` = 2047 and the survey treats it as 2048 MiB per partition, while the
-> RTX 3080 reads `0x800` = 2048 for the same nominal 2048 MiB. Observationally, every part with
-> `FUSE_ECC_EN = 1` reports slightly **less** than a power of two (`0x7ff`, `0xfff`, `0xefe`,
-> `0xffe`, `0x1ffe`) and the ECC-disabled parts report an exact power of two (`0x200`, `0x800`,
-> `0x1000`), with the RTX 3090 Ti (`0xffe`, ECC fuse `0`) as the one exception. Whether the
-> field is post-ECC usable capacity, an n-minus-one encoding, or something else is not settled
-> anywhere in the corpus. It does not affect the unlock, which writes `CFG1` and the local
-> memory range rather than this register.
+> 170HX 读恰好 `0x200` = 512 和 20 × 512 MiB = 10240 MiB，这是对的。但 A100 40 GB 读 `0x7ff` = 2047，调查把它当作每分区 2048 MiB，而 RTX 3080 对相同的标称 2048 MiB 读 `0x800` = 2048。观察上，每个 `FUSE_ECC_EN = 1` 的部件报告比 2 的幂**略小**（`0x7ff`、`0xfff`、`0xefe`、`0xffe`、`0x1ffe`），而 ECC 禁用的部件报告精确的 2 的幂（`0x200`、`0x800`、`0x1000`），RTX 3090 Ti（`0xffe`，ECC 熔丝 `0`）是唯一例外。该字段是否是 ECC 后可用容量、一个 n 减一编码、还是别的什么，在语料库里任何地方都没定论。它不影响解锁，后者写 `CFG1` 和本地显存范围而非这个寄存器。
 
-## Per-FBPA `CFG0`
+## 每-FBPA `CFG0`
 
-Read at `0x00900200 + n * 0x4000`. Every live partition on both 170HX units reads
-**`0x07981800`**, identical to the broadcast register and identical to every live partition on all
-three A100s. Disabled partitions return the same `0xbadf20xx` sentinels as above, at the same
-indices. The Drive A100 reads `0x06981800` on its live partitions. GA10x parts read `0x069f9803`
-or `0x06df9803`.
+在 n = 0..23 的 `0x00900200 + n * 0x4000` 处读取。两块 170HX 单元上的每个活分区都读 **`0x07981800`**，与广播寄存器相同、与全部三个 A100 上每个活分区相同。禁用分区返回与上面相同的 `0xbadf20xx` 哨兵，在相同的索引处。Drive A100 在其活分区上读 `0x06981800`。GA10x 部件读 `0x069f9803` 或 `0x06df9803`。
 
-The practical point: **there is no per-partition variation on this card**. Any theory that
-individual FBPAs are configured differently, or that one partition holds a strap or a
-per-stack override, is refuted by 20 identical reads per unit across two units.
+实际要点：**这张卡上没有任何按分区变化。** 任何说个别 FBPA 被不同配置、或某个分区持有跳线或按堆叠覆盖的理论，都被跨两块单元每单元 20 个相同读取所反驳。
 
 ---
 
-## What is overridable, and what is not
+## 什么可覆盖、什么不可
 
-| Restriction | Fuse | 170HX value | Override path | Status |
+| 限制 | 熔丝 | 170HX 值 | 覆盖路径 | 状态 |
 |---|---|---|---|---|
-| Arithmetic throughput | `FUSE_SS_*` `0x00820224`, `0x0082059C`, `0x008207D4`–`0x008207EC` | `0x5` × 8, DP `0x1` | Feature override `0x0082381C` / `0x00823820` after opening PLM `0x00823804` | **Solved and shipping.** Survives FLR |
-| Memory capacity | none directly; `FBPA_CFG1` `0x009a0204` plus the MMU local memory range | `0x02449000` | Host write after opening FBPA PLM `0x009a0148` | **Solved and shipping.** Does **not** survive FLR |
-| PCIe Gen 2 | `FUSE_PCIE_GEN23_DIS` `0x0082057C` | `0x00000001` | Fuse shadow write **fails**; Gen2 reached via `CYA_0`/`LINK_CONFIG_0`/XP3G/`PRIV_MISC_1` | Shipped in `master` since 2026-07-29 |
-| PCIe Gen 3 | `FUSE_PCIE_GEN3_DIS` `0x00820580` | `0x00000001` | none found | **Open.** Assessed as needing a GSP patch |
-| PCIe Gen 4 | `FUSE_PCIE_MAGIC_D` `0x00820520` bit 25 | `0x16680000` | Writability never tested | **Open** |
-| PCIe width | none. `FUSE_PCIE_LANE_DIS` = `0` | `0x00000000` | Solder 24 × 0402 capacitors | Physical mod only |
-| NVLink | `FUSE_NVLINK_DIS` `0x00820684` | `0x00000007` | No FEAT_OVR register exists; `CTRL_OPT_NVLINK` inert | **Closed.** No known path |
-| ECC | `FUSE_ECC_EN` `0x00820228` | `0x00000000` | none found; `FBPA_ECC_CTRL.MASTER_EN` read-only | **Closed.** No known path |
-| PCI device ID | `FUSE_DEVID_SW_OVR_DIS` `0x00820584` | `0x00000001` | none | **Closed** by fuse |
-| Floorswept GPCs / FBPs | `FUSE_GPC_DISABLE`, `FUSE_FBP_DISABLE`, `FUSE_FBPA_DISABLE` | per die | `CTRL_OPT_*`, inert because `FUSE_EN_SW_OVERRIDE` = `0` | **Untried.** Never demonstrated |
-| Everything, permanently | `FUSE_FEAT_OVR_DIS` `0x008203F0` | `0x00000000` | not blown | The reason any of this works |
+| 算力吞吐 | `FUSE_SS_*` `0x00820224`、`0x0082059C`、`0x008207D4`–`0x008207EC` | `0x5` × 8，DP `0x1` | 打开 PLM `0x00823804` 后的特性覆盖 `0x0082381C` / `0x00823820` | **已解决且已出货。** 挺过 FLR |
+| 显存容量 | 无直接；`FBPA_CFG1` `0x009a0204` 加 MMU 本地显存范围 | `0x02449000` | 打开 FBPA PLM `0x009a0148` 后的主机写 | **已解决且已出货。** **不**挺过 FLR |
+| PCIe Gen 2 | `FUSE_PCIE_GEN23_DIS` `0x0082057C` | `0x00000001` | 熔丝影子写**失败**；Gen2 经由 `CYA_0`/`LINK_CONFIG_0`/XP3G/`PRIV_MISC_1` 达到 | 自 2026-07-29 起已出货进 `master` |
+| PCIe Gen 3 | `FUSE_PCIE_GEN3_DIS` `0x00820580` | `0x00000001` | 未找到 | **开放。** 被评估为需要一个 GSP 补丁 |
+| PCIe Gen 4 | `FUSE_PCIE_MAGIC_D` `0x00820520` 位 25 | `0x16680000` | 可写性从未测试 | **开放** |
+| PCIe 位宽 | 无。`FUSE_PCIE_LANE_DIS` = `0` | `0x00000000` | 焊接 24 × 0402 电容 | 仅物理改装 |
+| NVLink | `FUSE_NVLINK_DIS` `0x00820684` | `0x00000007` | 不存在 FEAT_OVR 寄存器；`CTRL_OPT_NVLINK` 惰性 | **关闭。** 无已知路径 |
+| ECC | `FUSE_ECC_EN` `0x00820228` | `0x00000000` | 未找到；`FBPA_ECC_CTRL.MASTER_EN` 只读 | **关闭。** 无已知路径 |
+| PCI 设备 ID | `FUSE_DEVID_SW_OVR_DIS` `0x00820584` | `0x00000001` | 无 | **被熔丝关闭** |
+| 被地板清扫的 GPC / FBP | `FUSE_GPC_DISABLE`、`FUSE_FBP_DISABLE`、`FUSE_FBPA_DISABLE` | 按晶片 | `CTRL_OPT_*`，因 `FUSE_EN_SW_OVERRIDE` = `0` 而惰性 | **未尝试。** 从未演示 |
+| 一切，永久 | `FUSE_FEAT_OVR_DIS` `0x008203F0` | `0x00000000` | 未烧断 | 这一切之所以能行的原因 |
 
 ---
 
-## How the survey's conclusion was overturned
+## 调查结论如何被推翻
 
-The May 2026 fuse table ends with a bolded verdict:
+2026 年 5 月的熔丝表以一个加粗的裁决结尾：
 
-> **Host-level register write approach CONFIRMED DEAD for compute unlock**
+> **对算力解锁的主机级寄存器写入方法 CONFIRMED DEAD（已确认死亡）**
 
-That verdict was correct for what it tested, and its diagnosis of *why* remains completely valid
-today:
+那个裁决对它测试过的东西是对的，而它对*为什么*的诊断至今完全有效：
 
-- `FEAT_OVR_PLM` and `FEAT_OVR_ECC_PLM` both read `0xffffff8f`, meaning level-3 access only, and
-  a CPU driver runs at level 0.
-- `FUSE_QUADRO_WR_SEC` = `1` seals that PLM.
-- `FUSE_EN_SW_OVERRIDE` = `0` disables the `CTRL_OPT` override table.
-- `FECS_FEAT_OVERRIDE` reads return `0xbadf5040`.
+- `FEAT_OVR_PLM` 和 `FEAT_OVR_ECC_PLM` 都读 `0xffffff8f`，意味着仅第三级访问，而 CPU 驱动在 0 级运行。
+- `FUSE_QUADRO_WR_SEC` = `1` 封死那个 PLM。
+- `FUSE_EN_SW_OVERRIDE` = `0` 禁用 `CTRL_OPT` 覆盖表。
+- `FECS_FEAT_OVERRIDE` 读取返回 `0xbadf5040`。
 
-What the document lacked was a way to reach level 3, and it said so in the same breath: its own
-key findings note that `FUSE_FEAT_OVR_DIS` = `0` means the "override path [is] architecturally
-available (needs Falcon HS)". Six to eight weeks later, that is exactly what happened. The
-shipping unlock:
+文档缺少的是一个到达第 3 级的方法，而它在同一口气里也这么说了：它自己的关键发现指出 `FUSE_FEAT_OVR_DIS` = `0` 意味着"覆盖路径 [在架构上] 可用（需要 Falcon HS）"。六到八周后，那恰好发生了。出货解锁：
 
-1. enlarges the driver-side GSP signature buffer (`pSignatureMemdesc`) from
-   `NV_ALIGN_UP(pGspFw->signatureSize, 256)` to `0x0000f800` bytes, which nothing rejects;
-2. plants a crafted Falcon payload in it and re-fires Booter Load once per target to open four
-   privilege level masks: `0x001fa7cc` to `0xfffff0ff`, `0x009a0148`, `0x001fa7c4` and
-   `0x00823804` to `0xffffffff`;
-3. then performs **plain host BAR0 writes**, `GPU_REG_WR32(pGpu, 0x0082381cU, 0x88888888U)` and
-   `GPU_REG_WR32(pGpu, 0x00823820U, 0x00000008U)`.
+1. 把驱动侧 GSP 签名缓冲区（`pSignatureMemdesc`）从 `NV_ALIGN_UP(pGspFw->signatureSize, 256)` 放大到 `0x0000f800` 字节，没有任何东西拒绝；
+2. 在里面植入一个精心构造的 Falcon 载荷，并对每个目标各重跑一次 Booter Load 来打开四个权限级别掩码：`0x001fa7cc` 到 `0xfffff0ff`、`0x009a0148`、`0x001fa7c4` 和 `0x00823804` 到 `0xffffffff`；
+3. 然后执行**普通的主机 BAR0 写入**，`GPU_REG_WR32(pGpu, 0x0082381cU, 0x88888888U)` 和 `GPU_REG_WR32(pGpu, 0x00823820U, 0x00000008U)`。
 
-So host writes were never the problem. The privilege level was. The correct restatement of the
-survey's conclusion is: *host writes to the feature-override block are dead **while the PLM is
-closed**, and nothing in the fuse array prevents them once it is open*. See
-[How it works](../unlock/how-it-works.md) and
-[Privilege level masks](../unlock/privilege-level-masks.md).
+所以主机写入从来不是问题。权限级别才是。对调查结论的正确重述是：*主机对特性覆盖块的写入在 **PLM 关闭时**是死的，而一旦它打开，熔丝阵列里没有任何东西阻止它们*。参见[机制](../unlock/how-it-works.md) 和[权限级别掩码](../unlock/privilege-level-masks.md)。
 
-The one thing the fuse survey got exactly right and that has never been dislodged is which single
-zero the whole enterprise depends on.
+熔丝调查唯一完全做对、且从未被动摇的一件事，是整个事业压在哪个单个零上。
 
 ---
 
-## Reproducing the survey
+## 复现调查
 
-The probe is read-only. It mmaps BAR0 through sysfs and issues 32-bit loads. It does not write
-anything and it does not need the NVIDIA driver.
+探测是只读的。它通过 sysfs mmap BAR0 并发出 32 位加载。它不写任何东西，也不需要 NVIDIA 驱动。
 
 ```bash
-# The published probe, run against a 10 GB card
+# 已发布的探测，针对一块 10 GB 卡运行
 sudo ./probe.sh 10de:2082
 
-# Output lands in /tmp/mmio-probe-<epoch>/ :
-#   probe.log, lspci.txt, nvidia-smi.txt, gpu-summary.csv, registers.json
+# 输出落在 /tmp/mmio-probe-<epoch>/ ：
+#   probe.log、lspci.txt、nvidia-smi.txt、gpu-summary.csv、registers.json
 ```
 
-To read a single register without the script:
+不用脚本读单个寄存器：
 
 ```bash
 sudo python3 - <<'EOF'
 import mmap, struct
-BDF  = '0000:81:00.0'          # your card
+BDF  = '0000:81:00.0'          # 你的卡
 ADDR = 0x00820684              # FUSE_NVLINK_DIS
 with open(f'/sys/bus/pci/devices/{BDF}/resource0', 'rb') as f:
     bar = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
@@ -859,54 +605,35 @@ with open(f'/sys/bus/pci/devices/{BDF}/resource0', 'rb') as f:
 EOF
 ```
 
-Requirements and caveats:
+要求和注意事项：
 
-- Root, and inside a container it must be privileged. The script's header comment promises a
-  `/dev/mem` fallback, but the published code does not implement one: if `resource0` is missing
-  it logs an error and exits with status 2.
-- Context matters. Several registers (`SM_ISSUE_RATE_MODIFIER`, the SKED block) return
-  `0xbadf1201` when no driver is loaded and read cleanly once it is. `probe.sh` calls
-  `nvidia-smi` before it reads, so it brings the driver up itself. Record which state you were in
-  or the numbers are not comparable.
-- Cards with a small BAR0 (the A16, at 256 KB) simply cannot reach anything at or above
-  offset `0x40000`.
-- If you add a card to the cohort, report `lspci -nn` for the same bus address in the same
-  capture. Several unresolved items on this page exist only because a probe output and a device
-  ID were never published together.
+- 需要 root，在容器里必须特权。脚本的头部注释承诺一个 `/dev/mem` 后备方案，但发布代码没有实现一个：如果 `resource0` 缺失，它记录错误并以状态 2 退出。
+- 上下文要紧。几个寄存器（`SM_ISSUE_RATE_MODIFIER`、SKED 块）在没加载驱动时返回 `0xbadf1201`、一旦加载就读干净。`probe.sh` 在读之前调用 `nvidia-smi`，所以它自己带起驱动。记录你处于哪个状态，否则数字不可比。
+- 带小 BAR0 的卡（A16，256 KB）根本无法到达偏移量 `0x40000` 及以上的任何东西。
+- 如果你往队列里加卡，在同一个捕获里为同一总线地址报告 `lspci -nn`。本页几个未解决项之所以存在，只是因为一份探测输出和一个设备 ID 从未被一起发布。
 
 ---
 
-## Gaps
+## 缺口
 
-Things this page cannot tell you, listed so that nobody has to rediscover the hole.
+本页无法告诉你的东西，列出来以便没人不得不重新发现这个洞。
 
-1. **No 8 GB (`0x20C2`) card was ever put through this survey.** Every 170HX column here is a
-   10 GB card. The `NV_PTOP_FS4` question and the predicted `DEVIDB = 0x2102` both hang on this.
-2. **`FUSE_FB_FALCON_PRI_DIS` (`0x00820670`)** is read by the probe and dropped from the
-   published table. Its value on the 170HX is unknown, and it decides whether a Falcon can touch
-   FB PRI registers at all.
-3. **`PTOP_SCAL_FBPA_PER_FBP` (`0x00022458`)** is likewise read and not tabulated. Expected `2`
-   on GA100 from the FBP-to-FBPA arithmetic above, but unrecorded.
-4. **No TPC-level floorsweep register is probed**, so the five swept TPCs implied by 70 SMs
-   against 5 enabled GPCs are invisible here.
-5. **`FEAT_READOUT_1`'s field layout is undocumented.** The value correlates perfectly with fuse
-   state across all 14 cards, but nobody has decoded `0x016db6ed` into nine per-unit fields.
-6. **`FEAT_OVR_ECC_PLM` reads `0x0000abcf` on exactly one card** (A100 SXM4 40 GB) against
-   `0xffffff8f` on the other 13. Unexplained, never re-read.
-7. **No write probe has ever been run on `CTRL_OPT_*`.** The strong prior says the writes will be
-   dropped. The corpus cannot currently state that they were tried and failed, only that nobody
-   tried.
-8. **The engineering-sample column was never filled in.** The card suffered a thermal event on
-   2026-05-05 and its status is unknown.
+1. **没有 8 GB（`0x20C2`）卡被放进过这份调查。** 这里的每个 170HX 列都是一张 10 GB 卡。`NV_PTOP_FS4` 问题和预测的 `DEVIDB = 0x2102` 都压在这上面。
+2. **`FUSE_FB_FALCON_PRI_DIS`（`0x00820670`）** 被探测读取、从发布表里丢弃。它在 170HX 上的值未知，而它决定一个 Falcon 能否碰 FB PRI 寄存器。
+3. **`PTOP_SCAL_FBPA_PER_FBP`（`0x00022458`）** 同样被读取、未制表。从上面的 FBP 到 FBPA 算术在 GA100 上预期 `2`，但未记录。
+4. **不探测任何 TPC 级地板清扫寄存器**，所以由 70 个 SM 对 5 个启用的 GPC 暗示的五个被清扫 TPC，在这里不可见。
+5. **`FEAT_READOUT_1` 的字段布局未文档化。** 该值与全部 14 张卡上的熔丝状态完美相关，但没人把 `0x016db6ed` 解码成九个按单元字段。
+6. **`FEAT_OVR_ECC_PLM` 恰好在一张卡上读 `0x0000abcf`**（A100 SXM4 40 GB），对其它 13 张的 `0xffffff8f`。未解释，从未重读。
+7. **从未对 `CTRL_OPT_*` 运行过写入探测。** 强先验说写入会被丢弃。语料库目前不能说它们被尝试并失败了，只能说没人尝试。
+8. **工程样品列从未被填上。** 那张卡在 2026-05-05 经历了一次热事件，其状态未知。
 
-## See also
+## 参见
 
-- [GA100 silicon](ga100-silicon.md) for the die and its topology
-- [Memory subsystem](memory-subsystem.md) for what `CFG1` and the FBPA aperture actually do
-- [PCIe subsystem](pcie-subsystem.md) for the speed and width restrictions in detail
-- [NVLink hardware](nvlink-hardware.md) for the NVLink fuse and the physical connectors
-- [Privilege level masks](../unlock/privilege-level-masks.md) for the PLM model and the four-entry table
-- [Compute throttle](../unlock/compute-throttle.md) for the SS0/SS1 write
-- [Register reference](../unlock/register-reference.md) and
-  [Register index](../appendix/register-index.md) for lookup by address
-- [Methodology](../appendix/methodology.md) for how the values on this wiki were sourced and rated
+- [GA100 硅片](ga100-silicon.md)，晶片及其拓扑
+- [显存子系统](memory-subsystem.md)，`CFG1` 和 FBPA 孔径实际做什么
+- [PCIe 子系统](pcie-subsystem.md)，速度和位宽限制的细节
+- [NVLink 硬件](nvlink-hardware.md)，NVLink 熔丝和物理连接器
+- [权限级别掩码](../unlock/privilege-level-masks.md)，PLM 模型和四项表
+- [算力节流](../unlock/compute-throttle.md)，SS0/SS1 写入
+- [寄存器参考](../unlock/register-reference.md) 和[寄存器索引](../appendix/register-index.md)，按地址查
+- [方法论](../appendix/methodology.md)，本维基上的值如何被来源和评级
