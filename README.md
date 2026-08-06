@@ -1,63 +1,58 @@
-# The CMP 170HX Wiki
+# CMP 170HX 维基
 
-A comprehensive technical reference for the NVIDIA CMP 170HX (GA100): silicon, firmware, the
-community unlock, operating procedures, and the open frontier.
+一份针对 NVIDIA CMP 170HX（GA100）的全面技术参考：硅片、固件、社区解锁、操作流程、以及开放前沿。
 
-55 pages, roughly 278,000 words. Current as of **2026-07-31**.
+55 个页面、约 27.8 万词。截至 **2026-07-31** 最新。
 
-## Two ways to read this
+## 两种阅读方式
 
-- **[Wiki tab](https://github.com/Consensus-Protocol/cmp170hx/wiki)** for browsing, with a sidebar.
-  Pages there are generated from `docs/` and are identical apart from link style.
-- **`docs/` in this repository** is the source of truth. It is reviewable, takes pull
-  requests, and builds the full themed site with search via MkDocs.
+- **[维基标签页](https://github.com/Consensus-Protocol/cmp170hx/wiki)** 用于浏览、带侧边栏。
+  那里的页面从 `docs/` 生成、除链接风格外完全相同。
+- **本仓库里的 `docs/`** 是唯一真相源。它可审查、接受拉取请求、
+  并通过 MkDocs 构建带搜索的完整主题化站点。
 
-Keep the two in step. `to_github_wiki.py` publishes `docs/` to the wiki; if edits are made on
-the wiki instead, sync them back before continuing so the trees never diverge.
+让两者保持同步。`to_github_wiki.py` 把 `docs/` 发布到维基；如果编辑在维基上进行、
+请先把它同步回来再继续、让两棵树永不分叉。
 
-## Reading it
+## 阅读它
 
-The pages are plain Markdown and read fine directly on GitHub or in any editor. Callouts are
-written as GitHub alert blockquotes (`> [!NOTE]`), which GitHub styles natively; MkDocs renders
-them as plain blockquotes unless a callout extension is enabled. To get search and navigation:
+页面是普通 Markdown、在 GitHub 上或任何编辑器里都能直接读。标注写成 GitHub alert 块引用
+（`> [!NOTE]`）、GitHub 原生渲染它们；MkDocs 除非启用一个 callout 扩展、否则把它们渲染成
+普通块引用。要获得搜索和导航：
 
 ```bash
 pip install mkdocs mkdocs-material
 mkdocs serve          # http://127.0.0.1:8000
-mkdocs build          # static site into ../site
+mkdocs build          # 静态站点到 ../site
 ```
 
-## What is covered
+## 覆盖内容
 
-| Section | Contents |
+| 章节 | 内容 |
 |---|---|
-| `start/` | Orientation, card identification, quick start, risks, glossary |
-| `hardware/` | GA100 silicon, board variants, memory subsystem, fuses and OTP, PCIe, NVLink, power, thermals, VBIOS |
-| `unlock/` | The mechanism end to end: Falcon and Booter, the ROP chain, privilege level masks, memory geometry, compute throttle, driver patches, PCIe Gen2, full register reference |
-| `procedures/` | Install, verify, troubleshoot, recover, multi-GPU, driver versions, uninstall |
-| `operations/` | Cooling, power and PSUs, physical mods, performance, LLM inference, tuning |
-| `frontier/` | Status board and the unsolved problems: PCIe Gen3/Gen4, NVLink, ECC, 80 GB, P2P |
-| `history/` | Timeline, the clean-room and provenance question, dead ends, tool lineage |
-| `appendix/` | Register index, preserved artifacts, external sources, methodology |
+| `start/` | 入门、卡识别、快速上手、风险、术语表 |
+| `hardware/` | GA100 硅片、板卡变体、显存子系统、熔丝与 OTP、PCIe、NVLink、供电、散热、VBIOS |
+| `unlock/` | 端到端机制：Falcon 与 Booter、ROP 链、权限级别掩码、显存几何布局、算力节流、驱动补丁、PCIe Gen2、完整寄存器参考 |
+| `procedures/` | 安装、验证、排障、恢复、多卡、驱动版本、卸载 |
+| `operations/` | 散热、供电与 PSU、物理改装、性能、LLM 推理、调优 |
+| `frontier/` | 状态板与未解问题：PCIe Gen3/Gen4、NVLink、ECC、80 GB、P2P |
+| `history/` | 时间线、净室与来源溯源问题、死路、工具谱系 |
+| `appendix/` | 寄存器索引、保留工件、外部来源、方法论 |
 
-## Two things this wiki insists on
+## 本维基坚持的两点
 
-**Capacity is per SKU and is not interchangeable.** The 8 GB card (`10de:20c2`) unlocks to
-**64 GB**. The 10 GB card (`10de:2082`) unlocks to **40 GB**. The 80 GB configuration for
-10 GB cards was built, tested, and rejected as unstable.
+**容量按 SKU 固定、且不可互换。** 8 GB 卡（`10de:20c2`）解锁到 **64 GB**。
+10 GB 卡（`10de:2082`）解锁到 **40 GB**。10 GB 卡的 80 GB 配置被构建、测试、
+并被判定不稳定而否决。
 
-**PCIe link speed and link width are separate problems.** Gen1 to Gen2 is a software unlock,
-shipped in cmpunlocker `master` since 2026-07-29, so any card with the unlock installed runs
-Gen2. Going beyond x4 width requires hand soldering 24 AC coupling capacitors. Neither one
-achieves the other.
+**PCIe 链路速度和链路位宽是独立问题。** Gen1 到 Gen2 是一个软件解锁、
+自 2026-07-29 起合入 cmpunlocker `master`、所以任何装了解锁的卡都跑 Gen2。
+超越 x4 位宽需要手工焊接 24 颗交流耦合电容。两者互不替代。
 
-## Conventions
+## 约定
 
-Plain prose is confirmed fact. Experimental, dangerous and unsolved material is marked with
-alerts. Claims resting on a single observation say so in the sentence.
-Where evidence genuinely conflicts and nothing settles it, the wiki says so rather than
-choosing quietly.
+普通正文是已确认事实。实验性、危险和未解决的材料用 alert 标注。立足单一观测的声称
+在句子里说明。证据真正冲突且无物定案时、本维基如实说明、而非悄悄选择。
 
-No individual is named anywhere. Findings are attributed to dates and channels rather than to
-people. See `docs/appendix/methodology.md` for how the underlying claims were gathered,
-adjudicated and verified, and for an honest account of the limitations.
+任何地方都不点名个人。发现按日期和渠道而非按人归属。见 `docs/appendix/methodology.md`
+了解底层声称如何被收集、裁决和验证、以及对局限性的诚实交代。
