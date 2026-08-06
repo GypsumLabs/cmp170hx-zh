@@ -159,7 +159,7 @@ CMP DevInit 固件**读取** `0x820684`。DevInit 反汇编中 `0x1482xxxx` 访�
 
 ### 5. 解锁器里根本没有 NVLink 代码
 
-在整个出货 `master` 树上 grep `nvlink` 和每一个 NVLink 寄存器地址都一无所获：不在 `common/constants.yaml`、`driver/build.sh`、`driver/VERSION`、`install.sh`、`remove.sh`、`README.md`，也不在六个补丁的任何一补。`constants.yaml` 只声明两个驱动版本、两个设备 ID、算力值和两个显存档位。
+在整个已发布的 `master` 树上 grep `nvlink` 和每一个 NVLink 寄存器地址都一无所获：不在 `common/constants.yaml`、`driver/build.sh`、`driver/VERSION`、`install.sh`、`remove.sh`、`README.md`，也不在六个补丁的任何一补。`constants.yaml` 只声明两个驱动版本、两个设备 ID、算力值和两个显存档位。
 
 在全部十二个未发布分支（`80`、`Gen2`、`PG199`、`clanker/driver-port`、`debug-gen2`、`deced`、`docs`、`ecc`、`far`、`housekeeping`、`memory`、`multiple-cards`）中，NVLink 的全部存在就一个词。`housekeeping` 和 `memory` 分支加了一张特性状态表，相关行读：
 

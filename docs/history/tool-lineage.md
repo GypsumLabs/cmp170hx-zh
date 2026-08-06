@@ -2,7 +2,7 @@
 
 ## 本页覆盖内容
 
-四代 CMP 170HX 工具并存，且时间上彼此重叠，所以"更新"并不总意味着"取代"。本页从 2026 年 6 月第一次手动 BAR0 poke 一路追溯到出货的驱动内补丁集及其上的分支结构，并直白说明哪些路径已死，免得有人再踩进去。
+四代 CMP 170HX 工具并存，且时间上彼此重叠，所以"更新"并不总意味着"取代"。本页从 2026 年 6 月第一次手动 BAR0 poke 一路追溯到已发布的驱动内补丁集及其上的分支结构，并直白说明哪些路径已死，免得有人再踩进去。
 
 **如果你只想要短答案：**
 
@@ -19,7 +19,7 @@
 |---|---|---|---|
 | **0：只读表征** | 2026-05-31 至今 | `probe.sh`（mmio-probe）、`z1_dump_and_parse_vbios.sh` + `z2_parse_vbios_table.py`、`pcielink.sh`、A100 `probe.py`/`sweep.sh`、`cuda_dbg.py`、`check_fold.py`、`cuda_memtest` | **当前。** 从未被废弃。这些是测量仪器、不是解锁器 |
 | **1：手动 BAR0 poke 和 Python ROP 解锁器** | 2026-06-22 到 2026-07-17 | `deploy.py --path sec2-rop`、`deploy.py --path vbios-memory`、`load_custom_bin.py`、`unlc.py`、`stack_gen.py`、`patch_gsp.py`、`payload-lnject.py`、`scan_dmem.py`、`nuke.sh`、`b.sh`、`falcon_emulator.py`、systemd `cmp170hx-unlock.service` | **已废弃。** 这里每个持久化机制都被取代了 |
-| **2：出货驱动补丁（`cmpunlocker`）** | 2026-07-14 至今 | `install.sh`、`driver/build.sh`、`driver/patches/0001`-`0006`、`remove.sh`、`common/constants.yaml`、`driver/VERSION` | **当前且规范。** 这是 `master` 上发货的 |
+| **2：已发布的驱动补丁（`cmpunlocker`）** | 2026-07-14 至今 | `install.sh`、`driver/build.sh`、`driver/patches/0001`-`0006`、`remove.sh`、`common/constants.yaml`、`driver/VERSION` | **当前且规范。** 这是 `master` 上发货的 |
 | **3：免驱动 SEC2 refire 链** | 2026-07-22 至今 | `refire_chain.py`（v1）、`refire_chain_v2.py`、`refire_chain_v6.py` | **当前但实验性。** 一条平行、非发货路径；不是 `cmpunlocker` 的一部分 |
 | **4：未合并特性分支** | 2026-07-18 至今 | `multiple-cards`、`clanker/driver-port`、`80`、`debug-gen2` 到 `Gen2` 到 `far` 到 `deced`、加 `docs`、`ecc`、`housekeeping`、`memory`、`PG199` | **实验性。** 坐在第 2 代之上 |
 
@@ -142,7 +142,7 @@ echo 1 | sudo tee /sys/bus/pci/devices/<BDF>/reset
 run the ROP script -> FLR -> kill the NVIDIA driver -> FLR again -> run the SM unlock script
 ```
 
-从 TTY 跑，在开源内核模块 580.159.04 上，ROP 载荷由 `patch_gsp.py` 拼进 `gsp_tu10x.bin`。`unlc.py` 演示了出货补丁仍沿用的两步模型：利用只须打开 FEAT PLM，之后 SS0 和 SS1 就是普通的主机写。
+从 TTY 跑，在开源内核模块 580.159.04 上，ROP 载荷由 `patch_gsp.py` 拼进 `gsp_tu10x.bin`。`unlc.py` 演示了已发布的补丁仍沿用的两步模型：利用只须打开 FEAT PLM，之后 SS0 和 SS1 就是普通的主机写。
 
 ### 工具以及每个怎么死的
 
@@ -172,7 +172,7 @@ run the ROP script -> FLR -> kill the NVIDIA driver -> FLR again -> run the SM u
 
 原始 booter 栈从硅片一次一个词地被恢复，借助一个由 gadget `0x7de9` 构建的外泄 ROP：那个 gadget 把一个选定的 DMEM 字写进 SEC2 邮箱，所以每次引导漏出一个 dword。DKMS 下约 **35 次引导、每次约 90 s**，即每趟约一小时。`D[0xFF74]` 之下的区域无法被泄露，因为 ROP 自己坐在那里。由于金丝雀每次引导都会重新随机，跑两遍转储并 diff 就能精确揭示哪些槽是金丝雀：一个把限制变成技术的东西。
 
-八个具名 ROP 配方被维护为一个参数化目录，在重接点（`0x37b7` 对比 `0x37cc`）、劫持 gadget、栈风格和粉碎大小（`0xF800`、`0xF810`、`0xF820`）上各不相同：`rejoin_short_37cc`、`whole_stack_37b7`（守卫 `0xFACEB13D`）、`dummy_shift_37cc`、`srw_v1_37b7`、`srw_v2_37cc`、`waa_37cc`、`waa_37b7`、`waa_3747`。研究链标准化的多写模式是 `0x4d4(r0=addr,r1=val,RA=0x10b9) -> [0x10b9 write -> 0x10aa-epi] xN -> TERM`。那个 `0x10b9` 中途进入形式属于净室和免驱动工具：出货载荷种 `0x000010aa` 代替，而字符串 `10b9` 出现在出货树里任何地方都不。见[ROP 链](../unlock/rop-chain.md)。
+八个具名 ROP 配方被维护为一个参数化目录，在重接点（`0x37b7` 对比 `0x37cc`）、劫持 gadget、栈风格和粉碎大小（`0xF800`、`0xF810`、`0xF820`）上各不相同：`rejoin_short_37cc`、`whole_stack_37b7`（守卫 `0xFACEB13D`）、`dummy_shift_37cc`、`srw_v1_37b7`、`srw_v2_37cc`、`waa_37cc`、`waa_37b7`、`waa_3747`。研究链标准化的多写模式是 `0x4d4(r0=addr,r1=val,RA=0x10b9) -> [0x10b9 write -> 0x10aa-epi] xN -> TERM`。那个 `0x10b9` 中途进入形式属于净室和免驱动工具：已发布的载荷种 `0x000010aa` 代替，而字符串 `10b9` 出现在已发布的树里任何地方都不。见[ROP 链](../unlock/rop-chain.md)。
 
 ---
 
@@ -197,7 +197,7 @@ payload_frames:
 
 ---
 
-## 第 2 代：`cmpunlocker`、出货驱动补丁
+## 第 2 代：`cmpunlocker`、已发布的驱动补丁
 
 这是规范工具。仓库标语："A tool to unlobotomize your NVIDIA card!"（一个给你的 NVIDIA 卡去脑叶的工具！）。
 
@@ -287,11 +287,11 @@ GPU_REG_WR32(pGpu, 0x00100ce0U, lmrValue);      /* 0x0000020B (20C2) / 0x0000028
 内置载荷可在运行时从 `/lib/firmware/nvidia/ga100/gsp/dmem.bin`（`SEC2_POSTBL_TIMING_DMEM_PATH`）覆盖、`os_open_and_read_file` 加载 `0xf800` 字节。缺席时驱动记录 `SEC2_DEBUG: <path> not found (0x%x), using built-in payload`（报告码是 `0x59`、良性）并回退到编译进的填充、其默认单写是 `0x009a0148U = 0xffffffffU`。
 
 > [!WARNING]
-> **出货载荷的标记字是 `0xc0deca7e`、不是 `0xFACEB13D`**
+> **已发布的载荷的标记字是 `0xc0deca7e`、不是 `0xFACEB13D`**
 >
-> `0xc0deca7e` 出现在载荷偏移量 `0x5b40`、`0xf758`、`0xf794`、`0xf7a0` 和 `0xf7c4`。更早的独立 harness 在 `CANARY_ADDR = 0x6340` 配 `DMA_TARGET = 0x0800` 处用 `0xFACEB13D`。`0x5b40 + 0x0800 = 0x6340`、所以它是同一个槽带一个不同的字面量。读出货代码时不要假设 `0xFACEB13D`。
+> `0xc0deca7e` 出现在载荷偏移量 `0x5b40`、`0xf758`、`0xf794`、`0xf7a0` 和 `0xf7c4`。更早的独立 harness 在 `CANARY_ADDR = 0x6340` 配 `DMA_TARGET = 0x0800` 处用 `0xFACEB13D`。`0x5b40 + 0x0800 = 0x6340`、所以它是同一个槽带一个不同的字面量。读已发布的代码时不要假设 `0xFACEB13D`。
 
-出货驱动内栈和独立免驱动链共享**同一条尾配方**：在载荷偏移量 `0xf78c` 到 `0xf7f8`、补丁 0001 写非零 gadget 序列 `0x815a, 0x8e18, 0x815a, 0x1fbd, 0xffbc, 0x582d, 0xcbd, 0x3, 0x1fbd, 0xccb, 0x7f2f`、并设载荷字 `0x1100 = 0x00000007`。
+已发布的驱动内栈和独立免驱动链共享**同一条尾配方**：在载荷偏移量 `0xf78c` 到 `0xf7f8`、补丁 0001 写非零 gadget 序列 `0x815a, 0x8e18, 0x815a, 0x1fbd, 0xffbc, 0x582d, 0xcbd, 0x3, 0x1fbd, 0xccb, 0x7f2f`、并设载荷字 `0x1100 = 0x00000007`。
 
 ### `common/constants.yaml`
 
@@ -356,7 +356,7 @@ sudo python3 refire_chain_v6.py --all
 
 ## 第 4 代：未合并分支
 
-十二个未发布分支快照被捕获（**算上出货 `master` 是十三棵树**）：`80`、`Gen2`、`PG199`、`clanker/driver-port`、`debug-gen2`、`deced`、`docs`、`ecc`、`far`、`housekeeping`、`memory`、`multiple-cards`。远程上存在十六个未发布分支 ref；`code-simplification`、`dual-geometry-fix`、`fix` 和 `v0.1` 没被快照、本维基任何地方也没被分析。见[方法论](../appendix/methodology.md)。
+十二个未发布分支快照被捕获（**算上已发布的 `master` 是十三棵树**）：`80`、`Gen2`、`PG199`、`clanker/driver-port`、`debug-gen2`、`deced`、`docs`、`ecc`、`far`、`housekeeping`、`memory`、`multiple-cards`。远程上存在十六个未发布分支 ref；`code-simplification`、`dual-geometry-fix`、`fix` 和 `v0.1` 没被快照、本维基任何地方也没被分析。见[方法论](../appendix/methodology.md)。
 
 | 分支 | Tip | 它加什么 | 裁决 |
 |---|---|---|---|
@@ -396,7 +396,7 @@ Gen2 谱系安装器也写 `/etc/modprobe.d/cmp-pcie-gen2.conf` 并配置 IOMMU�
 > [!CAUTION]
 > **不要跟随 `docs` 分支**
 >
-> `docs/INSTALLATION.md` 第 40 行说 `sudo ./uninstall.sh --yes`（没有这样的文件）；`docs/ARCHITECTURE.md` 第 81-82 行声称 `SEC2_DEBUG: SS0 = 0xffffffff` / `SS1 = 0xffffffff` 而出货代码写 `0x88888888` 和 `0x00000008`；`docs/DEBUGGING.md` 第 15 行说 "All the PLMs must show `0xffffffff`" 而 `0x001fa7cc` 处的 WPR_CFG 被打开到 `0xfffff0ff`。那个分支还杜撰代码里任何地方都不存在的缩写展开。
+> `docs/INSTALLATION.md` 第 40 行说 `sudo ./uninstall.sh --yes`（没有这样的文件）；`docs/ARCHITECTURE.md` 第 81-82 行声称 `SEC2_DEBUG: SS0 = 0xffffffff` / `SS1 = 0xffffffff` 而已发布的代码写 `0x88888888` 和 `0x00000008`；`docs/DEBUGGING.md` 第 15 行说 "All the PLMs must show `0xffffffff`" 而 `0x001fa7cc` 处的 WPR_CFG 被打开到 `0xfffff0ff`。那个分支还杜撰代码里任何地方都不存在的缩写展开。
 
 ---
 
@@ -408,7 +408,7 @@ Gen2 谱系安装器也写 `/etc/modprobe.d/cmp-pcie-gen2.conf` 并配置 IOMMU�
 |---|---|
 | `amoghmunikote/cmpunlocker` | 上面描述的参考实现 |
 | 几个个人 fork、一个带 `combined-multiple-cards-gen2` 分支 | Fork；一个把 Gen2 工作与多卡支持结合。按本维基的匿名化政策省略拥有者名字 |
-| `abobasixseven/unlock-cmp-170hx` | **不是一份写稿。** 一个 AI 代理执行提示：只有 `README.md` 和 `cmp90_compute_unlock_prompt.md`、都以 `EXECUTE STEP BY STEP: 5 (preparation) -> 6 (installation) -> 6.5 (cold reboot) -> 7 (verification)` 这类行结尾、通篇硬编码一个具体家目录。它的寄存器表匹配出货补丁、但它的散文和 PCIe Gen2 章是次要总结、不是一手测量 |
+| `abobasixseven/unlock-cmp-170hx` | **不是一份写稿。** 一个 AI 代理执行提示：只有 `README.md` 和 `cmp90_compute_unlock_prompt.md`、都以 `EXECUTE STEP BY STEP: 5 (preparation) -> 6 (installation) -> 6.5 (cold reboot) -> 7 (verification)` 这类行结尾、通篇硬编码一个具体家目录。它的寄存器表匹配已发布的补丁、但它的散文和 PCIe Gen2 章是次要总结、不是一手测量 |
 | `theneocorp/cmppatcher` | 一种真正不同的方法：直接补丁 NVIDIA 驱动**二进制**、这样补丁跨驱动更新持久。报告 3D 加速和 FP32 FMA 绕过 |
 
 相邻、非解锁工具：

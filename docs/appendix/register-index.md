@@ -115,7 +115,7 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 | `0x00111268` | `RISCV_CPUCTL` | GSP | GSP 核心控制 | [GSP 与 BSI](../unlock/register-reference.md#gsp-risc-v-and-bsi-secure-scratch-bar0-0x110000-0x118000) |
 | `0x0011126c` | GSP RISC-V 伴生 | GSP | 被 `reg_init` 写成 `1`；用途 **not documented** | [GSP 与 BSI](../unlock/register-reference.md#gsp-risc-v-and-bsi-secure-scratch-bar0-0x110000-0x118000) |
 | `0x001180f0` | AON LMR 影子 | BSI | 显存范围值的常开影子。**FLR 时回退**、所以它不是持久杠杆 | [FLR 存活](../unlock/register-reference.md#the-flr-survival-table) |
-| `0x001180f8` | `NV_PGC6_BSI_SECURE_SCRATCH_14` | BSI | 位 26 = `BOOT_STAGE_3_HANDOFF`。由 SEC2 在 HS 上下文里于 GPU 侧设置；主机驱动只轮询它、引导挂起 `0x65` 就是那次轮询超时。**出货链从不写它** | [GSP 与 BSI](../unlock/register-reference.md#gsp-risc-v-and-bsi-secure-scratch-bar0-0x110000-0x118000) |
+| `0x001180f8` | `NV_PGC6_BSI_SECURE_SCRATCH_14` | BSI | 位 26 = `BOOT_STAGE_3_HANDOFF`。由 SEC2 在 HS 上下文里于 GPU 侧设置；主机驱动只轮询它、引导挂起 `0x65` 就是那次轮询超时。**已发布的链从不写它** | [GSP 与 BSI](../unlock/register-reference.md#gsp-risc-v-and-bsi-secure-scratch-bar0-0x110000-0x118000) |
 | `0x00118244` / `0x00118248` | WPR 分阶段对 | BSI | 被 `booter_load_wpr_main` 读然后清零 | [GSP 与 BSI](../unlock/register-reference.md#gsp-risc-v-and-bsi-secure-scratch-bar0-0x110000-0x118000) |
 | `0x0011824c` / `0x00118250` | memcfg 交接 | BSI | 被 `memcfg_program` 写；apply 轮询只在 `0x0011824c` 位 0 设置时运行 | [GSP 与 BSI](../unlock/register-reference.md#gsp-risc-v-and-bsi-secure-scratch-bar0-0x110000-0x118000) |
 | `0x001182d0` | AON 安全临时区 | BSI | 在 PL3 可达；内容 **not documented** | [GSP 与 BSI](../unlock/register-reference.md#gsp-risc-v-and-bsi-secure-scratch-bar0-0x110000-0x118000) |
@@ -124,9 +124,9 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 | `0x001402b4` | LTC 伴生 | LTC | 一次 `0x00a00030` 的写被尝试、没移动 40 GiB 折叠。字段布局 **not documented** | [80 GB 问题](../frontier/80gb.md) |
 | `0x0017e22c` | L2/LTC 地址映射寄存器 | LTC | 原生 `0x00280404`；从没被任何东西编程、40 GB 却工作 | [L2 / LTC](../unlock/register-reference.md#l2-ltc) |
 | `0x0017e2a0` / `0x0017e2a4` | 每-LTC 解码 | LTC | 被净室 v8 工具瞄准；在 170HX 上 `DECODE_VAL` 全程停 `0x70000300`、仍未解释 | [80 GB 问题](../frontier/80gb.md) |
-| `0x001fa7c4` | `WPR_PLM` | WPR | WPR 区域寄存器上的权限掩码。锁定 `0x0004cb8f`；**出货 PLM 索引 2、打开到 `0xffffffff`** | [PLM 表](../unlock/register-reference.md#written-by-shipping-master-four-entries-in-this-order-up-to-two-attempts-each) |
+| `0x001fa7c4` | `WPR_PLM` | WPR | WPR 区域寄存器上的权限掩码。锁定 `0x0004cb8f`；**已发布的 PLM 索引 2、打开到 `0xffffffff`** | [PLM 表](../unlock/register-reference.md#written-by-shipping-master-four-entries-in-this-order-up-to-two-attempts-each) |
 | `0x001fa7c8` | `MMU_LOCK` PLM | WPR | 写半字节 `0x8` 意味着仅 L3/HS；`0x0004cb8f`。本项目里只读 | [WPR 块](../unlock/register-reference.md#wpr-block-0x001fa7xx-0x001fa8xx) |
-| `0x001fa7cc` | `WPR_CFG_PLM` | WPR | WPR 允许掩码上的权限掩码。**出货 PLM 索引 0、打开到 `0xfffff0ff`、不是 `0xffffffff`。** 这个例外是真的、相信补丁 | [PLM 表](../unlock/register-reference.md#written-by-shipping-master-four-entries-in-this-order-up-to-two-attempts-each) |
+| `0x001fa7cc` | `WPR_CFG_PLM` | WPR | WPR 允许掩码上的权限掩码。**已发布的 PLM 索引 0、打开到 `0xfffff0ff`、不是 `0xffffffff`。** 这个例外是真的、相信补丁 | [PLM 表](../unlock/register-reference.md#written-by-shipping-master-four-entries-in-this-order-up-to-two-attempts-each) |
 | `0x001fa814` | WPR 读允许掩码 | WPR | 模式字段在位 [7:4]；Booter 在掩码 `0x0ffff8ff` 下设位 `0x800` | [WPR 块](../unlock/register-reference.md#wpr-block-0x001fa7xx-0x001fa8xx) |
 | `0x001fa818` | WPR 写允许掩码 | WPR | 同上 | [WPR 块](../unlock/register-reference.md#wpr-block-0x001fa7xx-0x001fa8xx) |
 | `0x001fa81c` / `0x001fa820` | `WPR1_ADDR_LO` / `HI` | WPR | WPR1 范围、值在位 [31:4] 左移 12；被净室 refire 链清除 | [WPR 块](../unlock/register-reference.md#wpr-block-0x001fa7xx-0x001fa8xx) |
@@ -149,12 +149,12 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 | `0x00820080` | `FUSE_BYPASS_STATUS` | FUSE | `0x00000000`；GA10x 上 `0xbadf5040` | [熔丝控制](../unlock/register-reference.md#fuse-control) |
 | `0x00820084` | `FUSE_DIS_SW_OVR` | FUSE | 全部 15 张卡上 `0x00000001`；高安全写被弹回。软件熔丝覆盖被永久阻塞 | [熔丝控制](../unlock/register-reference.md#fuse-control) |
 | `0x008200d0` .. `0x008200f4` | `OPTB_D0` .. `OPTB_F4` PLM | FUSE | 十个连续权限掩码（`d0`、`d4`、`d8`、`dc`、`e0`、`e4`、`e8`、`ec`、`f0`、`f4`）、全部被 Gen2 `xp3gTable` 写成 `0xffffffff`。`0x008200d0` 和 `0x008200dc` 读锁定 `0xffffff8f`、其它八个读打开。**每个守护什么 not documented** | [OPTB PLM 块](../unlock/register-reference.md#optb-plm-block-written-by-0007) |
-| `0x008200fc` | `FUSE_SS_PLM` / `OPT_PLM` | FUSE | 一个寄存器、两个名字（`OPT_PLM` 是分支代码标签、`FUSE_SS_PLM` 是净室工具名）。守护速度选择熔丝块和 `OPT_FB_CONFIG`。**出货 master 从不写它。** 一次扫描读 `0xffffffff`、另一次 `0x000003ff`、它是否可写**仍开放** | [Gen2 PLM 表](../unlock/register-reference.md#added-by-the-gen2-family-branches-nine-entries-total) |
+| `0x008200fc` | `FUSE_SS_PLM` / `OPT_PLM` | FUSE | 一个寄存器、两个名字（`OPT_PLM` 是分支代码标签、`FUSE_SS_PLM` 是净室工具名）。守护速度选择熔丝块和 `OPT_FB_CONFIG`。**已发布的 master 从不写它。** 一次扫描读 `0xffffffff`、另一次 `0x000003ff`、它是否可写**仍开放** | [Gen2 PLM 表](../unlock/register-reference.md#added-by-the-gen2-family-branches-nine-entries-total) |
 | `0x00820148` | OTP 备用位 | FUSE | `0x00000000`、永不可设置；用途 **not documented** | [PCIe 熔丝](../unlock/register-reference.md#pcie-fuses) |
 | `0x00820224` | `FUSE_SS_DP` | FUSE | 双精度速度选择熔丝、一个单独 1 位字段：170HX 上 `0x00000001`（降低） | [SM 速度选择熔丝](../unlock/register-reference.md#sm-speed-select-fuses-the-throttle-itself) |
 | `0x008202c4` | `OPT_ROP_L2_DISABLE` | FUSE | 镜像 `0x00820368` | [地板清扫熔丝](../unlock/register-reference.md#floorsweep-fuses) |
 | `0x00820328` | `OPT_FB_CONFIG` | FUSE | 4 位显存拓扑选择器、被 PLM `0x008200fc` 守护。在 `probe.sh` 里文档化、从没写测试过 | [显存子系统](../hardware/memory-subsystem.md) |
-| `0x00820340` | `OPT_MEMORY_LOCKED_ENABLED`（`FUSE_MEM_LOCKED`） | FUSE | 群组里全部 15 张卡上 `0x00000001`、意味着显存配置名义上不可运行时改变。它不阻塞解锁：出货链反正重写 CFG1 和 LMR | [显存子系统](../hardware/memory-subsystem.md) |
+| `0x00820340` | `OPT_MEMORY_LOCKED_ENABLED`（`FUSE_MEM_LOCKED`） | FUSE | 群组里全部 15 张卡上 `0x00000001`、意味着显存配置名义上不可运行时改变。它不阻塞解锁：已发布的链反正重写 CFG1 和 LMR | [显存子系统](../hardware/memory-subsystem.md) |
 | `0x00820350` | `OPT_GPC_DISABLE` | FUSE | 每卡 GPC 禁用掩码：四张不同卡上 `0x85`、`0x45`、`0x13`、`0xa8`。高安全写被弹回、值被锁存 | [地板清扫熔丝](../unlock/register-reference.md#floorsweep-fuses) |
 | `0x00820364` | `OPT_FBP_DISABLE` | FUSE | FBP 禁用掩码：10 GB 卡上 `0x00000840`（FBP 6 和 11 关）、社区转储上 `0x00000852`、另两个单元上 `0x00000009` 和 `0x00000180` | [地板清扫熔丝](../unlock/register-reference.md#floorsweep-fuses) |
 | `0x00820368` | `OPT_FBPA_DISABLE` | FUSE | FBPA 禁用掩码：10 GB 卡上 `0x000000c3`（20 活）、8 GB 卡上 `0x00c0330c`（16 活）。**决定 FBPA 数的正是它，而不是 CFG1** | [显存子系统](../hardware/memory-subsystem.md) |
@@ -208,8 +208,8 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 | `0x00820db8` | `STATUS_OPT_NVLINK` | FUSE | `0x00000007`、`0x00820684` 的只读镜像；与 Drive A100 共享 | [NVLink 熔丝](../unlock/register-reference.md#nvlink-fuses) |
 | `0x00821060` | `OPT_SKU_ID` | FUSE | 8 GB 卡（`0x20C2`）上 `0x00000080`；10 GB 卡（`0x2082`）上 `0x00000068` | [熔丝控制](../unlock/register-reference.md#fuse-control) |
 | `0x00823800` | `FEAT_OVR_ECC_PLM` | FEAT_OVR | 权限掩码、出厂 `0xffffff8f`。**一个与 `0x00823804` 不同的寄存器**、一个频繁的转写失误。被 Gen2 `xp3gTable` 打开、master 从不 | [特性覆盖](../unlock/register-reference.md#feature-override-and-compute-0x008238xx) |
-| `0x00823804` | `FEAT_OVR_PLM` | FEAT_OVR | **门控 SS0/SS1 的权限掩码。** 出厂 `0xffffff8f`、出货 PLM 索引 3、打开到 `0xffffffff`。常开岛里唯一条目、所以它**挺过 FLR** | [算力节流](../unlock/compute-throttle.md) |
-| `0x00823808` | `FEAT_OVR_QUADRO` | FEAT_OVR | **按晶片且无法解释。** 观察到：`0x00100183`（出厂、PLM 范围扫描、中等）、`0x00000081`（解锁后探测、中等）、`0x00000181` / `0x00000182`（两块物理 170HX 单元、高、13 个分级差异之一）、`0x01000282`（A100 80 GB）。只读。**开放问题：** 为什么值跨全部三份转储都不同。解锁或驱动里的某个东西可能正在碰 Quadro-对比-消费级分类字、那可能是驱动可见特性类的杠杆。下一步：在一张卡上、出货序列的每个阶段前后重读这个寄存器 | [特性覆盖](../unlock/register-reference.md#feature-override-and-compute-0x008238xx) |
+| `0x00823804` | `FEAT_OVR_PLM` | FEAT_OVR | **门控 SS0/SS1 的权限掩码。** 出厂 `0xffffff8f`、已发布的 PLM 索引 3、打开到 `0xffffffff`。常开岛里唯一条目、所以它**挺过 FLR** | [算力节流](../unlock/compute-throttle.md) |
+| `0x00823808` | `FEAT_OVR_QUADRO` | FEAT_OVR | **按晶片且无法解释。** 观察到：`0x00100183`（出厂、PLM 范围扫描、中等）、`0x00000081`（解锁后探测、中等）、`0x00000181` / `0x00000182`（两块物理 170HX 单元、高、13 个分级差异之一）、`0x01000282`（A100 80 GB）。只读。**开放问题：** 为什么值跨全部三份转储都不同。解锁或驱动里的某个东西可能正在碰 Quadro-对比-消费级分类字、那可能是驱动可见特性类的杠杆。下一步：在一张卡上、已发布的序列的每个阶段前后重读这个寄存器 | [特性覆盖](../unlock/register-reference.md#feature-override-and-compute-0x008238xx) |
 | `0x0082380c` | `FEAT_OVR_ECC` | FEAT_OVR | `0x00888888`；只读 | [ECC](../frontier/ecc.md) |
 | `0x00823810` | `FEAT_OVR_ECC_1` | FEAT_OVR | `0x002aaaaa`；只读 | [ECC](../frontier/ecc.md) |
 | `0x00823814` | `FEAT_READOUT_0` | FEAT_OVR | 170HX 上只读 `0x00000233`；一颗参考 GA100 板读 `0xef8ff100`。**字段布局 not documented** | [特性覆盖](../unlock/register-reference.md#feature-override-and-compute-0x008238xx) |
@@ -243,12 +243,12 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 | `0x00840530` | `SCP_P2PRX` | SEC2 | 免驱动复位期间轮询位 3 | [SEC2 Falcon](../unlock/register-reference.md#sec2-falcon-bar0-0x840000) |
 | `0x008411ec` | `KFUSE_CTL` | SEC2 | 轮询位 0 设置、位 1 清除 | [SEC2 Falcon](../unlock/register-reference.md#sec2-falcon-bar0-0x840000) |
 | `0x00900200 + n*0x4000` | 每-FBPA `CFG0` | FBPA | CFG0 寄存器的单播实例 *n*（n = 0..23）；两个 SKU 的每个活实例上 `0x07981800` | [每-FBPA 孔径](../unlock/register-reference.md#per-fbpa-unicast-aperture) |
-| `0x00900204 + n*0x4000` | 每-FBPA `CFG1` | FBPA | 单播寻址深度寄存器。**出货驱动从不写它**；驱动路径里一次到 `0x009a0204` 的广播写就够。在一个无 devinit 的免驱动运行时、全部 24 个必须手工写 | [每-FBPA 孔径](../unlock/register-reference.md#per-fbpa-unicast-aperture) |
+| `0x00900204 + n*0x4000` | 每-FBPA `CFG1` | FBPA | 单播寻址深度寄存器。**已发布的驱动从不写它**；驱动路径里一次到 `0x009a0204` 的广播写就够。在一个无 devinit 的免驱动运行时、全部 24 个必须手工写 | [每-FBPA 孔径](../unlock/register-reference.md#per-fbpa-unicast-aperture) |
 | `0x0090020c + n*0x4000` | 每-FBPA `CSTATUS_RAMAMOUNT` | FBPA | **验证目标**：出厂 `0x200`（每 FBPA 512 MiB）、40 GB 档位 `0x800`、64 GB 档位 `0x1000`。被地板清扫的 FBPA 返回一个 `0xbadf20xx` 哨兵 | [验证](../procedures/verify.md) |
 | `0x009a0008` | FB-几何 PLM | FBPA | 锁定 `0xffffff8f`；在净室 `FB_GEO_PLMS` 列表里。它精确守护什么 **not documented** | [FB-几何 PLM 集](../unlock/register-reference.md#the-fb-geometry-plm-set-clean-room-tools-only) |
 | `0x009a000c` | FB-几何 PLM | FBPA | 同上 | [FB-几何 PLM 集](../unlock/register-reference.md#the-fb-geometry-plm-set-clean-room-tools-only) |
 | `0x009a0040` | FBFLCN `MAILBOX0` | FBPA | FB Falcon 邮箱；从 PL0 被阻塞/只读、读 `0x00003fff` | [Falcon 与 Booter](../unlock/falcon-and-booter.md) |
-| `0x009a0148` | **FBPA PLM** | FBPA | 门控 CFG1 的权限掩码。出厂 `0xffffff8f`、**出货 PLM 索引 1、打开到 `0xffffffff`**。也是 `dmem.bin` 缺失时内置回退载荷目标 | [PLM 表](../unlock/register-reference.md#written-by-shipping-master-four-entries-in-this-order-up-to-two-attempts-each) |
+| `0x009a0148` | **FBPA PLM** | FBPA | 门控 CFG1 的权限掩码。出厂 `0xffffff8f`、**已发布的 PLM 索引 1、打开到 `0xffffffff`**。也是 `dmem.bin` 缺失时内置回退载荷目标 | [PLM 表](../unlock/register-reference.md#written-by-shipping-master-four-entries-in-this-order-up-to-two-attempts-each) |
 | `0x009a014c` | FB-几何 PLM | FBPA | `0xffffff8f`；只净室列表 | [FB-几何 PLM 集](../unlock/register-reference.md#the-fb-geometry-plm-set-clean-room-tools-only) |
 | `0x009a0164` | `FBPA_NUM_ACTIVE`（`NUM_ACTIVE_FBPS`） | FBPA | 8 GB 卡上 `0x00000008` | [显存子系统](../hardware/memory-subsystem.md) |
 | `0x009a0168` | PLM 候选 | FBPA | 读 `0xffffffcf`；只出现在 26 寄存器调查里、它守护什么 **not documented** | [26 寄存器 PLM 调查](../unlock/register-reference.md#the-26-register-plm-survey) |
@@ -296,7 +296,7 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 >
 > **DMEM 地址 = 载荷偏移量 + `0x800`。** 缓冲区与 DMEM `0x0800`..`0xffff` 一一对应，因为 `0x0800 + 0xf800 = 0x10000`，恰好是 64 KB DMEM 的顶部。
 
-整个缓冲区先用 dword `0x000004a7` 填满，然后恰好覆写 24 个槽。下面每个值都直接读自 `0001-sec2-postbl-plm-ss-cfg.patch` 里的 `_kgspSec2PostblTimingFillPayload()`，该表在**出货 `master` 和全部十二个归档分支里逐字节相同**。其中两个槽是参数：你要写入的地址和你要写入的值。其余一切都是 ROP 尾。
+整个缓冲区先用 dword `0x000004a7` 填满，然后恰好覆写 24 个槽。下面每个值都直接读自 `0001-sec2-postbl-plm-ss-cfg.patch` 里的 `_kgspSec2PostblTimingFillPayload()`，该表在**已发布的 `master` 和全部十二个归档分支里逐字节相同**。其中两个槽是参数：你要写入的地址和你要写入的值。其余一切都是 ROP 尾。
 
 | 载荷偏移量 | DMEM 地址 | 值 | 角色 |
 |---|---|---|---|
@@ -354,11 +354,11 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 
 | 变体 | 缓冲区大小 | DMA 基址 | 金丝雀值 |
 |---|---|---|---|
-| 出货 `master` 和全部 12 个分支 | `0x0000f800` = 63,488 B | `0x0800` | `0xc0deca7e` |
+| 已发布的 `master` 和全部 12 个分支 | `0x0000f800` = 63,488 B | `0x0800` | `0xc0deca7e` |
 | 净室 ROP 写稿 | `0x0000f800` | `0x0800` | `0xfaceb13d` |
 | 被取代的 `builder.py` / `patcher.py` | `0x0000f700` = 63,232 B | `0x0900` | `0xdead2c20` at `0x2c20` |
 
-被取代工具使用的 `0x0900` DMA 基址，正是某条归档消息把金丝雀地址写成 `0x6440` 的原因：`0x5b40 + 0x900 = 0x6440`。在出货路径上基址是 `0x0800`，金丝雀位于 `0x6340`。
+被取代工具使用的 `0x0900` DMA 基址，正是某条归档消息把金丝雀地址写成 `0x6440` 的原因：`0x5b40 + 0x900 = 0x6440`。在已发布的路径上基址是 `0x0800`，金丝雀位于 `0x6340`。
 
 ---
 

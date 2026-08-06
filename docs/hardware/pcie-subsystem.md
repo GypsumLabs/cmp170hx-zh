@@ -12,7 +12,7 @@
 | 机制 | OTP 熔丝加一个签名的 DevInit 表，固件强制 | 16 条通道中的 12 条出厂时交流耦合电容缺件 |
 | 住在哪 | 硅片和 SPI 闪存 | PCB |
 | 被破解 | 未发布分支上的驱动补丁（仅 Gen2） | 手工焊接 24 × 0402 电容 |
-| 状态 | Gen2 于 2026-07-24 软件达到，**未出货**；Gen3 和 Gen4 未达到 | 自 2026 年 4 月起被多位独立改装者复现 |
+| 状态 | Gen2 于 2026-07-24 软件达到，**未发布**；Gen3 和 Gen4 未达到 | 自 2026 年 4 月起被多位独立改装者复现 |
 | 会改变另一个吗？ | 不会。一张 Gen2 补丁的未改装卡是 Gen2 x4。 | 不会。一张完全改装的无补丁卡是 Gen1 x16。 |
 
 证明两者独立的最清晰单条证据：一张出厂、从未焊接的 8 GB 卡运行 Gen2 代码时报告 `LnkCap: Port #0, Speed 5GT/s, Width x16`，而 `LnkSta` 读 `Speed 5GT/s, Width x4 (downgraded)`。能力寄存器说 x16；训练好的链路说 x4。软件中没有任何东西能弥合那个差距，因为 12 条通道上没有电气路径。
@@ -20,7 +20,7 @@
 > [!WARNING]
 > **实验性**
 >
-> 本页所有关于 Gen2 的内容描述的都是未发布分支代码。出货 `master` 不含任何 PCIe 补丁。参见[Gen2 解锁](../unlock/pcie-gen2.md)。
+> 本页所有关于 Gen2 的内容描述的都是未发布分支代码。已发布的 `master` 不含任何 PCIe 补丁。参见[Gen2 解锁](../unlock/pcie-gen2.md)。
 
 ## 出厂链路状态
 
@@ -104,7 +104,7 @@ pci 0000:0a:00.0: 8.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s PCIe 
 > [!NOTE]
 > **熔丝不是杠杆**
 >
-> Gen2 解锁**在 `OPT_GEN23` 仍读 `0x00000001` 时**工作。出货分支补丁仍尝试写入、仍失败，Gen2 仍训练。可用的杠杆是 CYA_0、LINK_CONFIG_0、XP3G 和 PRIV_MISC_1 覆盖，不是熔丝影子。
+> Gen2 解锁**在 `OPT_GEN23` 仍读 `0x00000001` 时**工作。已发布的分支补丁仍尝试写入、仍失败，Gen2 仍训练。可用的杠杆是 CYA_0、LINK_CONFIG_0、XP3G 和 PRIV_MISC_1 覆盖，不是熔丝影子。
 
 ### DevInit 层
 
@@ -164,7 +164,7 @@ FWSEC-DevInit 在 SEC2 Booter 运行前编程并**锁存** `SUPPORTED_LINK_SPEED
 三条独立证据线排除每一种软件解释：
 
 1. **没有通道熔丝被置位。** `0x00820394` 的 `OPT_PCIE_LANE_DISABLE`、`0x0082082C` 的 `CTRL_OPT_PCIE_LANE` 和 `0x00820C2C` 的 `STATUS_OPT_PCIE_LANE` 在队列中的每一张卡（包括两块 170HX 单元）上都读 `0x00000000`。x16 电气宽度在硅片中是完好的。
-2. **没有代码碰位宽。** 对 Gen2 代码里每一个与 PCIe 相关的写入的一次穷举审计，发现只写 `LINK_CTRL_2 [3:0]`、`LINK_CONFIG_0 [19:18]`、`CYA_0` 位 2、`PRIV_MISC_1` 位 11-14、`PL_LINK_RATE`、`OPT_GEN23`、XP3G 槽 0 和 3、VSEC 设备和层级位，以及配置空间的 `LNKCTL2` TLS。`LINK_CAP` 被读但只测试它的低速度半字节；`LINK_CAP[9:4]` 的 Max Link Width 字段从不被读也不被写，而 `LNKSTA` 被 `PCI_EXP_LNKSTA_CLS` 和 `PCI_EXP_LNKSTA_DLLLA` 掩码，但从不用 `PCI_EXP_LNKSTA_NLW`。对出货 master 和全部十二个未发布分支 grep "capacitor"、"AC coupling"、"solder" 或任何位宽寄存器一无所获。
+2. **没有代码碰位宽。** 对 Gen2 代码里每一个与 PCIe 相关的写入的一次穷举审计，发现只写 `LINK_CTRL_2 [3:0]`、`LINK_CONFIG_0 [19:18]`、`CYA_0` 位 2、`PRIV_MISC_1` 位 11-14、`PL_LINK_RATE`、`OPT_GEN23`、XP3G 槽 0 和 3、VSEC 设备和层级位，以及配置空间的 `LNKCTL2` TLS。`LINK_CAP` 被读但只测试它的低速度半字节；`LINK_CAP[9:4]` 的 Max Link Width 字段从不被读也不被写，而 `LNKSTA` 被 `PCI_EXP_LNKSTA_CLS` 和 `PCI_EXP_LNKSTA_DLLLA` 掩码，但从不用 `PCI_EXP_LNKSTA_NLW`。对已发布的 master 和全部十二个未发布分支 grep "capacitor"、"AC coupling"、"solder" 或任何位宽寄存器一无所获。
 3. **一个已知完好的 x16 主机端口仍以 x4 训练。** 2026-07-26 在一台主机里的两张卡上实测：sysfs 报告两块 GPU 都是位宽 `cur 4 / max 16`，而第二块 GPU 的上游端口本身是 x16 能力的（`cur 4 / max 16`），链路仍以 x4 训练。转接卡和插槽分歧假设由 PCB 分析回答，不由软件中任何东西回答。
 
 ### 部件

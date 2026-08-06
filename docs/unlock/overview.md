@@ -1,10 +1,10 @@
 # 解锁一览
 
-**本页覆盖内容。** CMP 170HX 解锁实际做什么、不做什么、哪些部分已出货、哪些只存在于未发布分支上、两个按 SKU 划分的几何布局档位，以及下一步该去哪里看细节。这是整个解锁部分的入口。这里每个数字都是规范值；更深入的页面才携带证据。
+**本页覆盖内容。** CMP 170HX 解锁实际做什么、不做什么、哪些部分已发布、哪些只存在于未发布分支上、两个按 SKU 划分的几何布局档位，以及下一步该去哪里看细节。这是整个解锁部分的入口。这里每个数字都是规范值；更深入的页面才携带证据。
 
 ## 头条结果
 
-出货的 `cmpunlocker` 补丁集移除 CMP 170HX 上的**两项**出厂限制，并添加一个便利标志。它移除 SM 速度选择节流，在 GA100 硅片上恢复约 30 倍 FP32 FMA 和完整张量吞吐；它还重写帧缓冲几何布局，使 8 GB 卡枚举 **65536 MiB（64 GB）**、10 GB 卡枚举 **40960 MiB（40 GB）**。两者都在每次驱动加载的 GSP 引导路径内自动完成，约一秒钟，无需焊接、不刷 VBIOS、也不伪造签名。
+已发布的 `cmpunlocker` 补丁集移除 CMP 170HX 上的**两项**出厂限制，并添加一个便利标志。它移除 SM 速度选择节流，在 GA100 硅片上恢复约 30 倍 FP32 FMA 和完整张量吞吐；它还重写帧缓冲几何布局，使 8 GB 卡枚举 **65536 MiB（64 GB）**、10 GB 卡枚举 **40960 MiB（40 GB）**。两者都在每次驱动加载的 GSP 引导路径内自动完成，约一秒钟，无需焊接、不刷 VBIOS、也不伪造签名。
 
 机制是对 NVIDIA 自签名的 SEC2 Booter Load ucode 的一次纯数据攻击：驱动把 GSP 签名缓冲区从约 4 KB 放大到 `0x0000f800`，用精心构造的 Falcon ROP 载荷填满它，再让 Booter 签名验证路径中的一次无界 DMA 覆写 Falcon 的栈。这使每次 Booter 运行都产生一条 Heavy-Secure 权限级别的任意 BAR0 写，用于打开四个权限级别掩码。之后，普通的主机寄存器写入便完成实际解锁。全程不撬开晶片、不提取密钥、也从未破坏 RSA 引导 ROM 检查。完整叙述见[如何工作](how-it-works.md)。
 
@@ -17,11 +17,11 @@
 
 | 能力 | 状态 | 它住在哪 | 机制 |
 |---|---|---|---|
-| SM 速度选择节流被移除 | **已出货，稳定** | `master`，补丁 0001 | 打开 `FEAT_OVR_PLM 0x00823804` 后 `SS0 0x0082381c = 0x88888888`、`SS1 0x00823820 = 0x00000008` |
-| 显存几何布局 8 GB 到 64 GB | **已出货，稳定，生产中** | `master`，补丁 0001 | `CFG1 0x009a0204 = 0x02779000`、`LMR 0x00100ce0 = 0x0000020B` |
-| 显存几何布局 10 GB 到 40 GB | **已出货，稳定** | `master`，补丁 0001 | `CFG1 = 0x02669000`、`LMR = 0x0000028A` |
-| 向 CUDA 宣告的容量 | **已出货** | `master`，补丁 0001 + 0003 | GSP 静态信息 `fb_length` 重写加一次晚期 PMA 区域扩展 |
-| 内置持久化模式 | **已出货** | `master`，补丁 0006 | PCI 探测时设置 `NV_FLAG_PERSISTENT_SW_STATE`；不需要守护进程 |
+| SM 速度选择节流被移除 | **已发布，稳定** | `master`，补丁 0001 | 打开 `FEAT_OVR_PLM 0x00823804` 后 `SS0 0x0082381c = 0x88888888`、`SS1 0x00823820 = 0x00000008` |
+| 显存几何布局 8 GB 到 64 GB | **已发布，稳定，生产中** | `master`，补丁 0001 | `CFG1 0x009a0204 = 0x02779000`、`LMR 0x00100ce0 = 0x0000020B` |
+| 显存几何布局 10 GB 到 40 GB | **已发布，稳定** | `master`，补丁 0001 | `CFG1 = 0x02669000`、`LMR = 0x0000028A` |
+| 向 CUDA 宣告的容量 | **已发布** | `master`，补丁 0001 + 0003 | GSP 静态信息 `fb_length` 重写加一次晚期 PMA 区域扩展 |
+| 内置持久化模式 | **已发布** | `master`，补丁 0006 | PCI 探测时设置 `NV_FLAG_PERSISTENT_SW_STATE`；不需要守护进程 |
 | PCIe Gen1 到 Gen2（5 GT/s） | **实验性，仅分支** | `debug-gen2`、`Gen2`、`far`、`deced`；补丁 0007 / 0008 | 25 次 Booter 路由的寄存器写加普通 BAR0 写，然后上游桥重训练 |
 | 超过 x4 的 PCIe 位宽 | **仅硬件** | 根本不是软件 | 24 颗手工焊接的 0402 交流耦合电容 |
 | MIG（多实例 GPU） | **社区发现，未合并** | 树里任何地方都没有 | `0x820840` 的位 0；一位研究者、三份佐证的 `nvidia-smi` 输出 |
@@ -33,7 +33,7 @@
 | 点对点（P2P） | **缺失** | 任何地方都没有 | 这张卡上不存在 |
 | 更高时钟 | **不是解锁的一部分** | NVML，树外 | 通过 `nvmlDeviceSetGpcClkVfOffset` 的 GPC 时钟 VF 偏移；见[调优](../operations/tuning.md) |
 
-解锁刻意不碰两样东西：**时钟速度**和**PCIe 总线速度**。社区频道的规范表述是 "compute limit yes, bus speed no"（算力限制可以、总线速度不行），这与出货机制一致——后者在时钟表或 PCIe 配置块里什么都不写。
+解锁刻意不碰两样东西：**时钟速度**和**PCIe 总线速度**。社区频道的规范表述是 "compute limit yes, bus speed no"（算力限制可以、总线速度不行），这与已发布的机制一致——后者在时钟表或 PCIe 配置块里什么都不写。
 
 ## 两个 SKU 档位
 
@@ -62,9 +62,9 @@
 
 **第三个**设备 ID `10de:20b0` 会被 `install.sh` 的 `lspci` 扫描匹配，但**不会**被解锁：驱动内的门 `_kgspSec2PostblTimingEnabled()` 只接受 `0x20C2` 和 `0x2082`。这样的卡能干净安装、按出厂路径启动、从不触发。任何暗示解锁仅由 `0x20C2` 门控的 README 措辞都已过时。
 
-## 出货的与实验性的
+## 已发布的与实验性的
 
-**出货 `master`** 是应用到一份未修改的 `open-gpu-kernel-modules` tarball 上的六个编号补丁，共 37,415 字节：
+**已发布的 `master`** 是应用到一份未修改的 `open-gpu-kernel-modules` tarball 上的六个编号补丁，共 37,415 字节：
 
 | 补丁 | 大小 | 它做什么 |
 |---|---|---|
@@ -82,7 +82,7 @@
 > [!WARNING]
 > **实验性**
 >
-> **PCIe Gen2** 只在 `Gen2` 家族出货。补丁 `0007-pcie-gen2.patch` 存在于 `debug-gen2`、`Gen2`、`far` 和 `deced` 上；`0008-pcie-gen2-probe-retrain.patch` 在 `Gen2`、`far` 和 `deced` 上。Gen2 家族的 PLM 表从四项增至九项。Gen2 不确定、在 VM 直通下无法工作，而且四个分支中两个（`Gen2` 和 `debug-gen2`）把 `RMPcieLinkSpeed` 设为 Gen1 枚举 `0x1`，`far` 和 `deced` 则设为 `0x2`；至今没有任何 A/B 启动测试定论哪个值正确。见[PCIe Gen2](pcie-gen2.md)。
+> **PCIe Gen2** 只存在于 `Gen2` 家族分支。补丁 `0007-pcie-gen2.patch` 存在于 `debug-gen2`、`Gen2`、`far` 和 `deced` 上；`0008-pcie-gen2-probe-retrain.patch` 在 `Gen2`、`far` 和 `deced` 上。Gen2 家族的 PLM 表从四项增至九项。Gen2 不确定、在 VM 直通下无法工作，而且四个分支中两个（`Gen2` 和 `debug-gen2`）把 `RMPcieLinkSpeed` 设为 Gen1 枚举 `0x1`，`far` 和 `deced` 则设为 `0x2`；至今没有任何 A/B 启动测试定论哪个值正确。见[PCIe Gen2](pcie-gen2.md)。
 
 > [!WARNING]
 > **实验性**
@@ -137,7 +137,7 @@
 | [如何工作](how-it-works.md) | 按启动顺序的完整端到端机制，以及每一步为何必要 |
 | [Falcon 与 Booter](falcon-and-booter.md) | SEC2 硬件接口、booter 提取与解密、内部结构、漏洞 |
 | [ROP 链](rop-chain.md) | 载荷布局、gadget、栈金丝雀破解、终止符、写预算 |
-| [权限级别掩码](privilege-level-masks.md) | PLM 是什么、四项出货表、九项 Gen2 表、FLR 存活 |
+| [权限级别掩码](privilege-level-masks.md) | PLM 是什么、四项已发布的表、九项 Gen2 表、FLR 存活 |
 | [显存几何布局](memory-geometry.md) | CFG1 和 LMR 编码、每-FBPA 传播、为什么 LMR 是必需的、80 GB 墙 |
 | [算力节流](compute-throttle.md) | SS0/SS1 语义、速度选择熔丝、门链、实测吞吐 |
 | [驱动补丁](driver-patches.md) | 全部六个补丁逐 hunk、`install.sh`、`build.sh`、`remove.sh`、版本移植 |

@@ -217,7 +217,7 @@ cat /sys/bus/pci/devices/0000:$BDF/current_link_speed
 
 ### 2.8 "所有 PLM 必须显示 `0xffffffff`" { #benign-wprcfg }
 
-第三方文档（`docs/DEBUGGING.md`、`docs/ARCHITECTURE.md`、以及出货 README 里一个更温和的措辞）说每个 PLM 都应读 `0xffffffff`。那过于笼统。出货 `plmTable[]` 是：
+第三方文档（`docs/DEBUGGING.md`、`docs/ARCHITECTURE.md`、以及已发布的 README 里一个更温和的措辞）说每个 PLM 都应读 `0xffffffff`。那过于笼统。已发布的 `plmTable[]` 是：
 
 ```c
 { 0x001fa7ccU, 0xfffff0ffU, "WPR_CFG" },
@@ -326,9 +326,9 @@ cat /proc/driver/nvidia/version
 
 **原因。** 更老 NVIDIA 驱动和/或更老 `cmpunlocker` systemd 服务的残留。
 
-**修复。** 移除所有旧内核模块**和**旧 `cmpunlocker` 服务，然后重装。出货 `remove.sh` 现在两者都做：它停止、禁用并删除 `/etc/systemd/system/cmpunlocker.service`、杀掉 `/opt/cmpunlocker/daemon/watchdog.py`、移除 `/lib/modules/*/updates/cmpunlocker/`、逐内核跑 `depmod -a`、重建 initramfs、并重载出厂模块。见[卸载](uninstall.md) 和[恢复](recovery.md)。
+**修复。** 移除所有旧内核模块**和**旧 `cmpunlocker` 服务，然后重装。已发布的 `remove.sh` 现在两者都做：它停止、禁用并删除 `/etc/systemd/system/cmpunlocker.service`、杀掉 `/opt/cmpunlocker/daemon/watchdog.py`、移除 `/lib/modules/*/updates/cmpunlocker/`、逐内核跑 `depmod -a`、重建 initramfs、并重载出厂模块。见[卸载](uninstall.md) 和[恢复](recovery.md)。
 
-出货工具不需要 systemd 守护进程：补丁 0006 为两个设备 ID 设置 `NV_FLAG_PERSISTENT_SW_STATE`、那实际就是内置持久化模式。
+已发布的工具不需要 systemd 守护进程：补丁 0006 为两个设备 ID 设置 `NV_FLAG_PERSISTENT_SW_STATE`、那实际就是内置持久化模式。
 
 ### 3.8 安装器拒绝运行 { #install-refuses }
 
@@ -403,7 +403,7 @@ NVRM: rm_init_adapter failed, device minor number 0
 
 **修复（净室时代）。** 完全拆掉驱动，然后经 `echo 1 > /sys/bus/pci/devices/0000:BDF/reset` FLR，或一次冷断电循环。
 
-出货补丁还在 PLM 循环前从 `0x001fa824` / `0x001fa828` 保存一次 WPR2 低/高、在**每一次** Booter Load 尝试前重写两个寄存器，并在循环后再重写一次。它从不清除它们。
+已发布的补丁还在 PLM 循环前从 `0x001fa824` / `0x001fa828` 保存一次 WPR2 低/高、在**每一次** Booter Load 尝试前重写两个寄存器，并在循环后再重写一次。它从不清除它们。
 
 ### 4.2 Xid 119，60 秒超时，函数 4097 { #xid119-60s }
 
@@ -457,10 +457,10 @@ falconMailbox 0:00000031
 **修复（无驱动路径）。** 在载荷偏移量 `0x1B83`（DMEM `0x2383`）和 `0x8608`（DMEM `0x8E08`）处包含原始出厂表内容。那些内容不在任何平面文件里：它们由引导加载器在运行时从引导加载器代码和/或引导描述符里的常量生成，所以重建它们本身就是一个大子问题。应用修复后研究者立即报告让 GSP-RM 启动了。
 
 > [!NOTE]
-> **在出货路径上不可达**
+> **在已发布的路径上不可达**
 >
-> 出货的驱动内补丁从不撞 `0x35`。`kgspSec2PostblTimingRebuildStockSignature()` 在真实 GSP-RM 引导前恢复真实的 4096 字节签名，所以那次引导的 DMA 只到 DMEM `0x17FF`、描述符表保持完整。`0x1B83`/`0x8608` 恢复不在出货载荷里、那里也不需要。
-> *（置信度：中等；从出货代码加 2026-07-20 根因分析推理、未独立插桩。）*
+> 已发布的驱动内补丁从不撞 `0x35`。`kgspSec2PostblTimingRebuildStockSignature()` 在真实 GSP-RM 引导前恢复真实的 4096 字节签名，所以那次引导的 DMA 只到 DMEM `0x17FF`、描述符表保持完整。`0x1B83`/`0x8608` 恢复不在已发布的载荷里、那里也不需要。
+> *（置信度：中等；从已发布的代码加 2026-07-20 根因分析推理、未独立插桩。）*
 
 ### 4.6 Booter 错误 `0x54` { #booter-0x54 }
 
@@ -588,7 +588,7 @@ kgspBootstrap_TU102: [sigtest] DEVICE IS UP: GSP booted and RISCV is active
 
 这次运行在 580.167.08 上演示了漏洞。它 60 秒后仍撞上通常的 Xid 119 / WPR2-already-up 路径。
 
-出货签名缓冲区是 `0xf800` 字节（`SEC2_POSTBL_TIMING_SIGNATURE_SIZE 0x0000f800ULL`、63,488 字节）、**不是** `0xf700`。一次社区复现受阻于 GSP 二进制里 `fwsignature_ga100` 节只有 `0x1000` 字节、而载荷硬编码为 `0xf700`；解决方案是停止补丁固件，改为从驱动放大 `pSignatureMemdesc`。
+已发布的签名缓冲区是 `0xf800` 字节（`SEC2_POSTBL_TIMING_SIGNATURE_SIZE 0x0000f800ULL`、63,488 字节）、**不是** `0xf700`。一次社区复现受阻于 GSP 二进制里 `fwsignature_ga100` 节只有 `0x1000` 字节、而载荷硬编码为 `0xf700`；解决方案是停止补丁固件，改为从驱动放大 `pSignatureMemdesc`。
 
 ---
 
@@ -669,7 +669,7 @@ FLR 清除 SEC2 复位-PLM 污染：`0x8f` 变成 `0xff`。
 
 ### 5.5 其它驱动错误码 { #codes-other }
 
-**CUDA 失败上的 `NV_ERR_INSUFFICIENT_RESOURCES (0x1A)`** 指向 WPR meta 第二遍没有拾起解锁的容量。用 `dmesg | grep -E 'Xid|NVRM.*rror'` 检查。*（置信度：中等；来自出货指南、无独立复现加修复。）*
+**CUDA 失败上的 `NV_ERR_INSUFFICIENT_RESOURCES (0x1A)`** 指向 WPR meta 第二遍没有拾起解锁的容量。用 `dmesg | grep -E 'Xid|NVRM.*rror'` 检查。*（置信度：中等；来自已发布的指南、无独立复现加修复。）*
 
 **来自 `NVA06F_CTRL_CMD_STOP_CHANNEL` 的 `NV_ERR_RESET_REQUIRED (0x62)`** 在 `nv_gpu_ops.c:11190`、当分配越过设备真实解码边界时出现（一张过度配置的卡上在 40 GB 观察到）：
 
@@ -709,7 +709,7 @@ sudo setpci -s <bdf> COMMAND=0x0546
 
 一个 `ensure_bus_master()` 调用被加到 refire 工具的 `prepare()` 里、让它自愈。修复后 `resetPLM` 每次发射都停在 `0xff`。
 
-这个坑适用于独立 / 无驱动工具。出货的驱动内补丁在活驱动内运行、那里总线主控按定义已开。
+这个坑适用于独立 / 无驱动工具。已发布的驱动内补丁在活驱动内运行、那里总线主控按定义已开。
 
 ### 6.2 驱动仍已加载时发射 { #driver-loaded }
 
@@ -807,7 +807,7 @@ check KFUSE_LOAD_CTL bit 0 set, bit 1 clear
 
 **原因。** FB-几何 PLM **不在**常开（AON）岛里、而特性覆盖 PLM `0x00823804` **在**。一条打开 PLM、做一次 FLR、然后写几何的分阶段流水线会跨 FLR 丢掉 FB-几何 PLM 状态。
 
-**修复。** 绝不用一次复位把 PLM 打开和几何写分开。出货补丁在一次 GSP 引导里做两者。见[恢复：什么挺过一次复位](recovery.md#state-persistence)。
+**修复。** 绝不用一次复位把 PLM 打开和几何写分开。已发布的补丁在一次 GSP 引导里做两者。见[恢复：什么挺过一次复位](recovery.md#state-persistence)。
 
 ### 6.9 删除或不匹配的固件 { #firmware-deleted }
 
@@ -845,7 +845,7 @@ sudo cp $GSP_DIR/gsp_tu10x.bin.cmpunlocker.bak $GSP_DIR/gsp_tu10x.bin
 | `Installed driver is X, but cmpunlocker requires one of: 610.43.03,610.43.02.` | 精确字符串版本白名单 | 安装 610.43.03 或 610.43.02 nvidia-open |
 | 内核头文件错误、`/lib/modules/$(uname -r)/build` 缺失 | 头文件没为**运行中**内核安装 | 安装匹配头文件，或引导你为之构建的内核 |
 | 补丁 hunk 被拒 | 错误的上游 tarball、或一个陈旧的 `.build/` 树 | 脚本每次运行重新解压；检查你在你以为的分支上 |
-| `python3: command not found` | `build.sh` 需要 `python3` | 安装它。**master 不用 PyYAML**、出货脚本里**没有显式 GCC 版本检查** |
+| `python3: command not found` | `build.sh` 需要 `python3` | 安装它。**master 不用 PyYAML**、已发布的脚本里**没有显式 GCC 版本检查** |
 | 首次安装无网络 | Tarball 下载 | 预置 `driver/.build/` |
 | `No initramfs tool found, rebuild manually before rebooting` | `update-initramfs`、`dracut` 和 `mkinitcpio` 都不存在 | 手工重建 initramfs，见[3.4](#initramfs) |
 | Ubuntu 经 mainline 交换内核后构建坏 | 内核交换破坏了 NVIDIA 610 open 驱动构建 | 用发行版内核 |
@@ -1032,7 +1032,7 @@ Xid 154 是过度配置 80 GB 配置上 CUDA 显存测试后的主导失败、�
 
 ### 10.10 纯粹作为运行时变通方案存在的补丁 { #runtime-patches }
 
-三个出货补丁只存在来修复解锁后的运行时故障。如果你在调试一个运行时故障，知道这些已经应用了：
+三个已发布的补丁只存在来修复解锁后的运行时故障。如果你在调试一个运行时故障，知道这些已经应用了：
 
 | 补丁 | 它做什么 |
 |---|---|
@@ -1167,7 +1167,7 @@ VM 里显存和算力解锁工作；PCIe Gen2 不，见[8.4](#gen2-vm)。
 > * **缺少 iGPU 或 BMC 显示设备会搅乱 GSP 吗？** 一个观察、无确认、无反驳、无错误字符串。一台机器上、BIOS 里禁用 BMC 显示设备的一次 A/B 能回答它。
 > * **80 GB 不稳定：`cuda_memtest` 在重启后立即一次通过全部 80 GB、随后每次重试失败。** 功率限制到 100 W 和供电假设都已被排除。重启依赖指向显存训练或刷新状态。这是 80 GB 档位最具体的剩余线索。见[80 GB](../frontier/80gb.md)。
 > * **Ubuntu-对比-Arch 显存解锁失败。** 一种解读：两个 PCIe 设备之间的一次显存地址冲突，一个非-170HX、非-2080 设备（大概一个 M.2 SSD）试图在 IOMMU 拒绝的地址读。受影响的测试者自己的解读：Ubuntu 安装就是配置错了。只有变通方案（在另一个 M.2 SSD 上的不同 OS 安装）被验证。当时推荐的第一诊断：`lspci -s 06:00.0`。
-> * **PLM 的预期数量。** 独立工具报告 "9/9 open"、一位审查者预期 "0 or 26, not 1"（0 或 26、不是 1）。出货的驱动内路径打开恰好 4 个。这些是不同的 PLM 清单，但记录里没有任何东西把 9 条目或 26 条目清单映射到出货的 4 条目 `plmTable`。
+> * **PLM 的预期数量。** 独立工具报告 "9/9 open"、一位审查者预期 "0 or 26, not 1"（0 或 26、不是 1）。已发布的驱动内路径打开恰好 4 个。这些是不同的 PLM 清单，但记录里没有任何东西把 9 条目或 26 条目清单映射到已发布的 4 条目 `plmTable`。
 
 整个项目未解决项的完整清单见[未解问题](../frontier/open-questions.md) 和[状态板](../frontier/status-board.md)。
 

@@ -10,7 +10,7 @@ CMP 170HX 如何从一颗熔丝削弱矿卡变成一张 64 GB、全速 GA100 的
 |---|---|
 | **2026-07-12** | 算力解锁在硬件上工作。一个手动五步 TTY 流程抬起 1/32 FP32 节流；测到 12.28 TFLOPS SGEMM |
 | **2026-07-14 / 15** | `cmpunlocker` 公开。首个发布是一个**免驱动 Python** 算力解锁器、完全不打驱动补丁 |
-| **2026-07-18** | 显存几何布局出货。8 GB 到 **64 GB**、10 GB 到 **40 GB**、驱动内、一天内 |
+| **2026-07-18** | 显存几何布局已发布。8 GB 到 **64 GB**、10 GB 到 **40 GB**、驱动内、一天内 |
 | **2026-07-23 / 24** | 免驱动路径作为独立 Python refire 链回归、**PCIe Gen2** 被宣布 |
 | **2026-07-26 / 27** | Gen2 分支谱系稳定；在一张电容改装卡上捕获一个 Gen2 x16 观察 |
 
@@ -22,7 +22,7 @@ CMP 170HX 如何从一颗熔丝削弱矿卡变成一张 64 GB、全速 GA100 的
 
 | 日期 | 事件 |
 |---|---|
-| **2021-04-23** | 最早出货 10 GB 卡的 VBIOS 构建日期（`92.00.66.00.02`、设备 `0x2082`） |
+| **2021-04-23** | 最早已发布的 10 GB 卡的 VBIOS 构建日期（`92.00.66.00.02`、设备 `0x2082`） |
 | **2021-05-14** | 8 GB 卡的 VBIOS 构建日期（`92.00.67.00.01`、设备 `0x20C2`） |
 | **2021-09-01** | **CMP 170HX 发布。** GA100、826 mm²、542 亿晶体管、TSMC 7 nm N7、8 GB 或 10 GB HBM2e、250 W、无显示输出、无 DirectX/Vulkan/OpenGL/NVENC/NVDEC 暴露、为 Ethash 挖矿出售 |
 | **2021-11-01** | 第三个 VBIOS 修订 `92.00.6D.00.09` 存在、但不在归档对比集里 |
@@ -39,7 +39,7 @@ CMP 170HX 如何从一颗熔丝削弱矿卡变成一张 64 GB、全速 GA100 的
 |---|---|
 | **2026-03** | 工作重新在 NVIDIA-patcher 问题跟踪器、issue #73 上开始 |
 | **2026-04** | 开发移到一个 Discord 服务器 |
-| **2026-04-04** | 一份 AI 生成的写稿得出结论 "the FP throttle is hardware enforced and can't be overridden"（FP 节流是硬件强制、无法被覆盖）从 issue #73 被链接。它自己的页脚记录测试环境：Ubuntu 22.04、内核 5.15.0-174-generic、驱动 535.288.01、CMP 170HX（`0x2082`）、2026 年 4 月。后来被出货算力解锁彻底反驳 |
+| **2026-04-04** | 一份 AI 生成的写稿得出结论 "the FP throttle is hardware enforced and can't be overridden"（FP 节流是硬件强制、无法被覆盖）从 issue #73 被链接。它自己的页脚记录测试环境：Ubuntu 22.04、内核 5.15.0-174-generic、驱动 535.288.01、CMP 170HX（`0x2082`）、2026 年 4 月。后来被已发布的算力解锁彻底反驳 |
 | **2026-05** | **决定性的密码学发现**：一条读取 AES 加密、RSA 签名的 `booter_load` 代码的路径 |
 | **2026-05-05、2026-05-07** | **熔丝调查开始。** 两张物理 CMP 170HX 10 GB 卡用 `tools/mmio-probe/probe.sh` 完全探测、各 120 个寄存器。120 个寄存器中 107 个在两单元之间逐字节相同；全部 13 个差异是按晶片分级伪影。这是准许把配方从一张卡转移到另一张的结果 |
 | **2026-05-31** | **熔丝调查完成。** 两张物理 Drive A100 32 GB（`GA100-550F-A1`、PG199）被探测、加入 11 张租用 Ampere 卡、得到一张 **15 卡、120 寄存器** 跨变体表。恰好五个寄存器组把一张 170HX 与一颗同硅片 A100 区分开：SM 速度选择、PCIe 引导代、NVLink 禁用、ECC 使能、FBPA CFG1 几何布局。`z1_dump_and_parse_vbios.sh` 和 `z2_parse_vbios_table.py` 同日落地、连同六个固件侧攻击路径的调查（三个 DFA 毛刺路线、一条 CH341A 刷写路径、电容改装、和软件 FMA 变通方案） |
@@ -70,7 +70,7 @@ CMP 170HX 如何从一颗熔丝削弱矿卡变成一张 64 GB、全速 GA100 的
 
 | 日期和时间 | 事件 |
 |---|---|
-| **2026-07-01T12:40:37Z** | **原始调试 booter 反汇编被贴出**：`booter_load_ga100_dbg_seccode.fuc5.asm`、545,149 字节、用 `envytools/envydis` 瞄准 `fuc5` 产生。出货利用后来用的每个 gadget 地址都是这个文件里的一条指令边界 |
+| **2026-07-01T12:40:37Z** | **原始调试 booter 反汇编被贴出**：`booter_load_ga100_dbg_seccode.fuc5.asm`、545,149 字节、用 `envytools/envydis` 瞄准 `fuc5` 产生。已发布的利用后来用的每个 gadget 地址都是这个文件里的一条指令边界 |
 | **2026-07-01** | 干净提取路径在频道内被接受：调试 `booter_load` 是 NVIDIA 自己 `.ko` 里的一个 C 数组、发布为 `g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c`。弄懂它花了两天。同日贴出的一个 4,196 字节描述符 blob 结果大多是零 |
 | **2026-07-02** | **调试等于生产、在要紧处。** 两个二进制大小完全相同、一个纯粹从调试反汇编构建的链在生产硅片上运行。没有这个净室方法就会死。寄存器来源标准同日被接受：diff 一颗 A100 的 BAR0 对一张 170HX 的、把一切改成 A100 值 |
 | **2026-07-03T17:12:52Z** | 带注释反汇编被贴出、取代一份其作者标记为未验证的 LLM 生成概览 |
@@ -112,11 +112,11 @@ FLR 意思是 `echo 1 | sudo tee /sys/bus/pci/devices/0000:${PCI}/reset`。它�
 | **2026-07-12** | 在一个无 devinit 的免驱动上下文里、单独对 `0x009A0204` 的一次广播写不移动 CSTATUS；每个每-FBPA 实例必须在 `0x00900204 + n*0x4000`、n = 0..23 处写。驱动路径里单次广播写就够 |
 | **2026-07-13** | **LMR 连贯性。** CFG1 被写、LMR 留在 `0x288` 时、GSP-RM 在 `kgspBootstrap` 期间把 CSTATUS 从 `0x800` 回退到 `0x200`。LMR 连贯设成 `0x28A` 时、插桩转储在全部四个检查点保持 `CSTATUS=0x800 LMR=0x28a CFG1=0x2669000 WprMeta.fbSize=0xa00000000`。一个平行净室服务器的算力解锁在此日期或之前公开、那是开源化的陈述论证 |
 | **2026-07-14T21:47:02-07:00** | **`cmpunlocker` 初始提交 `9b9fb2f`。** 同日频道内宣布（宣布窗口和提交的 UTC 时间、2026-07-15T04:47:02Z、不干净排序；宣布时间近似）。发布是**免驱动 Python**：`payload/build.py`、`gsp_patch.py`、`pipeline.py`、`bar0.py`、`driver.py`、`unlock/compute.py` 和一个 `daemon/` 看门狗、完全不打驱动补丁 |
-| **2026-07-14** | 几何布局被测量**不**挺过一次 FLR：CFG1 把 `0x2779000` 回退到 `0x2449000`、LMR 把 `0x20b` 回退到 `0x288`、而 SS0 和 SS1 都挺过。那个不对称是算力先于显存出货的原因。一个算力解锁 shell 脚本作为 `CMP170HX_Compute_Unlock_v8_3.sh` 泄露、随后迅速删除 |
+| **2026-07-14** | 几何布局被测量**不**挺过一次 FLR：CFG1 把 `0x2779000` 回退到 `0x2449000`、LMR 把 `0x20b` 回退到 `0x288`、而 SS0 和 SS1 都挺过。那个不对称是算力先于显存发布的原因。一个算力解锁 shell 脚本作为 `CMP170HX_Compute_Unlock_v8_3.sh` 泄露、随后迅速删除 |
 | **2026-07-15** | 一个 `cmpunlocker` 仓库被分享的一小时内、测试者报告变砖机器和不引导的 10 GB 卡。那个窗口没确立根因、但 10 GB（`0x2082`）支持还不存在于任何驱动路径、所以怀疑方向正确。同日出现 fork。每-FBPA CFG0 在每张活分区上测得 `0x07981800` 相同 |
 | **2026-07-15T18:48:10Z** | `ROP_CHAINS_1180f8` 写稿在散文中记录 `+0x18` DMEM 帧步长 |
 | **2026-07-16T06:07:12Z`** | 论文作为 `main.pdf` 贴进净室服务器 |
-| **2026-07-16** | **没有 PLM 把常开状态授予 FB 几何布局。** 六个 FB-几何 PLM 加 `FUSE_SS_PLM` 全部打开、CFG1、CSTATUS 和 LMR 仍挺 FLR 时回退、从不在冷启动持久（`geo_flr_survival_map_20260716.sh`）。这是出货设计在每次模块加载、于 GSP 引导路径内重新应用几何布局的结构原因。一份 **26 个不同 PLM 寄存器** 的目录同日完成 |
+| **2026-07-16** | **没有 PLM 把常开状态授予 FB 几何布局。** 六个 FB-几何 PLM 加 `FUSE_SS_PLM` 全部打开、CFG1、CSTATUS 和 LMR 仍挺 FLR 时回退、从不在冷启动持久（`geo_flr_survival_map_20260716.sh`）。这是已发布的设计在每次模块加载、于 GSP 引导路径内重新应用几何布局的结构原因。一份 **26 个不同 PLM 寄存器** 的目录同日完成 |
 | **2026-07-17** | **NVIDIA 对至少一个 fork 发出 DMCA 删除通知**、把那个仓库带下线。主机 PL0 对 CFG1 的写被复现为直到 FB-几何 PLM 打开前静默丢弃（`Write failed - wrote 0x2779000, read 0x2449000`、三次、无错误信号）。流传最广的架构笔记以一个约 10% 已被证明的自我评级发布 |
 
 > [!WARNING]
@@ -133,14 +133,14 @@ FLR 意思是 `echo 1 | sudo tee /sys/bus/pci/devices/0000:${PCI}/reset`。它�
 | 时间 | 事件 |
 |---|---|
 | **18:01:15** | `patch.diff` 被贴到 `#general-how-to-cleanroom`、从一个泄露的重分发包提取 |
-| **18:26:26** | 成为出货补丁集的每个文件携带这个 `diff -Naur` 头 mtime。一棵树、写于一个瞬间 |
+| **18:26:26** | 成为已发布的补丁集的每个文件携带这个 `diff -Naur` 头 mtime。一棵树、写于一个瞬间 |
 | **18:40:16** | LAPSUS$ 来源评估被贴出、在 `patch.diff` 后 39 分钟 |
 | **19:11:01** | `06fabf2 "WORKING MEMORY UNLOCK"` 在 `memory` 分支、贴出后 **70 分钟**。提交删除整个免驱动 Python 流水线（`payload/*.py`、`daemon/` 看门狗、`.pylintrc`）并代之以六个驱动补丁 |
 | **20:51:36** | `6b7d9ee "FULL WORKING THING"` |
 | **21:37:17** | `99338ef "Goodbye lint"` 删除 `.github/workflows/pylint.yml` 和 `tests.yml`；`8206c16 "Goodbye tests"` 16 秒后跟随、移除最后一个测试文件 |
 | **21:46:49** | `e4026e5 "Memory working!"` 合并进 `master` |
 
-那晚出货、且仍在出货的：
+那晚发布、且至今仍是发布版的配置：
 
 | 卡 | PCI ID | 出厂 | 解锁 | CFG1 `0x009a0204` | LMR `0x00100ce0` | `targetFbBytes` |
 |---|---|---|---|---|---|---|
@@ -168,7 +168,7 @@ FLR 意思是 `echo 1 | sudo tee /sys/bus/pci/devices/0000:${PCI}/reset`。它�
 > [!WARNING]
 > **实验性**
 >
-> Gen2 是真实的、被复现，且**未出货**。`master` 只携带补丁 `0001` 到 `0006`，`constants.yaml` 里没有 `pcie:` 块。`0007-pcie-gen2.patch` 存在于 `debug-gen2`、`Gen2`、`far` 和 `deced`；`0008-pcie-gen2-probe-retrain.patch` 在 `Gen2`、`far` 和 `deced`。安装 Gen2 意味着跑一个未发布分支。见[PCIe Gen2](../unlock/pcie-gen2.md)。
+> Gen2 是真实的、被复现，且**未发布**。`master` 只携带补丁 `0001` 到 `0006`，`constants.yaml` 里没有 `pcie:` 块。`0007-pcie-gen2.patch` 存在于 `debug-gen2`、`Gen2`、`far` 和 `deced`；`0008-pcie-gen2-probe-retrain.patch` 在 `Gen2`、`far` 和 `deced`。安装 Gen2 意味着跑一个未发布分支。见[PCIe Gen2](../unlock/pcie-gen2.md)。
 
 ---
 
@@ -186,7 +186,7 @@ FLR 意思是 `echo 1 | sudo tee /sys/bus/pci/devices/0000:${PCI}/reset`。它�
 
 ## 里程碑总结
 
-| 成就 | 日期 | 持久性 | 在 `master` 上出货？ |
+| 成就 | 日期 | 持久性 | 在 `master` 上已发布的？ |
 |---|---|---|---|
 | FP32 FMA 编译时变通方案（约 16x、6.25 TFLOPS） | 2023-10-27 | 源码级、每应用 | 不是一个驱动特性 |
 | 算力节流移除（SS0/SS1、全速） | 2026-07-12 | 挺过 FLR（常开岛） | **是** |
@@ -202,7 +202,7 @@ FLR 意思是 `echo 1 | sudo tee /sys/bus/pci/devices/0000:${PCI}/reset`。它�
 > [!CAUTION]
 > **80 GB 档位不是一个里程碑**
 >
-> `80` 分支报告约 81920 MiB 和 85,545,582,592 字节，`cudaMalloc` of 77 GiB 成功；但在 80 GB，触碰超过约 40 GB 的内核会造成致命 GPU 丢失，与功耗上限无关。报告的 Xid 码包括 Xid 31（被描述为无害）和 CUDA 显存测试后的 Xid 154；主导报告症状是挂起。Xid 31 单独出现是旁观者提出的，并未被持有故障卡的操作者佐证为*那个*签名。`cuda_memtest` 除非封顶在 39 GB 否则挂起。40 GB 反而出货。见[80 GB 问题](../frontier/80gb.md)。
+> `80` 分支报告约 81920 MiB 和 85,545,582,592 字节，`cudaMalloc` of 77 GiB 成功；但在 80 GB，触碰超过约 40 GB 的内核会造成致命 GPU 丢失，与功耗上限无关。报告的 Xid 码包括 Xid 31（被描述为无害）和 CUDA 显存测试后的 Xid 154；主导报告症状是挂起。Xid 31 单独出现是旁观者提出的，并未被持有故障卡的操作者佐证为*那个*签名。`cuda_memtest` 除非封顶在 39 GB 否则挂起。发布的反而是 40 GB。见[80 GB 问题](../frontier/80gb.md)。
 
 ---
 

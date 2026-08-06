@@ -283,7 +283,7 @@ GA100 使用 **Turing 代**固件：GSP 块是 `gsp_tu10x.bin`、SEC2 booter 是
 | `0x7df3` | `memcmp_ct` | 恒定时间比较 |
 | `0x7e76` | `secure_teardown` | 永不返回 |
 | `0x7eef` | 密码自清零扫描 | 在 `secure_teardown` 内 |
-| `0x7f2f` | `secure_teardown` 里的退出 gadget | 出货载荷的终止符 |
+| `0x7f2f` | `secure_teardown` 里的退出 gadget | 已发布的载荷的终止符 |
 | `0x7f82` | **`main`** | |
 | `0x8137` | `booter_load_wrap` | |
 | `0x815a` | `booter_load_wrap` 的金丝雀检查尾 / 栈吞噬器 | 见下面的注 |
@@ -372,7 +372,7 @@ I[0x12100] = 0x00011100
 | `0x0700` | 映像描述符 | `ls_sig_verify` 要求 `r10 == 0x700` |
 | **`0x0800`** | **GSP-RM LS 签名缓冲区** | **DMA 目的地。利用。** |
 | `0x103c` 起 | 密码会话描述符 | 字段 `0x1004`、`0x107c`、`0x1080`、`0x1100` |
-| `0x1900` | `f100` 字段保存槽 | 出货载荷把 `0x00000007` 种在这 |
+| `0x1900` | `f100` 字段保存槽 | 已发布的载荷把 `0x00000007` 种在这 |
 | `0x1904` / `0x190c` / `0x1914` | `va_to_pa_walk` 的 PTE 缓存 | |
 | `0x1a00` / `0x2a00` / `0x3a00` | 页缓冲 | |
 | `0x2383` | 寄存器描述符表 | 被 `0xF800` 载荷粉碎；错误 `0x35` 的来源 |
@@ -507,7 +507,7 @@ SEC2 复位源 PLM 门控 `+0x3c0` 处的 SEC2 `FALCON_ENGINE` 复位控制。�
 >
 > 一份报告说 SEC2 在 `0x8f` 时可重载（Hello World 触发、MAILBOX0 从 `0x0` 变 `0x31`）；另一份说加载新 ucode 需要 SFTRESET、而复位 PLM 门控它，并报告 `NS load mismatch (HS-locked, needs --flr)`。一个可能的调和——NS 重载有效、HS 签名重载无效——被提出但从未定论。一次受控实验能回答它：在一个已知 `0x8f` 下，背靠背加载一个 NS ucode 和一个 HS 签名 ucode，并记录每个的 `CPUCTL` 和加载器错误字符串。
 
-出货驱动完全绕开这套纪律：它**从不读或写 `0x008403C4`**。对出货仓库 grep `0x008403c4`、`0x001180f8`、`0x001fa81c` 或 `0x001fa820` 会得到零引用。驱动内路径改走驱动自己的 `kflcnReset`/FWSEC 序列来重发 Booter Load，补丁 `0002` 通过记录 `SEC2_DEBUG: kflcnReset for FWSEC: 0x%x` 和 `SEC2_DEBUG: kflcnResetIntoRiscv: 0x%x` 确认这一点。
+已发布的驱动完全绕开这套纪律：它**从不读或写 `0x008403C4`**。对已发布的仓库 grep `0x008403c4`、`0x001180f8`、`0x001fa81c` 或 `0x001fa820` 会得到零引用。驱动内路径改走驱动自己的 `kflcnReset`/FWSEC 序列来重发 Booter Load，补丁 `0002` 通过记录 `SEC2_DEBUG: kflcnReset for FWSEC: 0x%x` 和 `SEC2_DEBUG: kflcnResetIntoRiscv: 0x%x` 确认这一点。
 
 ---
 
@@ -536,9 +536,9 @@ DMA 目标 `0x800` 由 IMEM `0x37ad` 处的 `mov $r10 0x800` 设置，随后 `0x
 
 ---
 
-## 12. 出货驱动如何调用 Booter Load
+## 12. 已发布的驱动如何调用 Booter Load
 
-本节一切直接读自出货 `master` 上的 `driver/patches/0001-sec2-postbl-plm-ss-cfg.patch` 和 `0002-booter-verify.patch`。完整补丁集见[驱动补丁](driver-patches.md)。
+本节一切直接读自已发布的 `master` 上的 `driver/patches/0001-sec2-postbl-plm-ss-cfg.patch` 和 `0002-booter-verify.patch`。完整补丁集见[驱动补丁](driver-patches.md)。
 
 ### 12.1 门
 
@@ -595,7 +595,7 @@ DMA 目标 `0x800` 由 IMEM `0x37ad` 处的 `mov $r10 0x800` 设置，随后 `0x
     return NV_ERR_INVALID_STATE;
     ```
 
-    变成 `NV_PRINTF(LEVEL_WARNING, "WPR2 already up before GSP boot; continuing for recovery\n")`。重复的 booter 发射会让 WPR2 保持 up，每次发射都会重新划分它。空/INIT 状态是 LO `0x0fffffff`、HI `0`，而 **HI = 0 会让 `kgspIsWpr2Up()` 返回 false**。出货驱动恢复*保存的*那一对，而非写一个空区域。
+    变成 `NV_PRINTF(LEVEL_WARNING, "WPR2 already up before GSP boot; continuing for recovery\n")`。重复的 booter 发射会让 WPR2 保持 up，每次发射都会重新划分它。空/INIT 状态是 LO `0x0fffffff`、HI `0`，而 **HI = 0 会让 `kgspIsWpr2Up()` 返回 false**。已发布的驱动恢复*保存的*那一对，而非写一个空区域。
 
 - **`0002-booter-verify.patch`** 把 `kgspBootstrap_TU102` 里几处 `NV_ASSERT_OK_OR_RETURN` 站点转成记录的日志状态检查，并为设备 ID `0x20C2` / `0x2082` 加一个 post-BooterLoad 五个寄存器的回读：
 
@@ -621,13 +621,13 @@ DMA 目标 `0x800` 由 IMEM `0x37ad` 处的 `mov $r10 0x800` 设置，随后 `0x
 > [!WARNING]
 > **寄存器回读是唯一有效的成功标准**
 >
-> 每次载荷执行都记录 `s_executeBooterUcode_TU102: Booter failed with non-zero error code: 0x31` 和 `kgspExecuteBooterLoad_TU102: failed to execute Booter Load: 0xffff`，**而寄存器写入仍然落地**。在 `s_executeBooterUcode_TU102` 里，seccode 错误在每次运行后留在 MAILBOX0，`mailbox0 != 0` 就返回 `NV_ERR_GENERIC`（`0xffff`）。出货循环的成功测试是精确的回读相等，那正是正确的测试。项目 README 也说同样的事：早期 PLM 轮次期间的 `0x31` / `0xffff` 等 Booter 状态码，只要最终引导成功就往往无害。
+> 每次载荷执行都记录 `s_executeBooterUcode_TU102: Booter failed with non-zero error code: 0x31` 和 `kgspExecuteBooterLoad_TU102: failed to execute Booter Load: 0xffff`，**而寄存器写入仍然落地**。在 `s_executeBooterUcode_TU102` 里，seccode 错误在每次运行后留在 MAILBOX0，`mailbox0 != 0` 就返回 `NV_ERR_GENERIC`（`0xffff`）。已发布的循环的成功测试是精确的回读相等，那正是正确的测试。项目 README 也说同样的事：早期 PLM 轮次期间的 `0x31` / `0xffff` 等 Booter 状态码，只要最终引导成功就往往无害。
 
 见[验证](../procedures/verify.md) 和[排障](../procedures/troubleshooting.md)。
 
 ## 13. 无驱动调用，作对比
 
-一族独立 Python 和 C 工具（`refire_chain_v2.py` 到 `v9.py`、`load_gsp_sec2_falcon.c`、`load_custom_bin.py`）在没有任何 NVIDIA 驱动的情况下发射 booter。它们**不在**出货仓库里，而本领域大部分表面矛盾在把两个代码库分开后都会消解。这些工具要紧，因为寄存器纪律大多是在那里学到的。见[工具谱系](../history/tool-lineage.md)。
+一族独立 Python 和 C 工具（`refire_chain_v2.py` 到 `v9.py`、`load_gsp_sec2_falcon.c`、`load_custom_bin.py`）在没有任何 NVIDIA 驱动的情况下发射 booter。它们**不在**已发布的仓库里，而本领域大部分表面矛盾在把两个代码库分开后都会消解。这些工具要紧，因为寄存器纪律大多是在那里学到的。见[工具谱系](../history/tool-lineage.md)。
 
 在 SEC2 上运行非安全代码是琐碎的、除公开文档外什么都不需要：把二进制 DMA 进 IMEM、设 `BOOTVEC`、发 `STARTCPU`、然后如果代码用 `exit` 就轮询 `CPUCTL` 位 4（HALTED）。完整无驱动引导序列是：引擎复位、等待 DMA 清理、`ALLOW_PHYS_NO_CTX`、物理 DMA 孔径、DMA IMEM + DMEM、设 `BOOTVEC`、设邮箱、`STARTCPU`、轮询 HALTED。
 
@@ -646,7 +646,7 @@ pulse ENGINE (SEC2+0x3c0)：1 然后 0
 
 一个独立 C 程序在硬件上执行完整九步无驱动引导，并从 `FALCON_MAILBOX0` 读到一个停机返回值 `0xb`：加载路径在没有 NVIDIA 驱动的情况下工作，尽管 Falcon 以非零状态停机。
 
-无驱动路径发现的两个进一步要求，出货驱动都通过其它手段满足：
+无驱动路径发现的两个进一步要求，已发布的驱动都通过其它手段满足：
 
 - **缓存刷新。** 一个 17 字节 JIT 组装的 x86-64 桩（`0F AE 3F 48 83 C7 40 48 83 EE 40 7F F3 0F AE F0 C3`，即 `clflush [rdi]` / `add rdi,64` / `sub rsi,64` / `jg` / `mfence` / `ret`）被映射为 `PROT_EXEC`，并在载荷、radix3 和 WprMeta 缓冲上运行，向上取整到 64 字节缓存行。`refire_chain_v6.py` 用 `MAP_HUGETLB`（`0x40000`）分配 2 MiB 巨页、mlock 它们，并检查存在位后按 `(entry & ((1<<55)-1)) * 4096` 从 `/proc/self/pagemap` 解析物理地址。
 - **一个最小 radix3 页表。** `stage_radix3()` 分配 `0x6000` 字节并写三个 64 位描述符（PDE2 在 `0x0000` 到 `phys+0x1000`、PDE1 在 `0x1000` 到 `phys+0x2000`、PDE0 在 `0x2000` 到 `phys+0x3000`），让数据页和 bootloader 主体保持清零，然后刷新。没有它，booter 的签名前 DMA 以原因 `0x9` 失败。WprMeta 模板是 256 字节，从一次真实 10 GB 引导捕获，只覆盖了 radix3 指针（`+0x10`）、radix3 大小（`+0x18`）、bootloader 指针（`+0x20`）、bootloader 大小（`+0x28`）、签名指针（`+0x48`）和签名大小（`+0x50`，设成 `0xF800`）。
@@ -660,7 +660,7 @@ pulse ENGINE (SEC2+0x3c0)：1 然后 0
 > [!NOTE]
 > **无驱动发射能移交给出厂驱动吗？**
 >
-> 出厂驱动通过经典的两次加载 "mutex horns" 拒绝发射后的 SEC2 状态：`0x31`（互斥锁持有）、`0x62`（WPR2 up）和 `0x29`（一个 `0x001180f8` 错误，因为 `mutexfree` 终止符留下 `0xf0000000`、`0xf` 顶半字节触发检查）。这在几何一致时甚至在 10 GB 上也会失败，证明被发射扰动的是 SEC2 / `0x001180f8` 的移交状态，不是几何布局、也不是写次数。提出过两个修复：让终止符把 `0x001180f8` 顶半字节留零，或从打过补丁的驱动内部分阶段做几何布局。**出货解锁器选了第二个。**
+> 出厂驱动通过经典的两次加载 "mutex horns" 拒绝发射后的 SEC2 状态：`0x31`（互斥锁持有）、`0x62`（WPR2 up）和 `0x29`（一个 `0x001180f8` 错误，因为 `mutexfree` 终止符留下 `0xf0000000`、`0xf` 顶半字节触发检查）。这在几何一致时甚至在 10 GB 上也会失败，证明被发射扰动的是 SEC2 / `0x001180f8` 的移交状态，不是几何布局、也不是写次数。提出过两个修复：让终止符把 `0x001180f8` 顶半字节留零，或从打过补丁的驱动内部分阶段做几何布局。**已发布的解锁器选了第二个。**
 
 > [!NOTE]
 > **不带 FLR 跨过 RmInitDone 墙**

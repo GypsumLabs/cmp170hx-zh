@@ -3,7 +3,7 @@
 **本页覆盖内容**：把 CMP 170HX 从 PCIe Gen1（2.5 GT/s）带到 Gen2（5.0 GT/s）、无需硬件改装的完整寄存器机制、它如何在补丁 `0007` 和 `0008` 之间分配、重训练流程、IOMMU 依赖、modprobe 注册表键、以及它在合并前来自的分支谱系。它击败的硬件见[PCIe 子系统](../hardware/pcie-subsystem.md)。
 
 > [!NOTE]
-> **已出货：Gen2 于 2026-07-29 合并进 `master`**
+> **已发布：Gen2 于 2026-07-29 合并进 `master`**
 >
 > Gen2 头一周只在分支上。它在提交 `2e0a2c02`（"PCIe Gen 2 unlock!"）合并，`master` 现在带着 `0007-pcie-gen2.patch` 和 `0008-pcie-gen2-probe-retrain.patch`，连同 `0001` 到 `0006`。master 的 README 列出 `PCIe Gen 2 speeds | Working`。多台独立机器复现了它。
 >
@@ -31,7 +31,7 @@ Gen2 使链路**速度**翻倍。它不碰链路**位宽**，任何分支里都�
 
 | 分支 | `0007-pcie-gen2.patch` | `0008-pcie-gen2-probe-retrain.patch` | `tools/retrain.sh` | IOMMU 处理 | `RMPcieLinkSpeed` |
 |---|---|---|---|---|---|
-| `master`（出货） | 缺失 | 缺失 | 缺失 | 缺失 | 缺失 |
+| `master`（已发布的） | 缺失 | 缺失 | 缺失 | 缺失 | 缺失 |
 | `debug-gen2` | 有（畸形 hunk 头） | 缺失 | 已安装，自动发现 BDF，加 `cmpretrain.service` | 无 | `0x1` |
 | `Gen2` | 有（头已修复） | 有 | 存在但从未安装，BDF 硬编码 | 自动 | `0x1` |
 | `far` | 有 | 有 | 存在但从未安装，BDF 硬编码 | 自动 | `0x2` |
@@ -107,7 +107,7 @@ XP3G 覆盖块是三个平行的四-dword 数组：状态基址 `0x0008e100`、�
 > [!NOTE]
 > **两个条目失败，Gen2 照样工作**
 >
-> `OPT_GEN23` 是一个纯 OTP 熔丝感测反射、没有写端口；每个权限级别的每次尝试都返回 `status=0xffff rd=0x00000001`。`VSEC_DEVICE` 也失败。出货补丁仍尝试两者、仍在这两者上失败、链路仍训练成 Gen2。工作的杠杆是 `CYA_0`、`LINK_CONFIG_0`、XP3G 覆盖和 `PRIV_MISC_1`。
+> `OPT_GEN23` 是一个纯 OTP 熔丝感测反射、没有写端口；每个权限级别的每次尝试都返回 `status=0xffff rd=0x00000001`。`VSEC_DEVICE` 也失败。已发布的补丁仍尝试两者、仍在这两者上失败、链路仍训练成 Gen2。工作的杠杆是 `CYA_0`、`LINK_CONFIG_0`、XP3G 覆盖和 `PRIV_MISC_1`。
 
 > [!NOTE]
 > **二手文档里的计数错误**
@@ -179,9 +179,9 @@ const NvU32 PCIE_GEN2_PL_LINK_RATE_VALUE = 0x00240036U;
 
 ### PLM 表从四个长到九个
 
-出货 master 武装四个 PLM 条目。Gen2 家族分支（`Gen2`、`debug-gen2`、`far`、`deced`，这方面四个逐字节相同）给 `0001-sec2-postbl-plm-ss-cfg.patch` 加五个，得到九个：
+已发布的 master 武装四个 PLM 条目。Gen2 家族分支（`Gen2`、`debug-gen2`、`far`、`deced`，这方面四个逐字节相同）给 `0001-sec2-postbl-plm-ss-cfg.patch` 加五个，得到九个：
 
-| 索引 | 地址 | 名称 | 目标值 | 在出货 master 上？ |
+| 索引 | 地址 | 名称 | 目标值 | 在已发布的 master 上？ |
 |---|---|---|---|---|
 | 0 | `0x001fa7cc` | `WPR_CFG` | `0xfffff0ff` | 是 |
 | 1 | `0x009a0148` | `FBPA` | `0xffffffff` | 是 |
@@ -215,7 +215,7 @@ pcie:
   opt_magic_a100: "0x00200000"
 ```
 
-对机制核心的五个寄存器在 yaml 里**缺失**：`CYA_0` `0x0008c2c0`、`LINK_CONFIG_0` `0x0008c040`、`PRIV_MISC_1` `0x0008841c`、`LINK_CAP` `0x00088084` 和 `0x0008872c`。同一个提交还从 8gb 和 10gb 档位块里删掉了 `comment:` 行。出货 master 完全没有 `pcie:` 块。
+对机制核心的五个寄存器在 yaml 里**缺失**：`CYA_0` `0x0008c2c0`、`LINK_CONFIG_0` `0x0008c040`、`PRIV_MISC_1` `0x0008841c`、`LINK_CAP` `0x00088084` 和 `0x0008872c`。同一个提交还从 8gb 和 10gb 档位块里删掉了 `comment:` 行。已发布的 master 完全没有 `pcie:` 块。
 
 ## 补丁 0007 对补丁 0008
 
@@ -362,7 +362,7 @@ options nvidia NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"
 > [!NOTE]
 > **未解问题：`RMPcieLinkSpeed=0x1` 还是 `0x2`？**
 >
-> 两种拼写都出货。`debug-gen2`（`install.sh:191`）和 `Gen2`（`install.sh:280`）写 `0x1`；`far`（`install.sh:280`）和 `deced`（`install.sh:280`）写 `0x2`，由提交 `8854d3e` "Remove clamp link to Gen1" 引入。注意，`Gen2` 分支——那个 README 声称 Gen2 "Working ✓" 的——出货 `0x1`，而卡上确认是用 `0x1` 做的。两种读数内部都自洽，取决于该键意思是 "clamp to gen N"（钳制到代 N）还是 "enable up to gen N"（使能到代 N）。不存在 A/B 引导测试。两个值都不应作为规范呈现。什么能定论它：同一张卡和内核引导三次——无键、带 `0x1`、带 `0x2`——每次贴 `LnkSta`。便宜又决定性。
+> 两种拼写都已发布。`debug-gen2`（`install.sh:191`）和 `Gen2`（`install.sh:280`）写 `0x1`；`far`（`install.sh:280`）和 `deced`（`install.sh:280`）写 `0x2`，由提交 `8854d3e` "Remove clamp link to Gen1" 引入。注意，`Gen2` 分支——那个 README 声称 Gen2 "Working ✓" 的——已发布的 `0x1`，而卡上确认是用 `0x1` 做的。两种读数内部都自洽，取决于该键意思是 "clamp to gen N"（钳制到代 N）还是 "enable up to gen N"（使能到代 N）。不存在 A/B 引导测试。两个值都不应作为规范呈现。什么能定论它：同一张卡和内核引导三次——无键、带 `0x1`、带 `0x2`——每次贴 `LnkSta`。便宜又决定性。
 
 ## IOMMU 使能
 
@@ -370,7 +370,7 @@ options nvidia NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"
 
 `install.sh` 读 `/proc/cpuinfo`：对 `GenuineIntel` 选 `intel_iommu=on iommu=pt`，对 `AuthenticAMD` 选 `amd_iommu=on iommu=pt`，剥离任何现有 `intel_iommu=*`、`amd_iommu=*` 或 `iommu=*` 令牌，重写 `/etc/default/grub`（`GRUB_CMDLINE_LINUX_DEFAULT`，回退到 `GRUB_CMDLINE_LINUX`）或 `/etc/kernel/cmdline`，并取一个 `*.cmpunlocker.bak` 备份。`--no-iommu` 退出。它警告 IOMMU 也必须在 BIOS 或 UEFI 里启用（VT-d、AMD-Vi 或 SVM）。`remove.sh` 恢复备份、打印 `Reverted IOMMU kernel parameters (effective after reboot)`，或警告 `No IOMMU config backup found - kernel command line left as-is`。
 
-`debug-gen2` 完全没有 IOMMU 处理，出货 master 也没有。`6a85e6c` 之前的手动配方：
+`debug-gen2` 完全没有 IOMMU 处理，已发布的 master 也没有。`6a85e6c` 之前的手动配方：
 
 ```bash
 sudo sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="quiet amd_iommu=on iommu=pt"/' /etc/default/grub
@@ -432,7 +432,7 @@ sudo lspci -d 10de:20c2 -vv | grep -E 'LnkCap:|LnkSta:'
 
 ## 要求和约束
 
-- **驱动**：nvidia-open `610.43.03`（默认）或 `610.43.02`，精确匹配。`debug-gen2` 和 `Gen2` 上的 `driver/VERSION` 与出货 master 相同，构建在其它任何版本上硬失败。因为 `0007` 补丁 `kernel_gsp.c` 和 `kernel_gsp_tu102.c`、`0008` 补丁 `kernel-open/nvidia/nv.c`，Gen2 工作被紧密绑定到那两个发布。见[驱动版本](../procedures/driver-versions.md)。
+- **驱动**：nvidia-open `610.43.03`（默认）或 `610.43.02`，精确匹配。`debug-gen2` 和 `Gen2` 上的 `driver/VERSION` 与已发布的 master 相同，构建在其它任何版本上硬失败。因为 `0007` 补丁 `kernel_gsp.c` 和 `kernel_gsp_tu102.c`、`0008` 补丁 `kernel-open/nvidia/nv.c`，Gen2 工作被紧密绑定到那两个发布。见[驱动版本](../procedures/driver-versions.md)。
 - **安全启动必须关闭。** `mokutil --sb-state` 报告 `SecureBoot enabled` 时 `install.sh` 死掉。
 - **设备 ID** 必须是 `10de:20c2` 或 `10de:2082`。一张 `10de:20b0` 卡会安装、却得到 `unlock path not gated for this ID; skipping`。
 - **裸金属或 Oculink。** 直通 VM 宣告 Gen2 却不训练；Thunderbolt 3 坞破坏整个解锁、不只是 PCIe。

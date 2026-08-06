@@ -2,7 +2,7 @@
 
 **本页覆盖内容。** 本页是 CMP 170HX 解锁工作中存留下来的**技术工件**目录：Falcon 固件反汇编、gadget 图谱、ROP 载荷生成器、只读探测脚本、寄存器转储、驱动补丁文件和长文写稿。对每个工件，本页记录它含有什么、多大、何时出现、为何要紧。它是原始证据的地图，而不是教程。至于这些工件共同确立了什么，见[解锁如何工作](../unlock/how-it-works.md) 和[寄存器参考](../unlock/register-reference.md)。
 
-两个数字框定了整个集合。从两个 Discord 服务器归档了**131 个文本和代码文件**，外加**总共 1,121 个附件**（其余绝大部分是截图和照片）。另外，还快照了**13 棵 git 树**的出货解锁器（`master` 加 12 个未发布分支），以及少数外部仓库和 gist。下面的一切都来自这些。
+两个数字框定了整个集合。从两个 Discord 服务器归档了**131 个文本和代码文件**，外加**总共 1,121 个附件**（其余绝大部分是截图和照片）。另外，还快照了**13 棵 git 树**的已发布的解锁器（`master` 加 12 个未发布分支），以及少数外部仓库和 gist。下面的一切都来自这些。
 
 > [!NOTE]
 > **命名与归属**
@@ -34,7 +34,7 @@ SEC2 的 `booter_load` 微码是整个利用的对象。它是一份经过 AES �
 
 ## 2. 从反汇编派生的 Gadget 目录
 
-这些工件把一份 600 kB 的清单变成可以据此构建 ROP 链的东西。它们的重要性远超自身大小，因为正是它们确立了：出货利用里的常量可以从净室材料推导出来。见[ROP 链](../unlock/rop-chain.md) 和[净室与来源溯源](../history/clean-room-and-provenance.md)。
+这些工件把一份 600 kB 的清单变成可以据此构建 ROP 链的东西。它们的重要性远超自身大小，因为正是它们确立了：已发布的利用里的常量可以从净室材料推导出来。见[ROP 链](../unlock/rop-chain.md) 和[净室与来源溯源](../history/clean-room-and-provenance.md)。
 
 | 工件 | 大小 | 日期 | 内容 |
 |---|---:|---|---|
@@ -43,7 +43,7 @@ SEC2 的 `booter_load` 微码是整个利用的对象。它是一份经过 AES �
 | `DIRECT_ENGINE_FINDINGS.md` | 4,503 B | 2026-07-15 | 对 `0x8224` 直接写 gadget 的分析：`iowrs I[$r10] $r11` 后跟 `0x9100` CSB 状态检查和 `lcall 0x1d0f` 报告路径。 |
 | `The_missing_piece_per-FBPA_hal` | 2,353 B | 2026-07-12 | 一个每-FBPA 半容量熔丝假设、命名 `FUSE_HALF_FBPA_EN 0x82049C`、`STATUS_HALF_FBPA 0x820C00`、`CTRL_OPT_FBPA 0x820818` 和 `STATUS_FBP 0x820D38`。作为一个**假设**、而非结果被保留：`STATUS_FBPA` 是否根本可写、还是纯粹是一个熔丝合并输出、被问了却从未回答。 |
 
-图谱中 `0x0cbd`（"`$r10 <- $r0`、canary(r15==r9)、via-call、`mpopaddret $r3 0x4`"）和 `0x1fbd`（"`$r11 <- $r10`、canary(r15==r9)、via-call、`mpopaddret $r2 0x4`"）两条目，精确描述了那些 gadget 在出货驱动补丁里扮演的角色——而那是在该补丁存在的八天之前。
+图谱中 `0x0cbd`（"`$r10 <- $r0`、canary(r15==r9)、via-call、`mpopaddret $r3 0x4`"）和 `0x1fbd`（"`$r11 <- $r10`、canary(r15==r9)、via-call、`mpopaddret $r2 0x4`"）两条目，精确描述了那些 gadget 在已发布的驱动补丁里扮演的角色——而那是在该补丁存在的八天之前。
 
 ---
 
@@ -76,7 +76,7 @@ SEC2 的 `booter_load` 微码是整个利用的对象。它是一份经过 AES �
 | `stack_gen.py` | 4,482 B | 2026-07-04 | 帧生成器：一个初始 `mpopaddret $r6 0x4` 块然后每帧三个 5 词 `mpopaddret $r2 0x4` 块、返回地址 `0x1fb9`、`0x1fbd`、`0x8224`、退出 `0x79e7`、`payload_size 0xF700`、`dma_target 0x0900`、`stack_start 0xf75c`。 |
 | `builder.py` | 9,810 B | 2026-07-01 | 载荷构建器、模式 A（节流写、停机退出）。它的头部精确命名漏洞：IMEM `0x29C4` 处的 `booterVerifyLsSignatures_TU10X` 以 `$r10 = 0x0900` 和 `size = sizeOfSignature`、无边界检查地调用 `lcall 0x0601`（`booterIssueDma_HAL`）。 |
 | `payloadn.py`、`payload-lnject.py`、`payload_v3.py` | 2,285 / 4,592 / 2,200 B | 2026-07-08 到 07-09 | 连续几代 Python 载荷注入器。 |
-| `unlc.py` | 1,919 B | 2026-07-12 | 最小主机侧演示器：一旦 FEAT PLM 打开、SS0 和 SS1 是普通 BAR0 写。这个两步模型恰是出货补丁实现的。 |
+| `unlc.py` | 1,919 B | 2026-07-12 | 最小主机侧演示器：一旦 FEAT PLM 打开、SS0 和 SS1 是普通 BAR0 写。这个两步模型恰是已发布的补丁实现的。 |
 
 > [!CAUTION]
 > **`stack_gen.py` v1 不可能工作**
@@ -90,7 +90,7 @@ SEC2 的 `booter_load` 微码是整个利用的对象。它是一份经过 AES �
 > [!WARNING]
 > **实验性**
 >
-> 这是一条并行的非出货路径，不属于 `cmpunlocker`。它的前置条件很严格：需要 root、GPU 从任何 nvidia 驱动解绑、一份签名的 GA100 `booter_load` HS 映像、`echo 16 | sudo tee /proc/sys/vm/nr_hugepages`，以及 `intel_iommu=off` 或 `iommu=pt`，好让 DMA 物理地址就是宿主物理地址。它只带一个 **10 GB WprMeta 模板**，所以不能未作修改就套用到一张 `0x20C2` 卡上。它的 `--memory 80` 模式声称 "80 GB LMR HW-verified"，那最可能只是寄存器接受了写入，而非 80 GB 可用。见[80 GB 问题](../frontier/80gb.md)。
+> 这是一条并行的非已发布的路径，不属于 `cmpunlocker`。它的前置条件很严格：需要 root、GPU 从任何 nvidia 驱动解绑、一份签名的 GA100 `booter_load` HS 映像、`echo 16 | sudo tee /proc/sys/vm/nr_hugepages`，以及 `intel_iommu=off` 或 `iommu=pt`，好让 DMA 物理地址就是宿主物理地址。它只带一个 **10 GB WprMeta 模板**，所以不能未作修改就套用到一张 `0x20C2` 卡上。它的 `--memory 80` 模式声称 "80 GB LMR HW-verified"，那最可能只是寄存器接受了写入，而非 80 GB 可用。见[80 GB 问题](../frontier/80gb.md)。
 
 ---
 
@@ -110,7 +110,7 @@ SEC2 的 `booter_load` 微码是整个利用的对象。它是一份经过 AES �
 > [!NOTE]
 > **`probe.sh` 的两个文档化缺陷**
 >
-> 它头部第 9 行承诺一个不存在的 `/dev/mem` 回退；解析块以 `ERROR: cannot find resource0` 和 `exit 2` 结束。而该目录先于解锁、所以它不含 `0x001fa7c4`、`0x001fa7cc`、`0x001fa824`/`0x001fa828`、`0x009a0148` 或 `0x00100ce0` 的条目：出货解锁实际操纵的五个寄存器。加它们是任何人能做的唯一最有价值改动、且不需要硬件。
+> 它头部第 9 行承诺一个不存在的 `/dev/mem` 回退；解析块以 `ERROR: cannot find resource0` 和 `exit 2` 结束。而该目录先于解锁、所以它不含 `0x001fa7c4`、`0x001fa7cc`、`0x001fa824`/`0x001fa828`、`0x009a0148` 或 `0x00100ce0` 的条目：已发布的解锁实际操纵的五个寄存器。加它们是任何人能做的唯一最有价值改动、且不需要硬件。
 
 读取 BAR0 需要 root **外加** `CAP_SYS_RAWIO`，而容器化的 GPU 宿主会丢弃该能力；探测随后以 `cannot open .../resource0 (EPERM) even as root` 报错。
 
@@ -141,7 +141,7 @@ SEC2 的 `booter_load` 微码是整个利用的对象。它是一份经过 AES �
 | 工件 | 大小 | 日期 | 内容 |
 |---|---:|---|---|
 | `patch.diff` | 35,867 B | 2026-07-18 | 887 行、跨 11 个文件：通过把它捆绑的 open-modules 树对上游标签 `610.43.03` diff、从泄露包提取的 diff。发布于 18:01:15Z。历史上决定性：见[净室与来源溯源](../history/clean-room-and-provenance.md)。 |
-| `cmpunlocker` 出货补丁集 | 37,415 B | 2026-07-18 | 六个补丁、890 行、10 个目标文件：`0001-sec2-postbl-plm-ss-cfg.patch`（19,741 B）、`0002-booter-verify.patch`（3,988 B）、`0003-late-pma.patch`（10,580 B）、`0004-bar0-pramin-clamp.patch`（861 B）、`0005-ce-scrub-workarounds.patch`（1,642 B）、`0006-persistent-sw-state.patch`（603 B）。 |
+| `cmpunlocker` 已发布的补丁集 | 37,415 B | 2026-07-18 | 六个补丁、890 行、10 个目标文件：`0001-sec2-postbl-plm-ss-cfg.patch`（19,741 B）、`0002-booter-verify.patch`（3,988 B）、`0003-late-pma.patch`（10,580 B）、`0004-bar0-pramin-clamp.patch`（861 B）、`0005-ce-scrub-workarounds.patch`（1,642 B）、`0006-persistent-sw-state.patch`（603 B）。 |
 | `0007-pcie-gen2.patch`、`0008-pcie-gen2-probe-retrain.patch` | **2026-07-29 合并进 `master`**（提交 `2e0a2c02`） | 2026-07-23 起 | Gen2 工作、在分支上开发一周然后合并。`0007` 经 Booter 载荷原语推入一张 23 条目 `xp3gTable`；`0008` 把 `nv_cmp170hx_retrain_gen2()` 加到 `kernel-open/nvidia/nv.c`。见[PCIe Gen2](../unlock/pcie-gen2.md)。 |
 | `mod.txt` | 1,725 B | 2026-07-12 | 一个手写内核 hunk、定义 `CMP170HX_WPR2_SAFE_LIMIT 0x0A00000000ULL`（40 GB）并带警告把它之上的 `pWprMeta->fbSize` 钳住。对 WPR2 定大小问题的一个早期、独立表达。 |
 | `Guide_SM.sh` | 9,127 B | 2026-07-12 | 全流水线驱动：阶段 1、FLR、卸载、解锁。 |
@@ -153,7 +153,7 @@ SEC2 的 `booter_load` 微码是整个利用的对象。它是一份经过 AES �
 > [!CAUTION]
 > **`gpuValidateRegOps` 绕过只在 `patch.diff` 里**
 >
-> `patch.diff` 把 `return NV_OK;` 作为 `gpuValidateRegOps` 的第一条语句插入、无条件、对所有 GPU、完全禁用寄存器读/写验证。那个改动**不在**出货 `cmpunlocker` 树里、也不在全部十二个未发布分支里。任何把它归因于出货工具的文字都是错的。
+> `patch.diff` 把 `return NV_OK;` 作为 `gpuValidateRegOps` 的第一条语句插入、无条件、对所有 GPU、完全禁用寄存器读/写验证。那个改动**不在**已发布的 `cmpunlocker` 树里、也不在全部十二个未发布分支里。任何把它归因于已发布的工具的文字都是错的。
 
 ---
 
@@ -175,7 +175,7 @@ SEC2 的 `booter_load` 微码是整个利用的对象。它是一份经过 AES �
 
 | 工件 | 大小 | 日期 | 内容 |
 |---|---:|---|---|
-| `170hx-tuning-guide.md` | 26,987 B | 2026-07-27 | 随 `170tune` harness 出货。对着一个具名参考卡（GA100、70 SM、64 GB 解锁、驱动 610.43.03、300 W VBIOS `92.00.6D.00.0A`、PCIe Gen2 x4）写、并显式说明每卡硅片各异、带任何偏移被信任于不同单元前的一个 "qualifying a new card" 流程。也是一份已关闭死路的记录、这样没一条被走两次。 |
+| `170hx-tuning-guide.md` | 26,987 B | 2026-07-27 | 随 `170tune` harness 一起发布。对着一个具名参考卡（GA100、70 SM、64 GB 解锁、驱动 610.43.03、300 W VBIOS `92.00.6D.00.0A`、PCIe Gen2 x4）写、并显式说明每卡硅片各异、带任何偏移被信任于不同单元前的一个 "qualifying a new card" 流程。也是一份已关闭死路的记录、这样没一条被走两次。 |
 | `170HX-benchmark-results.md` | 5,290 B | 2026-07-27 | 八张解锁 64 GB 卡、驱动 610.43.02、`sm_80`、PCIe **Gen1 x4**、无电容改装。每卡 torch GEMM：FP16 张量 162.7 TFLOPS、BF16 张量 171.4 TFLOPS。 |
 | `GLM-5.2-benchmark-report.md` | 7,999 B | 2026-07-24 | 一份值得保留的负结果报告：467 GB 4 位量化无法加载、因为宿主的 88 GB 系统 RAM 远低于 llama.cpp 加载时计算图 pass 所需的、把 RSS 钉在约 87.6 GB 而无进展。一次宿主侧失败、不是卡限制。 |
 | `cublas_benchmark1` | 826,072 B | 2026-07-16 | 一个 x86-64 ELF 可执行文件、动态链接到 `ld-linux-x86-64.so.2`。一个**分发给他人运行的编译二进制**、不是一个结果日志。 |

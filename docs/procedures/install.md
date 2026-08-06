@@ -1,6 +1,6 @@
 # 安装解锁
 
-**本页覆盖内容。** 出货 `cmpunlocker` 驱动补丁在 CMP 170HX 上的完整、受支持安装流程：开始前必须具备什么、精确命令、`install.sh` 和 `driver/build.sh` 每步做什么、卡档位如何选择（以及何时强制它）、为什么冷重启要紧、以及正确的一次运行在屏幕和 `dmesg` 里长什么样。
+**本页覆盖内容。** 已发布的 `cmpunlocker` 驱动补丁在 CMP 170HX 上的完整、受支持安装流程：开始前必须具备什么、精确命令、`install.sh` 和 `driver/build.sh` 每步做什么、卡档位如何选择（以及何时强制它）、为什么冷重启要紧、以及正确的一次运行在屏幕和 `dmesg` 里长什么样。
 
 短版：安装 nvidia-open **610.43.03** 或 **610.43.02**，禁用安全启动，安装内核头文件，然后在仓库克隆中运行 `sudo ./install.sh`，最后冷启动。脚本为你的驱动版本下载 NVIDIA 出厂的 `open-gpu-kernel-modules` tarball，依次应用六个补丁、构建五个内核模块，并把它们安装到 `/lib/modules/$(uname -r)/updates/cmpunlocker/`。全程不会向卡的 VBIOS 写入任何内容，也不会修改磁盘上的任何固件文件。一张 8 GB 卡（`10de:20c2`）解锁后报告 **65536 MiB**，一张 10 GB 卡（`10de:2082`）解锁后报告 **40960 MiB**。
 
@@ -139,7 +139,7 @@ lspci -nn | grep -iE '10de:20b0|10de:20c2|10de:2082' | head -1
 1. **重新验证** root、`driver/VERSION` 里的版本、补丁目录、内核头文件、和 `python3` 的存在。
 2. **下载** `https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${VERSION}.tar.gz`、用 `curl -L --fail` 到 `driver/.build/`（用 `CMPUNLOCKER_BUILD_DIR` 覆盖缓存位置）。缓存的 tarball 被复用。仓库里不运送任何 NVIDIA 代码。
 3. **每次干净解压**：`rm -rf "${SRC_DIR}"` 然后 untar，这样一次失败的先前构建无法污染下一次。
-4. **用 `patch -p1` 按 glob（字典序）顺序应用每个 `driver/patches/*.patch`**。出货系列是六个文件、总计 37,415 字节：
+4. **用 `patch -p1` 按 glob（字典序）顺序应用每个 `driver/patches/*.patch`**。已发布的系列是六个文件、总计 37,415 字节：
 
    | 补丁 | 字节 | 它做什么 |
    |---|---|---|

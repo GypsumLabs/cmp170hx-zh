@@ -6,8 +6,8 @@ CMP 170HX 解锁是在一份明确的净室协议下开发的，而这份协议�
 
 两个结果主导下面的一切。
 
-1. **出货 ROP 载荷里的每个常量，除一个外，都已追溯到一份早于出货补丁的、带日期的公开或净室派生工件。** Gadget 地址来自 2026-07-01 发布的解密调试-booter 反汇编，gadget 语义来自 2026-07-10 发布的自动生成图谱，DMEM 栈帧网格来自 2026-07-15T04:47Z 的一个公开 git 提交，缓冲区、守卫、填充和大小常量来自 2026 年 6 月的学术预印本。例外是种在载荷偏移量 `0x1100`（`D[0x1900]`）的 `0x00000007`，没有任何早于补丁的带日期工件能解释它。载荷里其它什么都不需要泄露材料来推导。
-2. **出货的 `cmpunlocker` 驱动补丁集，逐行地，就是泄露的 `patch.diff`**，加上 10 GB 双几何布局支持、移除一处敌对改动，并在 `patch.diff` 贴出后 70 分钟被采纳。原则上的可推导性和事实上的推导不是一回事，而源材料没有解决究竟发生了哪一种。
+1. **已发布的 ROP 载荷里的每个常量，除一个外，都已追溯到一份早于已发布的补丁的、带日期的公开或净室派生工件。** Gadget 地址来自 2026-07-01 发布的解密调试-booter 反汇编，gadget 语义来自 2026-07-10 发布的自动生成图谱，DMEM 栈帧网格来自 2026-07-15T04:47Z 的一个公开 git 提交，缓冲区、守卫、填充和大小常量来自 2026 年 6 月的学术预印本。例外是种在载荷偏移量 `0x1100`（`D[0x1900]`）的 `0x00000007`，没有任何早于补丁的带日期工件能解释它。载荷里其它什么都不需要泄露材料来推导。
+2. **已发布的 `cmpunlocker` 驱动补丁集，逐行地，就是泄露的 `patch.diff`**，加上 10 GB 双几何布局支持、移除一处敌对改动，并在 `patch.diff` 贴出后 70 分钟被采纳。原则上的可推导性和事实上的推导不是一回事，而源材料没有解决究竟发生了哪一种。
 
 本页同时报告两者，陈述每一方的论证，然后就此打住。它不提供法律结论，本页任何地方也不点名任何人。代码本身见[六个驱动补丁](../unlock/driver-patches.md) 和[ROP 链](../unlock/rop-chain.md)；日期见[项目时间线](timeline.md)。
 
@@ -136,10 +136,10 @@ CMP 170HX 解锁是在一份明确的净室协议下开发的，而这份协议�
 | 类 | 内容 | 记录在案的裁决 |
 |---|---|---|
 | **干净、来自论文**（九个概念） | 栈金丝雀引用字漏洞（§5.1-5.3、Thesis 1）；经无界签名长度复制的 DMA 溢出（§3.2、§5.5）；经签名 booter 的 SEC2 Falcon HS 模式进入（§2.2、§5.4）；均匀填充值 **V = `0x4a7`**（§5.5、仿真器迹线）；溢出签名大小 **SIGSZ = `0xf800`**（§5.5）；HS 代码执行后作为枢轴的 PLM 解锁（§6.1）；特性覆盖影子寄存器概念（§2.1）；来自 HS 的 WPR2 teardown（§8.5）；带 GPU 作防御者的被侵入宿主这个颠倒威胁模型（§2.3） | "Clean. These concepts are fully documented in the paper and require no special access."（干净。这些概念在论文里被完整记录、不需要特殊访问。） |
-| **干净、来自开源驱动树**（内核内部 API） | `memdescCreate`、`memdescMapInternal`、`memdescFlushCpuCaches`、`memdescGetSize`、`memdescGetPhysAddr`；`pmaRegisterRegion`、`pmaGetRegionInfo`、`pmaGetFreeMemory`、`pmaGetTotalMemory`；`MEMDESC_FLAGS_ALLOC_IN_UNPROTECTED_MEMORY`；`os_open_and_read_file`；`kgspExecuteBooterLoad_HAL`、`kgspPopulateWprMeta_HAL`；`FB_REGION_DESCRIPTOR`、`PMA_REGION_DESCRIPTOR`；`NV_FLAG_PERSISTENT_SW_STATE`；`GPU_REG_RD32`/`GPU_REG_WR32`；`NV2080_CTRL_CMD_FB_GET_FB_REGION_INFO_PARAMS` | "Clean. Any competent kernel module developer can discover these by reading the source."（干净。任何称职的内核模块开发者都能通过读源码发现这些。）每个具名符号都存在于出货补丁集里 |
+| **干净、来自开源驱动树**（内核内部 API） | `memdescCreate`、`memdescMapInternal`、`memdescFlushCpuCaches`、`memdescGetSize`、`memdescGetPhysAddr`；`pmaRegisterRegion`、`pmaGetRegionInfo`、`pmaGetFreeMemory`、`pmaGetTotalMemory`；`MEMDESC_FLAGS_ALLOC_IN_UNPROTECTED_MEMORY`；`os_open_and_read_file`；`kgspExecuteBooterLoad_HAL`、`kgspPopulateWprMeta_HAL`；`FB_REGION_DESCRIPTOR`、`PMA_REGION_DESCRIPTOR`；`NV_FLAG_PERSISTENT_SW_STATE`；`GPU_REG_RD32`/`GPU_REG_WR32`；`NV2080_CTRL_CMD_FB_GET_FB_REGION_INFO_PARAMS` | "Clean. Any competent kernel module developer can discover these by reading the source."（干净。任何称职的内核模块开发者都能通过读源码发现这些。）每个具名符号都存在于已发布的补丁集里 |
 | **干净但早**（八个元素、存在于日期 2026-07-09 到 2026-07-17 的公开转写里） | 特性覆盖地址 `0x823804`、`0x82381c`、`0x823820`、`0x9a0204`、`0x100ce0`；WPR2 寄存器 `0x1fa824`/`0x1fa828` 和作为阻塞者的 WPR2 carve；FB-几何 PLM 地址 `0x100b10`/`0x100b38` 和 `0x9a0148`/`0x9a014C`/`0x9a0108`/`0x9a010C`；`0x8403C4` 作 `resetPLM`；三个具名退出策略（`secure_teardown`、过早退出 `0x8117`、`multiwrite_then_mutexfree_cleanexit`）；某些寄存器的 FLR 持久性；一个用于直接 SEC2 控制的非安全 ucode 加载器；从 `D[0xFFC4]` 到 `D[0xFFF0]` 的 DMEM 栈探索 | "Clean, but overlapping."（干净、但重叠。） |
 
-那张表里有一个引用是错的。"WPR2 teardown from HS" 被映射到论文 §8.5；§8.5 的标题是 "Persistence across FLR"（跨 FLR 的持久性），它论证持有覆盖值的常开岛把一个瞬时利用变成持久状态。它不含 WPR2 teardown，也不含 ROP 讨论。论文里唯一的 ROP 引用是 §5.5 中的单一引用。实际后果是，出货补丁围绕每次 Booter 趟的显式 WPR2 保存和恢复并不像表所暗示的那样被论文覆盖。评估分开地、正确地，把 WPR2 处理归因到公开转写，所以这是一个引用错误，而非实质错误。
+那张表里有一个引用是错的。"WPR2 teardown from HS" 被映射到论文 §8.5；§8.5 的标题是 "Persistence across FLR"（跨 FLR 的持久性），它论证持有覆盖值的常开岛把一个瞬时利用变成持久状态。它不含 WPR2 teardown，也不含 ROP 讨论。论文里唯一的 ROP 引用是 §5.5 中的单一引用。实际后果是，已发布的补丁围绕每次 Booter 趟的显式 WPR2 保存和恢复并不像表所暗示的那样被论文覆盖。评估分开地、正确地，把 WPR2 处理归因到公开转写，所以这是一个引用错误，而非实质错误。
 
 ### 评估关于外部起源的三个论证
 
@@ -147,12 +147,12 @@ CMP 170HX 解锁是在一份明确的净室协议下开发的，而这份协议�
 
 1. **负面证据。** 补丁不含 NVIDIA 内部代码注释、不含泄露构建的揭示性变量名、不使用泄露的签名密钥（利用不伪造签名），也不含不是通过 BAR0 探测也可发现的内部专属寄存器名。论文的伦理陈述直接佐证关键点："We extracted no signing keys and forged no signature."（我们没有提取签名密钥，也没有伪造签名。）
 2. **大锤论证。** `patch.diff` 把 `return NV_OK;` 插作 `subdevice_ctrl_gpu_regops.c` 里 `gpuValidateRegOps` 的第一条语句，把原主体留成死代码。它无条件，影响所有 GPU 而非只有 CMP 170HX，并完全禁用控制面板寄存器读/写验证。引出的推断："The sledgehammer approach suggests an external developer who needed a quick bypass and didn't care about collateral damage to other GPUs or security... An internal NVIDIA engineer or someone with leaked docs would likely make a surgical change."（大锤方法表明一个需要快速绕过、不在乎对其它 GPU 或安全附带损害的外部开发者……一个内部 NVIDIA 工程师或有泄露文档的人很可能会做一次外科手术式改动。）
-3. **伪装命名。** `SEC2_DEBUG_PRI_*`、`kgspSec2PostblTiming*` 和 `SEC2_DEBUG` 日志前缀在 NVIDIA 代码库的任何地方都不存在，而 "PostBL Timing" 是一个貌似合理却虚构的功能名。该方案读作把利用代码伪装成一个合法制造或调试功能的尝试，那 "would be unnecessary for someone with legitimate access"（对合法访问的人不必要）。命名在出货代码里逐字存在，它定义 `0002-booter-verify.patch` 里的 `SEC2_DEBUG_PRI_FEATURE_OVERRIDE_PLM 0x00823804`、`SEC2_DEBUG_PRI_FEATURE_OVERRIDE_SM_SPEED 0x0082381c`、`SEC2_DEBUG_PRI_FEATURE_OVERRIDE_SM_SPEED_1 0x00823820`、`SEC2_DEBUG_PRI_FBPA_CFG1 0x009a0204` 和 `SEC2_DEBUG_PRI_MMU_LMR 0x00100ce0`。
+3. **伪装命名。** `SEC2_DEBUG_PRI_*`、`kgspSec2PostblTiming*` 和 `SEC2_DEBUG` 日志前缀在 NVIDIA 代码库的任何地方都不存在，而 "PostBL Timing" 是一个貌似合理却虚构的功能名。该方案读作把利用代码伪装成一个合法制造或调试功能的尝试，那 "would be unnecessary for someone with legitimate access"（对合法访问的人不必要）。命名在已发布的代码里逐字存在，它定义 `0002-booter-verify.patch` 里的 `SEC2_DEBUG_PRI_FEATURE_OVERRIDE_PLM 0x00823804`、`SEC2_DEBUG_PRI_FEATURE_OVERRIDE_SM_SPEED 0x0082381c`、`SEC2_DEBUG_PRI_FEATURE_OVERRIDE_SM_SPEED_1 0x00823820`、`SEC2_DEBUG_PRI_FBPA_CFG1 0x009a0204` 和 `SEC2_DEBUG_PRI_MMU_LMR 0x00100ce0`。
 
 > [!CAUTION]
-> **`gpuValidateRegOps` 绕过不在出货工具里**
+> **`gpuValidateRegOps` 绕过不在已发布的工具里**
 >
-> 无条件绕过是真实且严重的：任何有 `NV_GPU_REG_OP` 访问的进程都能在机器里任意 NVIDIA GPU 上读或写任意 GPU 寄存器。它**只存在于泄露的 `patch.diff` 里**。出货的 `cmpunlocker` 补丁集**完全**不碰 `subdevice_ctrl_gpu_regops.c`，而字符串 `gpuValidateRegOps` 出现在 `master` 或十二个未发布分支的任何一个的任何地方都不。任何把这个洞归因于 `cmpunlocker` 的文字都是错的。
+> 无条件绕过是真实且严重的：任何有 `NV_GPU_REG_OP` 访问的进程都能在机器里任意 NVIDIA GPU 上读或写任意 GPU 寄存器。它**只存在于泄露的 `patch.diff` 里**。已发布的 `cmpunlocker` 补丁集**完全**不碰 `subdevice_ctrl_gpu_regops.c`，而字符串 `gpuValidateRegOps` 出现在 `master` 或十二个未发布分支的任何一个的任何地方都不。任何把这个洞归因于 `cmpunlocker` 的文字都是错的。
 
 ### 单一残余担忧
 
@@ -169,13 +169,13 @@ CMP 170HX 解锁是在一份明确的净室协议下开发的，而这份协议�
 
 它自己的既定缓解是，论文的仿真器方法论足以复现该分析。底线，逐字："The ROP chain offsets are the only element that would require significant independent work to produce without leaked documentation, and the paper explicitly describes how to do that work."（ROP 链偏移量是唯一一个在没有泄露文档的情况下产出需要大量独立工作的元素，而论文明确描述了如何做那个工作。）
 
-计数是对的：出货载荷恰好含 **24** 次 `_kgspSec2PostblTimingPutU32` 调用，位于载荷偏移量 `0x1100`、`0x5b40`、`0xf754`、`0xf758`、`0xf75c`、`0xf76c`、`0xf774`、`0xf780`、`0xf788`、`0xf78c`、`0xf790`、`0xf794`、`0xf798`、`0xf79c`、`0xf7a0`、`0xf7a4`、`0xf7b0`、`0xf7b8`、`0xf7c4`、`0xf7c8`、`0xf7d8`、`0xf7e0`、`0xf7f4`、`0xf7f8`。
+计数是对的：已发布的载荷恰好含 **24** 次 `_kgspSec2PostblTimingPutU32` 调用，位于载荷偏移量 `0x1100`、`0x5b40`、`0xf754`、`0xf758`、`0xf75c`、`0xf76c`、`0xf774`、`0xf780`、`0xf788`、`0xf78c`、`0xf790`、`0xf794`、`0xf798`、`0xf79c`、`0xf7a0`、`0xf7a4`、`0xf7b0`、`0xf7b8`、`0xf7c4`、`0xf7c8`、`0xf7d8`、`0xf7e0`、`0xf7f4`、`0xf7f8`。
 
 ---
 
 ## 后来的分析确立了什么、关于那个残余担忧
 
-担忧 (c) 和 (d) 不成立。下面的更正来自重读归档工件和出货源码，不是引用评估。
+担忧 (c) 和 (d) 不成立。下面的更正来自重读归档工件和已发布的源码，不是引用评估。
 
 ### (c) 是一个基址偏移量框架伪影
 
@@ -192,26 +192,26 @@ CMP 170HX 解锁是在一份明确的净室协议下开发的，而这份协议�
 
 ### (d) 被带日期的公开工件反驳
 
-出货 ROP 链里每个代码地址都是净室自己的解密调试-booter 反汇编里的一条指令边界，**早于补丁十七天**发布。
+已发布的 ROP 链里每个代码地址都是净室自己的解密调试-booter 反汇编里的一条指令边界，**早于补丁十七天**发布。
 
 | 工件 | 发布 | 它提供什么 |
 |---|---|---|
 | `booter_load_ga100_dbg_seccode.fuc5.asm`（545,149 B） | 2026-07-01T12:40:37Z | 原始 envydis 输出；每个链地址 `0x0cbd`、`0x0ccb`、`0x10aa`、`0x10b9`、`0x1fbd`、`0x582d`、`0x7f2f`、`0x815a`、`0x0d66`、`0x04d4` 恰好匹配一条指令行 |
 | `...annotated.fuc5.asm` | 2026-07-03T17:12:52Z | 每函数横幅 |
 | `...annotated.fuc5_v2.asm`（607,702 B、11,875 行） | 2026-07-09T03:03:21Z | 每个 `lcall` 带一个命名被调者的内联注释 |
-| **寄存器 Gadget 图谱** | 2026-07-10T13:40:14Z | 从那个反汇编机器生成。列出 `0x0cbd` 为 "`$r10 <- $r0`、canary(r15==r9)、via-call、`mpopaddret $r3 0x4`" 和 `0x1fbd` 为 "`$r11 <- $r10`、canary(r15==r9)、via-call、`mpopaddret $r2 0x4`"、精确地是它们在出货链里扮演的角色、包括产出帧步长的 `mpopaddret` 尾声 |
+| **寄存器 Gadget 图谱** | 2026-07-10T13:40:14Z | 从那个反汇编机器生成。列出 `0x0cbd` 为 "`$r10 <- $r0`、canary(r15==r9)、via-call、`mpopaddret $r3 0x4`" 和 `0x1fbd` 为 "`$r11 <- $r10`、canary(r15==r9)、via-call、`mpopaddret $r2 0x4`"、精确地是它们在已发布的链里扮演的角色、包括产出帧步长的 `mpopaddret` 尾声 |
 | `cmpunlocker` 初始提交 `9b9fb2f`、`common/constants.yaml` | 2026-07-14T21:47:02-07:00 = 2026-07-15T04:47:02Z | `dmem_layout: dma_target 0x0800, payload_size 0xF800, guard_addr 0x6340, canary 0xFACEB13D`；`booter_addrs: bar0_write_gadget 0x10B9`；`payload_frames: frame_start_addr 0xFF48, frame_stride 0x18, frame_field_offsets {r0 0x00, r1 0x04, r2 0x08, r3 0x0C, saved_reg 0x10, return_addr 0x14}` |
 | `ROP_CHAINS_1180f8_nibble_writeup_20260715.md` | 2026-07-15T18:48:10Z | 散文里同一个网格："N BAR0-master writes via the light `0x10b9` self-chain、**每次写 +0x18 DMEM**"、把 `D[0xFF50]`、`D[0xFF54]`、`D[0xFF5C]`、`D[0xFF68]`、`D[0xFF6C]`、`D[0xFF74]`、`D[0xFF80]`、`D[0xFF84]` 制成表 |
 
-**出货补丁里全部 22 个栈槽偏移量恰好落在那六字段、`0x18` 步长网格的一个具名字段上，零个未对齐命中。** 24 个值中剩余两个是守卫字（`0x5b40` 映射到 `D[0x6340]`）和 `0x1100`（映射到 `D[0x1900]`）。
+**已发布的补丁里全部 22 个栈槽偏移量恰好落在那六字段、`0x18` 步长网格的一个具名字段上，零个未对齐命中。** 24 个值中剩余两个是守卫字（`0x5b40` 映射到 `D[0x6340]`）和 `0x1100`（映射到 `D[0x1900]`）。
 
 剩余的非-gadget 常量也被说明：`0xf800`、`0x800`、`0x6340` 和 `0x4a7` 来自论文的仿真器迹线，且在评估自己的干净-来自-论文列表上；`0xc0deca7e` 是论文发布的守卫桩值；`0x5b40 = 0x6340 - 0x800` 是论文打印的两个数字上的算术；`D[0xFFB0]` 处的 `0x0000ffbc` 是一个指向帧网格的自引用 DMEM 栈指针；`D[0xFF90]` 处的 `0x00008e18` 超出 booter 的代码映像（反汇编止于 `0x86ff`），指向带注释清单里指令行 `0x0d39`、`0x0da1` 和 `0x0e1b` 文档化的寄存器描述符表区域 `0x8e04`/`0x8e08`。
 
 ### 净室自己的链相关、却不是一份副本
 
-净室 Python 解锁器和出货 C 链共享缓冲区基址 `0x800`、大小 `0xF800`、守卫地址 `0x6340` 和 `0xFF48`/`0x18` 六字段帧网格。它们以两种可见方式不同：
+净室 Python 解锁器和已发布的 C 链共享缓冲区基址 `0x800`、大小 `0xF800`、守卫地址 `0x6340` 和 `0xFF48`/`0x18` 六字段帧网格。它们以两种可见方式不同：
 
-| | 净室 Python（`payload/build.py`、提交 `9b9fb2f`） | 出货 C（`0001-sec2-postbl-plm-ss-cfg.patch`） |
+| | 净室 Python（`payload/build.py`、提交 `9b9fb2f`） | 已发布的 C（`0001-sec2-postbl-plm-ss-cfg.patch`） |
 |---|---|---|
 | 金丝雀字面量 | `0xFACEB13D`（项目代号） | `0xc0deca7e`（论文发布的桩） |
 | 链形状 | 一个自链 gadget `0x10B9`、每次写一帧 | 经 `0x0cbd`、`0x1fbd`、`0x815a`、`0x582d` 的更长的链 |
@@ -267,13 +267,13 @@ cmp170hx-unlock-610.43.03.zip
 | 时间（UTC） | 事件 |
 |---|---|
 | 2026-07-18T18:01:15Z | `patch.diff` 贴到 `#general-how-to-cleanroom` |
-| 2026-07-18T18:26:26Z | 出货 `cmpunlocker` 补丁集里每个文件都携带这个 `diff -Naur` 头 mtime（`2026-07-18 11:26:26 -0700`）。一棵树、写于一个瞬间、贴出后 25 分钟 |
+| 2026-07-18T18:26:26Z | 已发布的 `cmpunlocker` 补丁集里每个文件都携带这个 `diff -Naur` 头 mtime（`2026-07-18 11:26:26 -0700`）。一棵树、写于一个瞬间、贴出后 25 分钟 |
 | 2026-07-18T18:40:16Z | 来源评估被贴出、在窗口中间 |
 | 2026-07-18T19:11:01Z | `06fabf2 "WORKING MEMORY UNLOCK"` 在 `memory` 分支被编写、贴出后 **70 分钟** |
 | 2026-07-18T20:51:36Z | `6b7d9ee "FULL WORKING THING"` |
 | 2026-07-18T21:46:49Z | `e4026e5 "Memory working!"` 合并进 `master` |
 
-推导方向不模糊：出货仓库在 `06fabf2` 前**不含任何种类的驱动补丁**，而 `patch.diff` 只支持 8 GB `0x20C2` 卡。
+推导方向不模糊：已发布的仓库在 `06fabf2` 前**不含任何种类的驱动补丁**，而 `patch.diff` 只支持 8 GB `0x20C2` 卡。
 
 ### 两者实际差什么
 
@@ -307,11 +307,11 @@ NvU64 targetFbBytes = 0x0000001000000000ULL;  /* 64GB */
 
 === "A 面：按房间自己的规则干净"
 
-    出货 ROP 载荷里每个常量都可从早于 `patch.diff` 的、带日期的公开或净室派生材料独立推导：gadget 地址来自 2026-07-01 发布的反汇编、gadget 语义来自 2026-07-10 发布的图谱、帧网格来自 2026-07-15T04:47Z 的一个公开 git 提交、缓冲区、守卫、填充和大小常量来自 2026 年 6 月论文。净室已独立地在同一网格上、用同一个缓冲区、同一个守卫地址和同一个 `reg_write_indirect` BAR0 写原语（从 `0x10b9` 进入，出货链从 `0x10aa` 进入）构建了一条工作 ROP 链，并已四天前公开发货它。按此读法，净室满足了它自己的规则（"secret knowledge is admissible only if the same information can be shown to be derivable from public sources"（机密知识只有能展示同一信息可从公开来源推导才被采信）），而评估的负面裁决是对的，事实上还被低估了。
+    已发布的 ROP 载荷里每个常量都可从早于 `patch.diff` 的、带日期的公开或净室派生材料独立推导：gadget 地址来自 2026-07-01 发布的反汇编、gadget 语义来自 2026-07-10 发布的图谱、帧网格来自 2026-07-15T04:47Z 的一个公开 git 提交、缓冲区、守卫、填充和大小常量来自 2026 年 6 月论文。净室已独立地在同一网格上、用同一个缓冲区、同一个守卫地址和同一个 `reg_write_indirect` BAR0 写原语（从 `0x10b9` 进入，已发布的链从 `0x10aa` 进入）构建了一条工作 ROP 链，并已四天前公开发货它。按此读法，净室满足了它自己的规则（"secret knowledge is admissible only if the same information can be shown to be derivable from public sources"（机密知识只有能展示同一信息可从公开来源推导才被采信）），而评估的负面裁决是对的，事实上还被低估了。
 
 === "B 面：不干净"
 
-    出货代码不是 `patch.diff` 的净室重新实现。它**就是** `patch.diff`，在它出现后 70 分钟逐字采纳，移除一处敌对改动、加一个设备 ID 分支。原则上的可推导性不是事实上的推导，而净室规则正如几位参与者所读的（"it is dirty, 100%"（它是脏的、100%））禁止使用那个工件，无论其中的信息是否可独立获得。材料被清除而非裁决，而工具反正采纳了代码。
+    已发布的代码不是 `patch.diff` 的净室重新实现。它**就是** `patch.diff`，在它出现后 70 分钟逐字采纳，移除一处敌对改动、加一个设备 ID 分支。原则上的可推导性不是事实上的推导，而净室规则正如几位参与者所读的（"it is dirty, 100%"（它是脏的、100%））禁止使用那个工件，无论其中的信息是否可独立获得。材料被清除而非裁决，而工具反正采纳了代码。
 
 **什么会定论它。** 现有材料里没有。两份私有驱动修改指南会确立 `patch.diff` 是否真的是私人群组的代码，而采纳维护者的一份陈述会确立代码是被复制还是收敛书写。两者都不存在于源集里。
 
@@ -349,14 +349,14 @@ NvU64 targetFbBytes = 0x0000001000000000ULL;  /* 64GB */
 > [!CAUTION]
 > **不要引用项目的 `docs` 分支**
 >
-> `docs/ARCHITECTURE.md` 陈述 `cmpunlocker` 对 SS0 和 SS1 都写 `0xffffffff`。出货补丁写 `0x0082381c = 0x88888888` 和 `0x00823820 = 0x00000008`。同一个分支杜撰代码或转写里任何地方都不存在的缩写展开（SS 作 "Suspension State"、PLM 作 "Program Logic Modules"、PMM 作 "Permute Mask Model"、LMR 作 "LM (Local Memory) Request register"、PMA 作 "Power Management Array"）、断言一条不存在的 `SEC2_DEBUG: Executing unlock sequence...` 日志行，并在出货脚本是 `remove.sh` 时指示用户跑 `sudo ./uninstall.sh --yes`。它只有七个提交，而且它不是权威。
+> `docs/ARCHITECTURE.md` 陈述 `cmpunlocker` 对 SS0 和 SS1 都写 `0xffffffff`。已发布的补丁写 `0x0082381c = 0x88888888` 和 `0x00823820 = 0x00000008`。同一个分支杜撰代码或转写里任何地方都不存在的缩写展开（SS 作 "Suspension State"、PLM 作 "Program Logic Modules"、PMM 作 "Permute Mask Model"、LMR 作 "LM (Local Memory) Request register"、PMA 作 "Power Management Array"）、断言一条不存在的 `SEC2_DEBUG: Executing unlock sequence...` 日志行，并在已发布的脚本是 `remove.sh` 时指示用户跑 `sudo ./uninstall.sh --yes`。它只有七个提交，而且它不是权威。
 
 > [!WARNING]
 > **流传最广的架构笔记自评约 10% 被证明**
 >
 > 它们的作者带这个警告发布它们："I do hold some notes. I try to double-check each statement、but this work can not be given to LLMs、so it is goes REALLY slow. This is what I have now. I do not state that this information is accurate、I would say、just ~10% has reliable proofs/sources."（我确实持有一些笔记。我尽量双重检查每条陈述，但这工作不能交给 LLM，所以它进行得真的非常慢。这是我现在的。我不声称这信息准确，我会说，只有约 10% 有可靠的证明/来源。）一个平行的警告给了任何尝试写合并写稿的人："most of things known about throttling mechanism are based on hypotheses and some experiments that do not contradict them... if you simply collect all points mentioned in chat you will likely get many wrong conclusions and it will get your llm insane."（对节流机制已知的大部分东西基于假设和一些不矛盾的实验……如果你简单收集聊天里提到的所有点，你很可能得到许多错误结论，还会把你的 llm 搞疯。）被点名作可靠启动材料的三个来源是 Zenodo 论文、公开 GA100 熔丝参考表、和带注释的 `booter_load` 汇编。把这个警告特别附到架构笔记上，不要附到寄存器转储或反汇编上，后者被可证明地更好支持。
 
-项目全篇使用的函数名是从行为推断的，不是从一个符号表读的：二进制没有符号。有一对在两个文档之间命名不一致。`0xd66` 和 `0xccb` 在 LLM 概览里是 `regtable_reverse_lookup` 和 `regtable_rw_indexed`，在 ROP 写稿里却是 ACR 互斥锁获取和释放。代码支持互斥锁读法，而出货链把 `0x00000ccb` 放在它的干净退出 `0x00007f2f` 紧前的 `D[0xFFF4]`，所以互斥锁读法是出货代码依赖的那个。
+项目全篇使用的函数名是从行为推断的，不是从一个符号表读的：二进制没有符号。有一对在两个文档之间命名不一致。`0xd66` 和 `0xccb` 在 LLM 概览里是 `regtable_reverse_lookup` 和 `regtable_rw_indexed`，在 ROP 写稿里却是 ACR 互斥锁获取和释放。代码支持互斥锁读法，而已发布的链把 `0x00000ccb` 放在它的干净退出 `0x00007f2f` 紧前的 `D[0xFFF4]`，所以互斥锁读法是已发布的代码依赖的那个。
 
 ---
 
@@ -381,7 +381,7 @@ NvU64 targetFbBytes = 0x0000001000000000ULL;  /* 64GB */
 | 2026-07-16T06:07:12Z | 论文作为 `main.pdf` 贴进净室服务器 |
 | 2026-07-17 | DMCA 对至少一个 fork 的删除 |
 | 2026-07-18T18:01:15Z | `patch.diff` 被贴出 |
-| 2026-07-18T18:26:26Z | 出货补丁集文件 mtime |
+| 2026-07-18T18:26:26Z | 已发布的补丁集文件 mtime |
 | 2026-07-18T18:40:16Z | LAPSUS$ 来源评估被贴出 |
 | 2026-07-18T19:11:01Z | `06fabf2 "WORKING MEMORY UNLOCK"` |
 | 2026-07-18T21:46:49Z | `e4026e5 "Memory working!"` 合并进 `master` |

@@ -24,7 +24,7 @@
 | AON LMR 影子 `0x001180f0` | 否，回退 |
 | SEC2 复位-PLM 污染 | 被 FLR **清除**（`0x8f` 变回 `0xff`） |
 
-在一份 26 寄存器调查里，`FEAT_OVR_PLM` 是唯一标为常开的 PLM。这种不对称正是算力解锁比显存解锁早数周出货的唯一原因，也解释了为何显存解锁不能用旧的算力配方（"发射、FLR、然后从主机写"）。
+在一份 26 寄存器调查里，`FEAT_OVR_PLM` 是唯一标为常开的 PLM。这种不对称正是算力解锁比显存解锁早数周发布的原因，也解释了为何显存解锁不能用旧的算力配方（"发射、FLR、然后从主机写"）。
 
 **2. 帧缓冲几何布局没有常开影子。** 团队花了几小时搜一个，因为 SS0 有一个可找到的 AON 影子、一篇已发表论文也描述了这一概念。在全部六个 FB 几何 PLM 加上 `FUSE_SS_PLM` 都打开的情况下，CFG1、CSTATUS 和 LMR 仍会在 FLR 时回退，且从不在冷启动时持久。一次专门的 FLR 存活映射运行得出结论：没有任何 PLM 能把 FBPA 配置移入常电域。因此几何布局必须在**每次**模块加载时重新应用。
 
@@ -107,7 +107,7 @@ NvU64 stockSignatureSize;
 
 **为什么这是 ROP 而非代码执行。** Falcon 把指令存放在 IMEM、数据存放在 DMEM，而溢出只到达 DMEM。它只夺得了对 Falcon 调用栈上返回地址的控制，所以攻击必须由已签名 booter 映像中现成的 gadget 构建。
 
-**缓冲区不含什么。** 固件拼接时代曾有一种早期观点：缓冲区必须以真实、有效的签名开头，因为把整个 `0xF800` 区域零填充会让出厂 booter 以邮箱 `0x31` 退出。出货载荷并不保留它：`_kgspSec2PostblTimingFillPayload()` 从偏移量 0 起给每个 dword 写入 `0x000004a7`，从不把签名字节复制回来。保存的出厂字节只活在 `pStockSignatureData` 里，直到第 7 步才放回。邮箱 `0x31` 也是成功载荷回合报告的值，所以单凭它不能作为签名有效性的判决。
+**缓冲区不含什么。** 固件拼接时代曾有一种早期观点：缓冲区必须以真实、有效的签名开头，因为把整个 `0xF800` 区域零填充会让出厂 booter 以邮箱 `0x31` 退出。已发布的载荷并不保留它：`_kgspSec2PostblTimingFillPayload()` 从偏移量 0 起给每个 dword 写入 `0x000004a7`，从不把签名字节复制回来。保存的出厂字节只活在 `pStockSignatureData` 里，直到第 7 步才放回。邮箱 `0x31` 也是成功载荷回合报告的值，所以单凭它不能作为签名有效性的判决。
 
 `_kgspCreateSignatureMemdesc` 还会对 `/lib/firmware/nvidia/ga100/gsp/dmem.bin` 调用 `os_open_and_read_file()`，失败时记录 `SEC2_DEBUG: <path> not found (0x59), using built-in payload`。状态 `0x59` 属良性且符合预期。
 
@@ -159,7 +159,7 @@ I[0x1c000] = 0x800000f2   （写；0x800000f1 是读）
 
 booter 自己也用这条路径做事，这正是该原语被识别出来的方式。那一个 gadget 就是整个提权所在：它在 LEVEL2 内、在一个真实的、签名的、已通过验证的 HS 映像中执行。
 
-**为什么每次发射只写一个寄存器。** 链在返回途中必须重建 booter 的栈帧，而每次写入要花一个 `0x18` 字节的帧。独立实现把硬上限定在每次发射两到六次写之间，无驱动引擎也拒绝构建一到两次写以外的载荷。出货驱动每次发射只做**一次**写并简单重发，这更简单、也没有预算风险。
+**为什么每次发射只写一个寄存器。** 链在返回途中必须重建 booter 的栈帧，而每次写入要花一个 `0x18` 字节的帧。独立实现把硬上限定在每次发射两到六次写之间，无驱动引擎也拒绝构建一到两次写以外的载荷。已发布的驱动每次发射只做**一次**写并简单重发，这更简单、也没有预算风险。
 
 ---
 
@@ -177,7 +177,7 @@ kgspExecuteBooterLoad_HAL(pGpu, pKernelGsp,
 > [!WARNING]
 > **报告的状态总是失败，而这是预期的**
 >
-> 每个载荷轮次都会记录 `s_executeBooterUcode_TU102: Booter failed with non-zero error code: 0x31` 和 `kgspExecuteBooterLoad_TU102: failed to execute Booter Load: 0xffff`，但寄存器写入仍然落地。seccode 在每次运行后在邮箱 0 里留下一个错误码，`mailbox0 != 0` 又让 HAL 返回 `NV_ERR_GENERIC`（`0xffff`）。**寄存器回读是唯一有效的成功标准**，而这恰好就是出货循环采用的标准。不要看到 `status=0xffff` 就当问题。
+> 每个载荷轮次都会记录 `s_executeBooterUcode_TU102: Booter failed with non-zero error code: 0x31` 和 `kgspExecuteBooterLoad_TU102: failed to execute Booter Load: 0xffff`，但寄存器写入仍然落地。seccode 在每次运行后在邮箱 0 里留下一个错误码，`mailbox0 != 0` 又让 HAL 返回 `NV_ERR_GENERIC`（`0xffff`）。**寄存器回读是唯一有效的成功标准**，而这恰好就是已发布的循环采用的标准。不要看到 `status=0xffff` 就当问题。
 
 一次 Booter 轮次大约花 **180 ms**。
 
@@ -187,7 +187,7 @@ kgspExecuteBooterLoad_HAL(pGpu, pKernelGsp,
 
 权限级别掩码是一种按寄存器块划分的门：它决定哪些权限级别可以读或写它所覆盖的寄存器。在 PL0（来自内核驱动的一次普通主机 BAR0 写）时，目标寄存器根本无法写入，而关键在于，**失败是静默的**。一条早期流水线在没有任何地方报告错误的情况下，记录了三次 `Write failed - wrote 0x2779000, read 0x2449000`。
 
-出货 `plmTable[]` 恰好四项，按此顺序打开：
+已发布的 `plmTable[]` 恰好四项，按此顺序打开：
 
 | 索引 | 名称 | 地址 | 写入的值 | 为什么需要 |
 |---|---|---|---|---|
@@ -199,7 +199,7 @@ kgspExecuteBooterLoad_HAL(pGpu, pKernelGsp,
 > [!WARNING]
 > **WPR_CFG 打开到 `0xfffff0ff`，不是 `0xffffffff`**
 >
-> 分发 README 和 `docs/ARCHITECTURE.md` 都说每个 PLM 都应读 `0xffffffff`。代码却对条目 0 写入并验证 `0xfffff0ff`。请把 `0xfffff0ff` 当作规范值：它是出货循环既写入也核对的值。
+> 分发 README 和 `docs/ARCHITECTURE.md` 都说每个 PLM 都应读 `0xffffffff`。代码却对条目 0 写入并验证 `0xfffff0ff`。请把 `0xfffff0ff` 当作规范值：它是已发布的循环既写入也核对的值。
 
 每个条目最多**两次尝试**。尝试循环是：
 
@@ -229,7 +229,7 @@ NV_PRINTF(LEVEL_WARNING, "WPR2 already up before GSP boot; continuing for recove
 
 **为什么 `FEAT_OVR_PLM` 能被打开。** 门链是这样的：`FUSE_QUADRO_WR_SEC`（`0x0082038c`）= 1 允许打开 `0x00823804`；打开 `0x00823804` 才允许 PL0 主机写 SS0/SS1；特性覆盖寄存器级别高于熔丝。而整条链之所以存在，只是因为 `0x008203f0` 处的主灭杀熔丝 `OPT_FEATURE_FUSES_OVERRIDE_DISABLE` 在 170HX 上读 `0x00000000`。若它被烧断，任何权限级别都不存在软件路径。PLM 本身也不是 PL0 可写的：它必须从一个 HS 模式的 Falcon 打开，"if this was not so, any Nvidia card could be unlocked without any exploit"（若非如此，任何 NVIDIA 卡都能不带任何利用而被解锁）。
 
-出货树对 `0x008200fc`（`FUSE_SS_PLM`，分支源码里叫 `OPT_PLM`）**什么都不写**。一条更早的合并配方曾要求打开它；但它已被观察到在出厂卡上读 `0xffffffff`，所以打开它并无必要。Gen2 家族分支确实会加上它，作为把表从四项扩到九项的五条额外条目之一。
+已发布的树对 `0x008200fc`（`FUSE_SS_PLM`，分支源码里叫 `OPT_PLM`）**什么都不写**。一条更早的合并配方曾要求打开它；但它已被观察到在出厂卡上读 `0xffffffff`，所以打开它并无必要。Gen2 家族分支确实会加上它，作为把表从四项扩到九项的五条额外条目之一。
 
 ---
 
@@ -250,13 +250,13 @@ GPU_REG_WR32(pGpu, 0x00100ce0U, lmrValue);      /* MMU 本地显存范围 */
 
 `0x0082381c` 是 `NV_FUSE_FEATURE_OVERRIDE_SM_SPEED_SELECT`，持有 IMLA0-3、FMLA16、FMLA32、FFMA 和 DP 的八个 4 位字段。`0x00823820` 是 `..._SM_SPEED_SELECT_1`，持有 IMLA4 的第九个字段。每个半字节读作 `[enable | 3-bit speed]`：`0x8` 置位第 3 位（覆盖使能），配速度字段 0（全速）。因此 `0x88888888` 意味着全部八个 SS0 单元上 "override enabled, full rate"（覆盖启用、全速），`0x00000008` 则对 IMLA4 单独做同样的事。
 
-**为什么两者都要。** 只写一个不够；这一点在社区频道里被独立强调，也体现在每一对出货写入中。
+**为什么两者都要。** 只写一个不够；这一点在社区频道里被独立强调，也体现在每一对已发布的写入中。
 
 **为什么这有效而熔丝仍烧着。** 节流按算术单元做 OTP 熔断：`FUSE_SS_FFMA`、`FUSE_SS_FMLA16/32` 和 `FUSE_SS_IMLA0-4` 在 170HX 上全部读 `0x5`（除以 32），在每个被探测的 A100、A10、A5000、A6000 和 Drive A100 上读 `0x0`。一次成功解锁后，那些熔丝影子**仍读 `0x5`**。有效速率由一个可写的覆盖值仲裁，它优先于熔丝，而非直接来自熔丝。确认标准是 `0x00823818` 处的 `FEAT_READOUT_1`——全部九个单元的有效速度选择，从 `0x016db6ed` 降到 `0x00000000`。
 
 ### CFG1 和 LMR：几何布局
 
-`0x009a0204` 是 FBPA CFG1 广播寄存器。它在位 [23:16] 的档位字节编码每个显存分区的寻址深度：`0x44` 出厂（12 行位、每 FBPA 512 MiB）、`0x66`（14 行位、2048 MiB）、`0x77`（15 行位、4096 MiB）。总容量是寻址深度乘以熔丝决定的活跃-FBPA 数，而 CFG1 不碰后者。两个出货值字面上就是真实 A100 部件的出厂 CFG1 字：`0x02779000` 是 A100 PCIe 80 GB 读到的值，`0x02669000` 是 A100 PCIe 40 GB 和 SXM4 40 GB 读到的值。解锁恢复的是真正的 A100 几何布局，而非自创常量。
+`0x009a0204` 是 FBPA CFG1 广播寄存器。它在位 [23:16] 的档位字节编码每个显存分区的寻址深度：`0x44` 出厂（12 行位、每 FBPA 512 MiB）、`0x66`（14 行位、2048 MiB）、`0x77`（15 行位、4096 MiB）。总容量是寻址深度乘以熔丝决定的活跃-FBPA 数，而 CFG1 不碰后者。两个已发布的值字面上就是真实 A100 部件的出厂 CFG1 字：`0x02779000` 是 A100 PCIe 80 GB 读到的值，`0x02669000` 是 A100 PCIe 40 GB 和 SXM4 40 GB 读到的值。解锁恢复的是真正的 A100 几何布局，而非自创常量。
 
 `0x00100ce0` 是 MMU 本地显存范围。它把总帧缓冲大小编码为：
 
@@ -281,7 +281,7 @@ MAG 按 SKU 恒定，等于活跃-FBPA 数的两倍；SCALE 才是解锁改动�
 
 **为什么 LMR 是硬前提而非优化。** 在硬件上做了一次受控三方对比：不写显存让 CPU-RM 在 `kbusVerifyBar2` 处以 `0x24` 失败；带出厂 10 GB LMR 的 40 GB CFG1 跳线仍给出 `0x24`；跳线加上匹配的 LMR 才达到 `0x25`（StateLoad）。没有 LMR，就没有任何配置能达到 StateLoad。而按上文注意到的 GSP-RM 行为，一对不连贯的 CFG1/LMR 会在 `kgspBootstrap` 期间被回退。
 
-**为什么一次广播写就够了。** `0x009A0000`-`0x009A3FFF` 是广播 FBPA 孔径；24 个每实例镜像位于 `0x00900204 + n*0x4000`。出货驱动**不**写任何每-FBPA 寄存器却产出一张可用卡，因为 devinit 随后会运行并传播该值。在没有 devinit 的无驱动运行时环境里，单靠广播无法移动 CSTATUS，所有每-FBPA 实例都必须手动写入。该传播是否为 PRI 特权环的硬件机制，从未被直接插桩确认。
+**为什么一次广播写就够了。** `0x009A0000`-`0x009A3FFF` 是广播 FBPA 孔径；24 个每实例镜像位于 `0x00900204 + n*0x4000`。已发布的驱动**不**写任何每-FBPA 寄存器却产出一张可用卡，因为 devinit 随后会运行并传播该值。在没有 devinit 的无驱动运行时环境里，单靠广播无法移动 CSTATUS，所有每-FBPA 实例都必须手动写入。该传播是否为 PRI 特权环的硬件机制，从未被直接插桩确认。
 
 ---
 
@@ -291,7 +291,7 @@ MAG 按 SKU 恒定，等于活跃-FBPA 数的两倍；SCALE 才是解锁改动�
 
 **为什么。** 下一次 Booter Load 才是真实的那次：它必须正确划分 WPR2、通过自己的签名验证、并启动 GSP-RM。如果过大的载荷缓冲区仍挂着，那次运行就会再次溢出 DMEM，GSP 永远启动不了。恢复真正的 4096 字节签名和它的真实长度，等于把出厂驱动会提供的东西原样交给 Booter。
 
-**为什么几何布局改动不会使签名失效。** 出厂 AES-MAC 覆盖的是静态 GSP 固件映像，而非运行时 WPR 元数据，也非硬件几何布局；WPR 元数据由驱动在运行时计算。一条相反方向的说法已被明确撤回，而出货的保存 / 注入 / 恢复流程就是经验的证明。
+**为什么几何布局改动不会使签名失效。** 出厂 AES-MAC 覆盖的是静态 GSP 固件映像，而非运行时 WPR 元数据，也非硬件几何布局；WPR 元数据由驱动在运行时计算。一条相反方向的说法已被明确撤回，而已发布的保存 / 注入 / 恢复流程就是经验的证明。
 
 这一步也解释了一个现实世界的陷阱：如果机器以前运行过固件打补丁的前身，必须先恢复磁盘上的 `gsp_tu10x.bin`。否则驱动会在第 2 步把*利用载荷*保存为"出厂"签名，随后干净的 GSP-RM 引导就会 DMA 到错误的 ROP 链。应当寻找的成功行是 `SEC2_DEBUG: saved stock signature (4096 bytes)`。
 
@@ -345,7 +345,7 @@ SEC2_DEBUG: POST-BooterLoad verify PLM=0xffffffff SS0=0x88888888 SS1=0x00000008 
 
 **补丁 0005，复制引擎清理变通方案。** 两个 hunk。在 `mem_mgr_tu102.c` 里，清理器的 PTE-kind 辅助函数对两个设备 ID 提前返回 `NV_MMU_PTE_KIND_GENERIC_MEMORY`，而非 `NV_MMU_PTE_KIND_GENERIC_MEMORY_COMPRESSIBLE_DISABLE_PLC`。在 `mem_scrub.c` 里，`memmgrUseVasForCeMemoryOps()` 守卫获得一个设备 ID 排除，使 `DRF_DEF(0050, _CEUTILS_FLAGS, _VIRTUAL_MODE, _TRUE)` 永不被设置、清理器在物理模式下运行。
 
-**补丁 0006，持久软件状态。** `kernel-open/nvidia/nv.c` 在 PCI 探测时为任一设备 ID 设置 `nv->flags |= NV_FLAG_PERSISTENT_SW_STATE`，共九行。该标志原本为 SR-IOV 虚拟功能存在，现被改用来让 RM 在最后一个客户端关闭时不拆除软件状态。这实际上是内置的持久化模式，也是出货设计无需 systemd 守护进程的原因。（`remove.sh` 仍会清理一个当前安装器从不创建的遗留 `cmpunlocker.service` 和一个 `watchdog.py`：那是被放弃的看门狗设计的遗存。）
+**补丁 0006，持久软件状态。** `kernel-open/nvidia/nv.c` 在 PCI 探测时为任一设备 ID 设置 `nv->flags |= NV_FLAG_PERSISTENT_SW_STATE`，共九行。该标志原本为 SR-IOV 虚拟功能存在，现被改用来让 RM 在最后一个客户端关闭时不拆除软件状态。这实际上是内置的持久化模式，也是已发布的设计无需 systemd 守护进程的原因。（`remove.sh` 仍会清理一个当前安装器从不创建的遗留 `cmpunlocker.service` 和一个 `watchdog.py`：那是被放弃的看门狗设计的遗存。）
 
 ---
 
@@ -404,7 +404,7 @@ sudo dmesg | grep SEC2_DEBUG
 > [!NOTE]
 > **未解问题**
 >
-> **链实际执行 `0x0ccb` 吗？** 一条硬约束曾被记录：任何 ROP 退出路径都不得路由经过 `regtable_rw_indexed (0x0ccb)`，因为 `0xF800` 载荷会线性粉碎它在 DMEM `0x2383` 和 `0x8e08` 索引的描述符表；而一次 2026-07-06 的隔离矩阵显示，每条携带写入的重接链都死在那里。然而出货载荷确实把 `0x00000ccb` 放在 DMEM `0xFFF4` 且有效。下一步是从 `0xFF54` 单步或模拟展开，记录 `0xFFF4` 究竟曾否弹进 PC，还是只是最外层帧里一个存活下来的保存槽。
+> **链实际执行 `0x0ccb` 吗？** 一条硬约束曾被记录：任何 ROP 退出路径都不得路由经过 `regtable_rw_indexed (0x0ccb)`，因为 `0xF800` 载荷会线性粉碎它在 DMEM `0x2383` 和 `0x8e08` 索引的描述符表；而一次 2026-07-06 的隔离矩阵显示，每条携带写入的重接链都死在那里。然而已发布的载荷确实把 `0x00000ccb` 放在 DMEM `0xFFF4` 且有效。下一步是从 `0xFF54` 单步或模拟展开，记录 `0xFFF4` 究竟曾否弹进 PC，还是只是最外层帧里一个存活下来的保存槽。
 
 > [!NOTE]
 > **未解问题**

@@ -1,6 +1,6 @@
 # 运行多张卡
 
-**本页覆盖内容。** 当一台主机有不止一张 CMP 170HX 时会发生什么：为什么出货 `master` 在多卡机架上有效、尽管它是一个单卡安装器、未发布的 `multiple-cards` 分支添加了什么（按-BDF 分类、`gpu_inventory` 文件、`mixed` 档位和 `SKIP_GEOMETRY_REWRITE`）、以及只在盒子里有至少两张 GPU 时才出现的失败模式。
+**本页覆盖内容。** 当一台主机有不止一张 CMP 170HX 时会发生什么：为什么已发布的 `master` 在多卡机架上有效、尽管它是一个单卡安装器、未发布的 `multiple-cards` 分支添加了什么（按-BDF 分类、`gpu_inventory` 文件、`mixed` 档位和 `SKIP_GEOMETRY_REWRITE`）、以及只在盒子里有至少两张 GPU 时才出现的失败模式。
 
 提前给的关键结果：**解锁本身已经是按-GPU 的。** 自提交 `7fe49b6` 起，打过补丁的 `nvidia.ko` 携带两种几何布局，并在 GSP 引导时从 `pGpu->idInfo.PCIDeviceID >> 16` 选择一个，所以机器里的每张卡都以正确的大小独立解锁，不管安装器怎么想。`master` 上只有*安装器的*记账是单卡的：它取第一行匹配的 `lspci`，从一次 `nvidia-smi` 读数猜测一个档位，并写一组元数据文件。`multiple-cards` 和 `Gen2` 分支用一个真实的按-设备清单取代那段记账。
 

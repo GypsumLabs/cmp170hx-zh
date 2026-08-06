@@ -8,7 +8,7 @@
 2. **跨卡流水线并行是必须的；张量并行在 PCIe Gen1 x4 下是一条死路。** Qwen2.5-72B AWQ 上的直接 A/B：TP2 在 prefill 时**差 2.3-2.8x**，换来 +23% 解码。
 3. **记录上最佳的多卡结果**是一个 744B 参数 MoE（GLM-5.2、40B 活跃），在 vLLM 流水线并行下跑在 8 张解锁 64 GB 卡上：**131k 上下文下 prefill 2,675 t/s、decode 30.2 t/s**，整个会话零硬故障。
 
-下面一切除非说明，都在 **PCIe Gen1 x4** 下测量。出货解锁器完全不含任何 PCIe 代码：`master` 上的 `common/constants.yaml` 只有 `driver_versions`、`gpu`、`compute` 和 `profiles` 键，树里任何地方都没有 `pcie` 节。任何被描述为跑在发布解锁上的基准测试，都以卡的出厂链路运行。
+下面一切除非说明，都在 **PCIe Gen1 x4** 下测量。已发布的解锁器完全不含任何 PCIe 代码：`master` 上的 `common/constants.yaml` 只有 `driver_versions`、`gpu`、`compute` 和 `profiles` 键，树里任何地方都没有 `pcie` 节。任何被描述为跑在发布解锁上的基准测试，都以卡的出厂链路运行。
 
 > [!WARNING]
 > **如何读本页的数字**
@@ -192,7 +192,7 @@ GLM-5.2 用 DeepSeek 稀疏注意力（DSA），它原生需要 Hopper 或 Black
 > [!WARNING]
 > **实验性：`VLLM_USE_PRECOMPILED` 这里不会工作**
 >
-> 应用一个 vLLM 补丁的正常方式是带 `VLLM_USE_PRECOMPILED` 的可编辑安装。它不带 `vllm._C` 出货，会失败。用 0.20.2 release wheel，把 PR 的 python 文件作为 diff 应用到 site-packages。
+> 应用一个 vLLM 补丁的正常方式是带 `VLLM_USE_PRECOMPILED` 的可编辑安装。它不随包提供 `vllm._C`，会失败。用 0.20.2 release wheel，把 PR 的 python 文件作为 diff 应用到 site-packages。
 
 ### 其它多卡结果
 
@@ -328,7 +328,7 @@ Gen2 x4 买来什么，来自**同一个测试者的两次运行**，都不是�
 | MTP + 流水线并行拒绝运行 | 在 vLLM 中当前不兼容 | 未知；MTP + TP8 直接 OOM |
 | SGLang 不跑 MTP | "sglang doesnt like mtp" | 用 vLLM 或 llama.cpp 跑 MTP |
 | 加载器钉死 RSS 和磁盘抖动直到 OOM | llama.cpp 的加载时计算图 pass 抖动系统 RAM | 更多主机 RAM（见下）；容器内 `swapon` 被阻止 |
-| 约 20 GB 后模型加载挂起 | 80 GB 几何布局 | 回退到出货 40 GB 档位 |
+| 约 20 GB 后模型加载挂起 | 80 GB 几何布局 | 回退到已发布的 40 GB 档位 |
 
 > [!CAUTION]
 > **80 GB 档位给你更少的可用显存、不是更多**

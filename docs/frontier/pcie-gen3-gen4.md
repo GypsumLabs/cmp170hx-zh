@@ -7,7 +7,7 @@
 > [!NOTE]
 > **未解问题**
 >
-> 本页描述尚未解决的工作，这里没有任何东西出货。Gen2（5 GT/s）*确实*在软件上解决，并于 2026-07-29 随 `master` 出货：见[PCIe Gen2](../unlock/pcie-gen2.md)。
+> 本页描述尚未解决的工作，这里没有任何东西已发布。Gen2（5 GT/s）*确实*在软件上解决，并于 2026-07-29 随 `master` 发布：见[PCIe Gen2](../unlock/pcie-gen2.md)。
 
 > [!WARNING]
 > **速度不是位宽**
@@ -21,7 +21,7 @@
 | 代 | 速率 | 170HX 上的状态 | 机制 |
 |---|---|---|---|
 | Gen1 | 2.5 GT/s | 出厂、冷启动总训练 | 由已签名 DevInit 编程 CMP PCIe 表 |
-| Gen2 | 5.0 GT/s | **软件里解决**、自 2026-07-29 在 `master` 出货 | 经 SEC2 Booter 的组合寄存器序列，加一次根端口重训练 |
+| Gen2 | 5.0 GT/s | **软件里解决**、自 2026-07-29 随 `master` 发布 | 经 SEC2 Booter 的组合寄存器序列，加一次根端口重训练 |
 | Gen3 | 8.0 GT/s | **未解决。** 能力可以被宣告；链路从不训练 | 2026-07-27 维护者称需要 GSP-RM 补丁，且至今无人拿出可用的 GSP 补丁 |
 | Gen4 | 16.0 GT/s | **未解决且不可测试。** 没有贡献者有 Gen4 主机 | 熔丝位 25 `GEN4_SPEED_DISABLED` 加被抑制的 DevInit 块 |
 
@@ -233,10 +233,10 @@ GSP-RM 确实会读它们，这些读取点已定位：
 | 3 | 对 `0x88070` / `0x8808C` / `0x88090` 的主机 BAR0 写 | 紧邻能力块 | 被 PROT-wall 挡开主机：读返回 0、写被忽略 | 2026-07-24 |
 | 4 | 隔离的高安全 XP3G PHY 速率覆盖 | PLM 打开、覆盖寄存器可写、速率回读 Gen3 能力 `0x00340036` | 链路停在 Gen1。它确实证明一个阳性：`0x10B9` SEC2 CSB 邮箱 gadget 到达 XP3G/PCIe 特权块。后来成为工作的 Gen2 组合的一个*组件* | 2026-07-24 |
 | 5 | 高安全 `FEAT_OVR` 写加重训练 | 算力解锁恰好经这条路线工作 | `0x823800` 回读 `0xfffffe8e`（写生效）、`OPT_GEN23` 停 `0x1`、链路停 Gen1、AER = 0。当时的结论：一个 PCIe 覆盖使能在 FEAT_OVR 里被熔断**关**、不像 `SM_SPD` 被熔断**开**。注意[FEAT_OVR 目录](nvlink.md#route-b-a-feat_ovr-style-attack) 在那个块里没列出 PCIe 寄存器，所以把它当探测结果、不是一个已定位寄存器 | 2026-07-24 |
-| 6 | 直接写 `OPT_GEN23`（`0x82057C` <- 0） | 明显杠杆 | 从主机、从 HS-ROP、经 Booter 载荷都失败。仍被出货 Gen2 补丁尝试、仍失败、Gen2 反正工作 | 2026-07-23 |
+| 6 | 直接写 `OPT_GEN23`（`0x82057C` <- 0） | 明显杠杆 | 从主机、从 HS-ROP、经 Booter 载荷都失败。仍被已发布的 Gen2 补丁尝试、仍失败、Gen2 反正工作 | 2026-07-23 |
 | 7 | 经 Booter 设 `VSEC_DEVICE` 位 0 | 是已发布序列的一部分 | `pre=0x00000800 want=0x00000801`、失败两次带 `rd=0x00000800`。对 "transient window"（瞬态窗口）模型尴尬、它把窗口关闭归咎于 RM 清除一个补丁从未设置的位 | 2026-07-23 |
 | 8 | 在 postbl 写派生的 allowed-Gen 掩码 `0x85084` | "GSP writes `0x85084`" 是真的 | `0x85080` 和 `0x85084` 从注入点读 `0xBADF1100`、写被丢弃。GSP 在一个注入点永远达不到的权限写它、而且反正每次重训练都重新派生它 | 2026-07-24 |
-| 9 | VFIO/QEMU 下的 BAR0 `0x8872c` 值扫描 | LTSSM 相邻 | `0x6` 稳定、让 LTSSM 停在 Gen1 x4；`0x2` 和 `0xA` 暴露额外 Gen2 行为、但最终楔住 VFIO/QEMU 函数。出货 0007 恰好写 `0x6`、它自己的日志说 "skip mid-boot retrain" | 2026-07-12 |
+| 9 | VFIO/QEMU 下的 BAR0 `0x8872c` 值扫描 | LTSSM 相邻 | `0x6` 稳定、让 LTSSM 停在 Gen1 x4；`0x2` 和 `0xA` 暴露额外 Gen2 行为、但最终楔住 VFIO/QEMU 函数。已发布的 0007 恰好写 `0x6`、它自己的日志说 "skip mid-boot retrain" | 2026-07-12 |
 | 10 | `0x88084` `MAX_LINK_SPEED` 作可写上限 | 一份分析得出结论没有主机可写后备寄存器 | 对一个 scratch 寄存器的一次 HS 写成功、而对整个 XP-PL `LINK_CONFIG` 簇（`0x8C044` / `0x8C048` / `0x8C04C`）的同一个写被拒绝。转发者标记那份分析可能错、但被检查的部分站得住：那个簇与工作补丁用的 `0x8C040`/`0x8C2C0`/`0x8C1C0` 真不同 | 2026-07-12 |
 | 11 | `0x8c044`（XP_PL）作链路速率寄存器 | 具名候选 `0x8c044/0x2` | 读 `0xbadf5040`、priv 屏蔽哨兵；探测写测试跳过它。值得注意的是同一个三个寄存器在参考 A100 上*每一*代都读 `0xbadf5040` | 2026-07-20 |
 
@@ -258,7 +258,7 @@ GSP-RM 确实会读它们，这些读取点已定位：
 |---|---|---|
 | 19 | 把 A100 的跳线配置复制到 170HX 上 | 被一个已有 Gen2 x16 工作的测试者试过：**引导时卡不被检测到**。后续回答直白："the straps don't do anything"（跳线什么都不做）、"falcon is driving the rewrites"（falcon 在驱动重写）、"there's no gen3 override register"（没有 gen3 覆盖寄存器）。Strap4（`R999`/`R1000`、靠近 `U808`）被映射为 `PCIE_CFG`。第二位研究者独立发现对照一个活 A100 转储比较跳线档位两天后是一条死路 |
 | 20 | 一颗普通 PCIe redriver | redriver 只重新放大；端点仍产生它自己的熔丝封顶 TX 速率。只有**重定时器**、它终止链路并能对每一侧宣告不同速率、能伪造 TS1/TS2 Rate-ID。具名候选：Astera Aries、TI DS160PR810 类。从未尝试 |
-| 21 | 驱动内完整移除重扫（"Option A"） | 三个注意：GSP 引导钩子在 `probe()` 内跑，所以那里的 `pci_stop_and_remove_bus_device()` 是它自己上下文的一次 use-after-free；重扫后驱动重新探测、GSP 引导、写跑、它又重扫（需要一个模块全局 once 标志）；活 CUDA 客户端被丢弃。Option B（上游桥重训练）反而出货了 |
+| 21 | 驱动内完整移除重扫（"Option A"） | 三个注意：GSP 引导钩子在 `probe()` 内跑，所以那里的 `pci_stop_and_remove_bus_device()` 是它自己上下文的一次 use-after-free；重扫后驱动重新探测、GSP 引导、写跑、它又重扫（需要一个模块全局 once 标志）；活 CUDA 客户端被丢弃。Option B（上游桥重训练）反而已发布 |
 | 22 | 设备 ID 欺骗呈现为 A100 | `FUSE_DEVID_SW_OVR_DIS` `0x00820584` = `0x00000001` 在每个被探测的 Ampere 部件上。写 XVE 配置影子 dword0 `0x88000 = 0x208210de` 只改变主机可见 ID、而 `MAGIC_D` 位 25、PPCI_2 SPEED 和被抑制的 `0x88CE4` 都保留 |
 | 23 | 刷一个真 A100 80GB VBIOS 恢复 PCIe 4.0 | 测试并失败、2026-07-19 报告："Theyve tested that and it doesnt work. the pcie 4.0 bit at least."（他们测过、它不工作。至少 pcie 4.0 位是。） |
 | 24 | VBIOS `CTRL_OPT` / HULK 选项区域作 PCIe 杠杆 | 结构上不可能："CTRL_OPT is remove only, not add"（CTRL_OPT 只移除、不添加） |
@@ -332,7 +332,7 @@ GSP-RM 确实会读它们，这些读取点已定位：
 
 ### 低优先级线索
 
-一位研究者把 `Mellanox-ConnectX-5-PCIe-Gen-4-Enablement` 标记为一个类似的 "shipped-downgraded part"（出货降级部件）案例、显式 "not expecting much"（不期望太多）。什么都没尝试。
+一位研究者把 `Mellanox-ConnectX-5-PCIe-Gen-4-Enablement` 标记为一个类似的 "shipped-downgraded part"（已发布的降级部件）案例、显式 "not expecting much"（不期望太多）。什么都没尝试。
 
 ---
 

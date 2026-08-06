@@ -189,12 +189,12 @@ nvidia-smi --query-gpu=pcie.link.gen.current,pcie.link.gen.max,pcie.link.width.c
 
 ### 软件树里关于这个没有任何东西
 
-电容改装对解锁器不可见，那是一个验证过的否定而非假设。出货 `master` 或 12 个未发布分支的任何文件里都不含字符串 "capacitor"、"AC coupling" 或 "solder"，也没有任何位宽寄存器。对完整 git 历史的一次 grep 一无所获。出货 `0007-pcie-gen2.patch` 只操纵链路**速度**寄存器。
+电容改装对解锁器不可见，那是一个验证过的否定而非假设。已发布的 `master` 或 12 个未发布分支的任何文件里都不含字符串 "capacitor"、"AC coupling" 或 "solder"，也没有任何位宽寄存器。对完整 git 历史的一次 grep 一无所获。已发布的 `0007-pcie-gen2.patch` 只操纵链路**速度**寄存器。
 
 > [!NOTE]
 > **来源更正**
 >
-> 一个广泛重复的声称说，分发解锁 README 把限制记录为 "PCIe width is x4 (not x16): This is a hardware limitation of the CMP 170HX -- missing AC coupling capacitors on lanes 4-15."（PCIe 位宽是 x4（不是 x16）：这是 CMP 170HX 的一个硬件限制——通道 4-15 缺失交流耦合电容。）**出货 `README.md` 不含这样的文本**，任何分支或 git 历史任何点也都不含。技术声称是真的、证据充分；只有归因于出货 README 是错的。它最可能源自一份第三方指南。
+> 一个广泛重复的声称说，分发解锁 README 把限制记录为 "PCIe width is x4 (not x16): This is a hardware limitation of the CMP 170HX -- missing AC coupling capacitors on lanes 4-15."（PCIe 位宽是 x4（不是 x16）：这是 CMP 170HX 的一个硬件限制——通道 4-15 缺失交流耦合电容。）**已发布的 `README.md` 不含这样的文本**，任何分支或 git 历史任何点也都不含。技术声称是真的、证据充分；只有归因于已发布的 README 是错的。它最可能源自一份第三方指南。
 
 ---
 
@@ -386,7 +386,7 @@ R1004 和 R1005 是*同一个*跳线位置的两个替代焊盘，不是两颗�
 > [!NOTE]
 > **未解问题**
 >
-> 在物理板上定位 R240/R241（DEVID_SEL）。设备 ID 是出货驱动据以选择几何布局的键，而 `OPT_DEVID_SW_OVERRIDE_DIS @ 0x00820584 = 0x00000001` 关闭了改变它的每一条软件路线。搜索启发式、合理却未在规模上尝试：在携带 sub-500 设计编号的 PCB 侧、200 系列设计编号区域里，找一颗空焊盘紧挨着的电阻。问一个商业 AI 助手产生了一个自信、完全编造的板拓扑，并被记录为一个警示数据点。
+> 在物理板上定位 R240/R241（DEVID_SEL）。设备 ID 是已发布的驱动据以选择几何布局的键，而 `OPT_DEVID_SW_OVERRIDE_DIS @ 0x00820584 = 0x00000001` 关闭了改变它的每一条软件路线。搜索启发式、合理却未在规模上尝试：在携带 sub-500 设计编号的 PCB 侧、200 系列设计编号区域里，找一颗空焊盘紧挨着的电阻。问一个商业 AI 助手产生了一个自信、完全编造的板拓扑，并被记录为一个警示数据点。
 
 ---
 

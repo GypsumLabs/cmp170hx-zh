@@ -19,7 +19,7 @@
 
 ### `github.com/amoghmunikote/cmpunlocker`（`master` 分支）
 
-**信任：Primary（主要）。** 这是出货工具，也是任何可用代码表述之事的权威。标语："A tool to unlobotomize your NVIDIA card!"（一个解除你 NVIDIA 卡"脑叶切除"的工具！）。2026-07-14 公开；首个提交 `9b9fb2f Initial commit`；归档的 `master` 顶端是 `cc872cb Moved PR template location`（2026-07-23）。
+**信任：Primary（主要）。** 这是已发布的工具，也是任何可用代码表述之事的权威。标语："A tool to unlobotomize your NVIDIA card!"（一个解除你 NVIDIA 卡"脑叶切除"的工具！）。2026-07-14 公开；首个提交 `9b9fb2f Initial commit`；归档的 `master` 顶端是 `cc872cb Moved PR template location`（2026-07-23）。
 
 `master` 恰好包含八个顶层条目：`.github/pull_request_template.md`、`.gitignore`、`LICENSE`、`README.md`、`common/constants.yaml`、`driver/`、`install.sh`、`remove.sh`。**没有** `verify.sh`、**没有** `tools/` 目录、**没有** `probe.sh`、**没有** `requirements.txt`（2026-07-19 删除）也没有测试套件。卸载器是 `remove.sh --yes`；**`uninstall.sh` 在整棵树里都不存在**。
 
@@ -28,7 +28,7 @@
 > [!WARNING]
 > **README 对设备门控很松散**
 >
-> 它说解锁是 `0x20C2`-门控的，而驱动内门控 `_kgspSec2PostblTimingEnabled()` 接受 `0x20C2` **和** `0x2082`。Master 根本不出货 `DEBUGGING.md`："all PLMs must show `0xffffffff`" 那行活在 `docs` 分支上，而且它是错的，因为出货表把 WPR_CFG `0x001fa7cc` 打开到 `0xfffff0ff`。
+> 它说解锁是 `0x20C2`-门控的，而驱动内门控 `_kgspSec2PostblTimingEnabled()` 接受 `0x20C2` **和** `0x2082`。Master 根本未发布 `DEBUGGING.md`："all PLMs must show `0xffffffff`" 那行活在 `docs` 分支上，而且它是错的，因为已发布的表把 WPR_CFG `0x001fa7cc` 打开到 `0xfffff0ff`。
 
 ### 十二个未发布分支
 
@@ -52,7 +52,7 @@
 > `NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"` 写进
 > `/etc/modprobe.d/cmp-pcie-gen2.conf`，在尝试启用 Gen2 的同时把链路钉在 Gen1。
 > `far` 提交 `8854d3e "Remove clamp link to Gen1"` 把它改成 `0x2`。到底哪个值正确
-> **真的未解决**：两者都出货，且不存在 A/B 引导测试。
+> **真的未解决**：两者都已发布，且不存在 A/B 引导测试。
 >
 > **`80` 分支编程的不是它元数据所说的东西。** `80/common/constants.yaml` 携带
 > `lmr: "0x0000028B"` 和 `81920`，但 `build.sh` 从不读那个文件。`80/driver/build.sh`
@@ -65,11 +65,11 @@
 
 ### `github.com/amoghmunikote/cmpunlocker` 分支 `docs`
 
-**信任：不要引用。** 七个提交。它是项目自己的文档分支，也是一份有据可查的错误来源：`docs/ARCHITECTURE.md` 声称 `SS0 = 0xffffffff` 和 `SS1 = 0xffffffff`，而出货补丁写的是 `0x88888888` 和 `0x00000008`；`DEBUGGING.md` 说所有 PLM 必须读 `0xffffffff`；`docs/INSTALLATION.md` 和分支 README 两者都指示 `sudo ./uninstall.sh --yes`，而这是个不存在的文件；它还杜撰了在代码或聊天里任何地方都找不到的缩写展开（SS 为 "Suspension State"、PLM 为 "Program Logic Modules"、PMM 为 "Permute Mask Model"、LMR 为 "LM (Local Memory) Request register"、PMA 为 "Power Management Array"）。它还断言一条驱动从不发出的 `SEC2_DEBUG: Executing unlock sequence...` 日志行。
+**信任：不要引用。** 七个提交。它是项目自己的文档分支，也是一份有据可查的错误来源：`docs/ARCHITECTURE.md` 声称 `SS0 = 0xffffffff` 和 `SS1 = 0xffffffff`，而已发布的补丁写的是 `0x88888888` 和 `0x00000008`；`DEBUGGING.md` 说所有 PLM 必须读 `0xffffffff`；`docs/INSTALLATION.md` 和分支 README 两者都指示 `sudo ./uninstall.sh --yes`，而这是个不存在的文件；它还杜撰了在代码或聊天里任何地方都找不到的缩写展开（SS 为 "Suspension State"、PLM 为 "Program Logic Modules"、PMM 为 "Permute Mask Model"、LMR 为 "LM (Local Memory) Request register"、PMA 为 "Power Management Array"）。它还断言一条驱动从不发出的 `SEC2_DEBUG: Executing unlock sequence...` 日志行。
 
 ### `github.com/NVIDIA/open-gpu-kernel-modules`
 
-**信任：Primary（主要）。** 这是 `build.sh` 安装时抓取的上游驱动源码（`archive/refs/tags/${VERSION}.tar.gz`），也是带签名 booter blob 的来源。有三个文件反复用到：`src/nvidia/generated/g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c`（持有 `IMAGE_{DBG,PROD}`、`HEADER_{DBG,PROD}`、`SIG_{DBG,PROD}` 和 `PATCH_LOC = 0x8900`）、`kernel_gsp_booter_tu102.c` 和 `nouveau/extract-firmware-nouveau.txt`。出货 `master` 上受支持的版本恰好是 `610.43.03`（默认）和 `610.43.02`；其它任何东西都会导致构建硬失败。见[驱动版本](../procedures/driver-versions.md)。
+**信任：Primary（主要）。** 这是 `build.sh` 安装时抓取的上游驱动源码（`archive/refs/tags/${VERSION}.tar.gz`），也是带签名 booter blob 的来源。有三个文件反复用到：`src/nvidia/generated/g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c`（持有 `IMAGE_{DBG,PROD}`、`HEADER_{DBG,PROD}`、`SIG_{DBG,PROD}` 和 `PATCH_LOC = 0x8900`）、`kernel_gsp_booter_tu102.c` 和 `nouveau/extract-firmware-nouveau.txt`。已发布的 `master` 上受支持的版本恰好是 `610.43.03`（默认）和 `610.43.02`；其它任何东西都会导致构建硬失败。见[驱动版本](../procedures/driver-versions.md)。
 
 > [!NOTE]
 > **下载无完整性检查**
@@ -154,7 +154,7 @@ TechPowerUp 在晶片尺寸（826 mm²）、着色单元（4,480 = 70 x 64）、
 
 它的摘要称 CMP 170HX 是"与旗舰 A100 相同的晶片，但在三个商业轴上是熔丝残废的：SM 算力速率（节流到 1/32）、显存容量（10 GB 而非 80 GB）、PCIe 链路（Gen1 而非 Gen4）"，称"三个上限都是软的"，并报告约 31 到 62x 算力、8x 容量和 2x 链路的主要增益。
 
-它为何承重：净室规则把它指定为唯一可接受的输入文档，理由是它发布在科学出版物站点上，且已被寄给厂商。它的 5.5 节仿真器迹线发布了 `buffer = 0x800`、`SIGSZ = 0xf800`、均匀填充 `V = 0x4a7`、`guard@0x6340` 和守卫桩值 `0xc0deca7e`，那是出货载荷大量常量的来源。它的 8.5 节"Persistence across FLR"论证了常电岛里的覆盖值如何把一次性利用变成持久状态。
+它为何承重：净室规则把它指定为唯一可接受的输入文档，理由是它发布在科学出版物站点上，且已被寄给厂商。它的 5.5 节仿真器迹线发布了 `buffer = 0x800`、`SIGSZ = 0xf800`、均匀填充 `V = 0x4a7`、`guard@0x6340` 和守卫桩值 `0xc0deca7e`，那是已发布的载荷大量常量的来源。它的 8.5 节"Persistence across FLR"论证了常电岛里的覆盖值如何把一次性利用变成持久状态。
 
 两点注意。它的 "3-4 BAR0 value changes" 框架误导了每个独立实现者：难点完全在**先**打开四个 PLM，之后的 BAR0 写就琐碎了。而它的 Falcon 仿真器**从未被发布**，这关闭了复现其分析最直接的路线。还有一条二手报告称论文描述了把卡稳定在约 35% 吞吐惩罚下，此处以低置信记录、未经验证。
 
@@ -224,7 +224,7 @@ TechPowerUp 在晶片尺寸（826 mm²）、着色单元（4,480 = 70 x 64）、
 | 另外六个个人 fork 和重新打包 | Fork 和重新打包 | 历史性。其中一个携带 `combined-multiple-cards-gen2` 分支、一个值得注意的 Gen2 工作与多卡支持的社区合并。按本维基的匿名化政策省略拥有者名字。 |
 | `asm64-hooligan/cmpunlocker` 分支 `mem_overclock` | 显存超频实验、乘数从 72 降到 70 | 实验性、单一作者、测试在频道内被请求 |
 | `theneocorp/cmppatcher` | 一个**不同的方法**：直接补丁 NVIDIA 驱动**二进制**、让改动挺过驱动更新。报告 3D 加速和 FP32 FMA 绕过。 | 独立、此处未验证 |
-| `abobasixseven/unlock-cmp-170hx` | **不是一份写稿。** 只含 `README.md` 和 `cmp90_compute_unlock_prompt.md`、两者都以 AI-agent 执行指令结尾、如 "EXECUTE STEP BY STEP: 5 -> 6 -> 6.5 -> 7"、并在其备份和克隆命令里硬编码一个用户的主目录。 | 谨慎使用。它的寄存器表匹配出货补丁；它的散文和 PCIe 章节是二级摘要、不是测量。 |
+| `abobasixseven/unlock-cmp-170hx` | **不是一份写稿。** 只含 `README.md` 和 `cmp90_compute_unlock_prompt.md`、两者都以 AI-agent 执行指令结尾、如 "EXECUTE STEP BY STEP: 5 -> 6 -> 6.5 -> 7"、并在其备份和克隆命令里硬编码一个用户的主目录。 | 谨慎使用。它的寄存器表匹配已发布的补丁；它的散文和 PCIe 章节是二级摘要、不是测量。 |
 | `eastmoe/CMPGPU-patch-script`（`optimize-cmp-cuda.py`） | 交互式 llama.cpp 源码补丁器、带五个独立优化组、每个默认 no：`fp32_fma_flag`（加 `-fmad=false`）、`fp32_fma_split`（在 `quantize.cu` 里把 `fmaf(...)` 重写为 `__fadd_rn(__fmul_rn(...))`）、`math_intrinsics`、`dp2a`、`fp16_bf16_cuda_core`。跨七个文件 11 个 PatchSpec 条目、`.cmp-bak` 备份、`--dry-run`/`--no-backup`/`--restore`。 | Reliable（可靠）、它自己的 README 警告在非 170HX 的 CC 8.x 设备上性能可能**下降**。 |
 | `cachenetics/170tune` | 调优和鉴定 harness、安装为 `/usr/local/bin/170hx-oc`；测量、门控和恢复时钟与电压设置、把"一次完成的基准当作什么都不是的证据"。 | 方法上 Reliable（可靠）。它是否跨重启持久化设置是一个它自己作者标记的未解问题。见[调优](../operations/tuning.md)。 |
 | `Kepling5001/Miners`（`CMP170HX_Compute_Unlock_v8_3.sh`） | 一个被公开泄露并很快删除的算力解锁 shell 脚本。它的作者描述它为"just the compute only logic ... with some minor modifications to attempt to run on multiple GPU's vs 1. Nothing new"（只是纯算力逻辑……带一些小修改以尝试在多 GPU 而非 1 上跑。没有新东西） | 仅历史性。不含任何关于显存解锁的东西。 |
@@ -242,7 +242,7 @@ TechPowerUp 在晶片尺寸（826 mm²）、着色单元（4,480 = 70 x 64）、
 
 **`github.com/dartraiden/NVIDIA-patcher` issue #73。** *信任：作为记录是 Reliable（可靠）、作为分析不可靠。* 这是整个努力的起点，发生在 2026 年 3 月，4 月才搬到 Discord。它还承载了显存跳线解释（"每个 HBM2 栈上可寻址 RAM 的量，由 DMEM 区域里一个特定位置的 32 位字定义"）、跳线电阻讨论（R999/R1000 处的 Strap4、PCIE_CFG），以及首个公开的 "40 GB confirmed working" 报告。注意 NVIDIA-patcher 项目**本身无法驱动 170HX**：它面向图形，产出的是一个 GeForce-分类的 GPU 而非算力解锁。把它应用到 170HX 上不会影响 FP32 节流。
 
-从那线程链接出的一条 2026 年 4 月写稿，经过约 18 小时自动化分析后得出结论"FP throttle is hardware enforced and can't be overridden"（FP 节流是硬件强制的、无法覆盖）。它自己的页脚说明这是在驱动 **535.288.01** 上执行的，那早于出货解锁器瞄准的 GSP 布局，它的结论也被出货算力解锁反驳。它是一个精心记录的错误答案的好例子。
+从那线程链接出的一条 2026 年 4 月写稿，经过约 18 小时自动化分析后得出结论"FP throttle is hardware enforced and can't be overridden"（FP 节流是硬件强制的、无法覆盖）。它自己的页脚说明这是在驱动 **535.288.01** 上执行的，那早于已发布的解锁器瞄准的 GSP 布局，它的结论也被已发布的算力解锁反驳。它是一个精心记录的错误答案的好例子。
 
 **`github.com/ggml-org/llama.cpp`**：issue #24616（在 PCIe 1.1 x4 的 90HX 上达到 240 t/s pp512 的 CMP 专属补丁集）、issue #24730（无 DSA 注意力支持、那是为什么 GLM 类模型回退到稠密注意力并在此变得不可用的原因）、PR #19378（经 `--split-mode tensor` 的后端无关张量并行）、和讨论 #15013。见[LLM 推理](../operations/llm-inference.md)。
 

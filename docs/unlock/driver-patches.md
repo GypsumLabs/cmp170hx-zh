@@ -2,7 +2,7 @@
 
 ## 本页覆盖内容
 
-出货 CMP 170HX 解锁不是固件刷写、不是用户态守护进程、也不是二进制编辑。它是**六个编号补丁文件**，应用到 NVIDIA 的 `open-gpu-kernel-modules` 版本 610.43.03 或 610.43.02 的一份未修改检出、本地编译、安装为五个内核模块。本页逐个走每个补丁：它改变什么、在哪个源文件里、为什么需要它、丢掉它又会在哪里失败。
+已发布的 CMP 170HX 解锁不是固件刷写、不是用户态守护进程、也不是二进制编辑。它是**六个编号补丁文件**，应用到 NVIDIA 的 `open-gpu-kernel-modules` 版本 610.43.03 或 610.43.02 的一份未修改检出、本地编译、安装为五个内核模块。本页逐个走每个补丁：它改变什么、在哪个源文件里、为什么需要它、丢掉它又会在哪里失败。
 
 整个解锁（权限级别掩码打开、算力节流写、显存几何写）都在**补丁 0001** 里，位于 `src/nvidia/src/kernel/gpu/gsp/kernel_gsp.c` 内。其它五个补丁之所以存在，是因为一颗突然声称 64 GiB 帧缓冲的 GA100 破坏了驱动里几个下游假设：致命断言触发、PRAMIN 窗口落出范围、物理内存分配器从不知道新内存、复制引擎清理器选错 PTE kind、RM 在客户端之间拆除软件状态。0002 到 0006 每个恰好修复其中一个。
 
@@ -157,9 +157,9 @@ SEC2_DEBUG: /lib/firmware/nvidia/ga100/gsp/dmem.bin not found (0x59), using buil
 内置默认武装 `writeAddr = 0x009a0148`、`writeValue = 0xffffffff`，PLM 循环每次迭代立即覆盖它。
 
 > [!NOTE]
-> **`0xFACEB13D` 不是出货金丝雀**
+> **`0xFACEB13D` 不是已发布的金丝雀**
 >
-> 更早的独立 harness 在 `CANARY_ADDR = 0x6340` 带 `DMA_TARGET = 0x0800` 用 `0xFACEB13D`。那是出货 `0x5b40` 金丝雀（`0x5b40 + 0x0800 = 0x6340`）的同一个槽、不同的字面量。读出货代码时预期 `0xc0deca7e`。
+> 更早的独立 harness 在 `CANARY_ADDR = 0x6340` 带 `DMA_TARGET = 0x0800` 用 `0xFACEB13D`。那是已发布的 `0x5b40` 金丝雀（`0x5b40 + 0x0800 = 0x6340`）的同一个槽、不同的字面量。读已发布的代码时预期 `0xc0deca7e`。
 
 ### 4. PLM 循环
 
@@ -322,7 +322,7 @@ pmaRegisterRegion(pPma, numPmaRegions, NV_FALSE, &pmaRegion, 0, NULL)
 > [!NOTE]
 > **`stockFbBytes` 在 10 GB 卡上也是 8 GiB**
 >
-> `0x200000000ULL` 为两个档位硬编码。在 `0x2082` 卡上边界因此是 8 GiB、而非卡原生的 10 GiB。这在出货代码里、不是本维基的笔误。
+> `0x200000000ULL` 为两个档位硬编码。在 `0x2082` 卡上边界因此是 8 GiB、而非卡原生的 10 GiB。这在已发布的代码里、不是本维基的笔误。
 
 ### 没有 0003 会怎样
 
@@ -445,16 +445,16 @@ sudo dmesg | grep SEC2_DEBUG
 
 ---
 
-## 出货系列**不**含什么
+## 已发布的系列**不**含什么
 
 几条被广泛复述的说法，描述的是 cmpunlocker `master` 之外的工件。验证过六个补丁里都不存在：
 
 | 说法 | 现实 |
 |---|---|
 | `gpuValidateRegOps` 被桩成 `return NV_OK` | 不存在。对 `subdevice_ctrl_gpu_regops.c` 根本没有任何改动。发布前的 `patch.diff`、以及显然泄露的包确实携带了对寄存器操作权限验证的无条件绕过；它在发布前被去掉。那是真实的安全改进、不是清理。 |
-| 对 `pWprMeta->fbSize` 的 `CMP170HX_WPR2_SAFE_LIMIT 0x0A00000000ULL` 钳制 | 被提出，从未出货。发布的设计加宽 `fb_length` 和最后一个 FB 区域，只钳制 BAR0/PRAMIN 窗口。 |
-| 把除 `0x00000000`/`0x00000031` 外的一切当活的邮箱值容差 | 被提出，从未出货。字面量 `0x00000031` 在仓库里任何地方都不出现。 |
-| `0x00100ce4` LMR-lock 清除/重新锁定变通方案 | 在出货代码里任何地方都不出现。被记录为一份 40 GB 指南里的未测试应急方案，其片段还瞄准了错误的文件（`kernel_gsp_tu102.c`；LMR 写在 `kernel_gsp.c`）。 |
+| 对 `pWprMeta->fbSize` 的 `CMP170HX_WPR2_SAFE_LIMIT 0x0A00000000ULL` 钳制 | 被提出，从未发布。发布的设计加宽 `fb_length` 和最后一个 FB 区域，只钳制 BAR0/PRAMIN 窗口。 |
+| 把除 `0x00000000`/`0x00000031` 外的一切当活的邮箱值容差 | 被提出，从未发布。字面量 `0x00000031` 在仓库里任何地方都不出现。 |
+| `0x00100ce4` LMR-lock 清除/重新锁定变通方案 | 在已发布的代码里任何地方都不出现。被记录为一份 40 GB 指南里的未测试应急方案，其片段还瞄准了错误的文件（`kernel_gsp_tu102.c`；LMR 写在 `kernel_gsp.c`）。 |
 | 对 `gsp_tu10x.bin` 的任何 ELF 手术 | 没有。那是第一代方法，2026-07-18 被取代。 |
 | PCIe Gen2 补丁 `0007`/`0008` | 不在 `master` 上。仅分支。见[PCIe Gen2](pcie-gen2.md)。 |
 | `kflcnIsRiscvActive` 绕过 | 六个补丁里都不存在。 |

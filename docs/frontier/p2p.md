@@ -4,9 +4,9 @@
 
 两张 CMP 170HX 卡能否直接互相通信？第三方 `aikitoria/open-gpu-kernel-modules` P2P 补丁做了什么？它如何以一个文档化的三提交 diff 叠加在[cmpunlocker](../unlock/driver-patches.md) 之上？IOMMU 和 BAR 尺寸与它有什么关系？还有哪些仍是未知？
 
-**短答案：这张卡默认没有点对点。** 没有任何出货代码启用它，语料库中的每一项测量都报告它不可用。唯一可能改变这一点的第三方补丁，确实能在解锁之上构建并加载——这本身就是一个有用的结果，因为它证明了 cmpunlocker 的构建系统能与其他无关的驱动 diff 组合。一位构建者此后报告，该补丁在 GA100 上"半工作"：对等*数据移动*以 6.25 GB/s 运行，但对等*同步*完全失效，这会让 NCCL 及所有其它集合库挂起。那份报告**未经验证**，出自一台机架，且无独立复现。见[未验证报告](#未验证报告对等-dma-工作对等同步不)。
+**短答案：这张卡默认没有点对点。** 没有任何已发布的代码启用它，语料库中的每一项测量都报告它不可用。唯一可能改变这一点的第三方补丁，确实能在解锁之上构建并加载——这本身就是一个有用的结果，因为它证明了 cmpunlocker 的构建系统能与其他无关的驱动 diff 组合。一位构建者此后报告，该补丁在 GA100 上"半工作"：对等*数据移动*以 6.25 GB/s 运行，但对等*同步*完全失效，这会让 NCCL 及所有其它集合库挂起。那份报告**未经验证**，出自一台机架，且无独立复现。见[未验证报告](#未验证报告对等-dma-工作对等同步不)。
 
-**第二个短答案：即便 P2P 工作，链路仍会是瓶颈。** 在 PCIe Gen1 x4（约 1.0 GB/s）下，项目广泛认同的立场是：P2P 受带宽束缚，在 Gen3 之前几乎换不来什么收益。项目在软件上达到的最远是 Gen2 x4，已于 2026-07-29 随 `master` 出货；Gen2 x16 则在两架机上复现过，且只在做了 24 电容焊接改装的卡上。见[PCIe Gen2](../unlock/pcie-gen2.md) 和[Gen3/Gen4](pcie-gen3-gen4.md)。
+**第二个短答案：即便 P2P 工作，链路仍会是瓶颈。** 在 PCIe Gen1 x4（约 1.0 GB/s）下，项目广泛认同的立场是：P2P 受带宽束缚，在 Gen3 之前几乎换不来什么收益。项目在软件上达到的最远是 Gen2 x4，已于 2026-07-29 随 `master` 发布；Gen2 x16 则在两架机上复现过，且只在做了 24 电容焊接改装的卡上。见[PCIe Gen2](../unlock/pcie-gen2.md) 和[Gen3/Gen4](pcie-gen3-gen4.md)。
 
 ---
 
@@ -20,7 +20,7 @@
 | MIG 档位列表 | `1g.64gb`、ID 0、63.00 GiB、70 SMs、5 CEs、**P2P No** | 解锁卡上 `nvidia-smi mig -lgip` 提供的唯一档位 |
 | 扫描期间的活链路 | Gen1 x4、约 1.0 GB/s、推理负载下不爬升 | 设备最大报告为 Gen2 x16 |
 
-缺失同样体现在源码树里，而不只在遥测中。对出货 `master` 和全部十二个未发布分支搜索 `p2p` 与 `peer`，恰好命中两类：`build.sh` 模块安装列表中的出厂 `nvidia-peermem.ko` 文件名，以及 Gen2 分支 `0008-pcie-gen2-probe-retrain.patch` 中一行未修改的上下文（`nv_uvm_resume_P2P(pUuid)`）。**任何分支都不含 P2P 使能。**
+缺失同样体现在源码树里，而不只在遥测中。对已发布的 `master` 和全部十二个未发布分支搜索 `p2p` 与 `peer`，恰好命中两类：`build.sh` 模块安装列表中的出厂 `nvidia-peermem.ko` 文件名，以及 Gen2 分支 `0008-pcie-gen2-probe-retrain.patch` 中一行未修改的上下文（`nv_uvm_resume_P2P(pUuid)`）。**任何分支都不含 P2P 使能。**
 
 > [!NOTE]
 > **`nvidia-peermem` 不是一回事**
@@ -107,7 +107,7 @@ for p in "${patches[@]}"; do
 done
 ```
 
-脚本在 `set -euo pipefail` 下运行，因此一个失败的 hunk 会中止构建，而不是产出一个半打补丁的模块。把第三方 diff 命名为 `0007-unlock-p2p.patch`，它会排在出货系列 `0001`-`0006` 之后，于是解锁先落地，P2P 改动再叠加其上。`--src-prefix=a/` 保证了 `patch -p1` 所预期的 `a/` 和 `b/` 路径前缀。`HEAD~3` 不带第二个修订，会对着三个提交之前的工作树做 diff，产出一个包含全部三个提交的压扁补丁，而非三个独立的补丁。
+脚本在 `set -euo pipefail` 下运行，因此一个失败的 hunk 会中止构建，而不是产出一个半打补丁的模块。把第三方 diff 命名为 `0007-unlock-p2p.patch`，它会排在已发布的系列 `0001`-`0006` 之后，于是解锁先落地，P2P 改动再叠加其上。`--src-prefix=a/` 保证了 `patch -p1` 所预期的 `a/` 和 `b/` 路径前缀。`HEAD~3` 不带第二个修订，会对着三个提交之前的工作树做 diff，产出一个包含全部三个提交的压扁补丁，而非三个独立的补丁。
 
 机制由代码确认。特定 diff 与 610.43.0x 的兼容性仅由一位测试者报告，未被独立复现，所以请把这份配方视为中等置信度。
 
@@ -214,10 +214,10 @@ options nvidia NVreg_RegistryDwords="RMForceP2PType=1"
 
 | 树 | IOMMU 处理 |
 |---|---|
-| `master`（出货） | **无。** `install.sh` 和 `remove.sh` 完全不含 `iommu` 或内核命令行处理 |
+| `master`（已发布的） | **无。** `install.sh` 和 `remove.sh` 完全不含 `iommu` 或内核命令行处理 |
 | Gen2 代码（现在在 `master` 里） | 把 `intel_iommu=on iommu=pt`（GenuineIntel）或 `amd_iommu=on iommu=pt`（AuthenticAMD）追加到 `/etc/default/grub` 或 `/etc/kernel/cmdline`、带一个 `--no-iommu` 退出 |
 
-Gen2 安装器还在运行时用 `grep -qw iommu=pt /proc/cmdline && [[ -d /sys/class/iommu ]] && [[ -n "$(ls -A /sys/class/iommu)" ]]` 验证，打印 `IOMMU is already active in passthrough mode on the running kernel`（IOMMU 已在运行中的内核上处于 passthrough 模式）或 `IOMMU passthrough takes effect after the next reboot`（IOMMU passthrough 将在下次重启后生效），并提醒 VT-d / AMD-Vi / SVM 也必须在 BIOS 中开启。那个分支上的 `remove.sh` 从 `*.cmpunlocker.bak` 恢复，并打印 `Reverted IOMMU kernel parameters (effective after reboot)`（已还原 IOMMU 内核参数（重启后生效））；或报告没有找到 IOMMU 配置备份，内核命令行保持原样。那来自提交 `6a85e6c` "IOMMU enablement as part of install script"，是分支代码，不出货。
+Gen2 安装器还在运行时用 `grep -qw iommu=pt /proc/cmdline && [[ -d /sys/class/iommu ]] && [[ -n "$(ls -A /sys/class/iommu)" ]]` 验证，打印 `IOMMU is already active in passthrough mode on the running kernel`（IOMMU 已在运行中的内核上处于 passthrough 模式）或 `IOMMU passthrough takes effect after the next reboot`（IOMMU passthrough 将在下次重启后生效），并提醒 VT-d / AMD-Vi / SVM 也必须在 BIOS 中开启。那个分支上的 `remove.sh` 从 `*.cmpunlocker.bak` 恢复，并打印 `Reverted IOMMU kernel parameters (effective after reboot)`（已还原 IOMMU 内核参数（重启后生效））；或报告没有找到 IOMMU 配置备份，内核命令行保持原样。那来自提交 `6a85e6c` "IOMMU enablement as part of install script"，是分支代码，未发布。
 
 实际后果：**Gen2 代码已经配置好了 P2P 补丁所需的全部东西**，这让"Gen2 加 P2P"成为任何人今天能拼出的最接近预配置的栈。却没人拼过它。
 
@@ -253,7 +253,7 @@ GPU at 0000:65:00.0, alone in IOMMU group 3
 
 由于 aikitoria 补丁通过 **BAR1** 映射对等显存，这个 64 MiB、不可调整大小的孔径，就成了悬在 GA100 整个方案之上的结构性问题。语料库中没有任何来源能确认，驱动 BAR1 P2P 路径能否在 64 MiB 窗口内工作，或它是否像消费级 4090/5090 设置那样假设一个大 BAR。没人测过它。
 
-### 出货 BAR0/PRAMIN 钳制
+### 已发布的 BAR0/PRAMIN 钳制
 
 `0004-bar0-pramin-clamp.patch` 有 20 行，应用到**两个**设备 ID。当 `devId == 0x20C2 || devId == 0x2082` 且 `Ram.fbAddrSpaceSizeMb > 0x2000`（8192 MB）时：
 
@@ -268,7 +268,7 @@ offsetBar0 = (0x2000ULL << 20) - DRF_SIZE(NV_PRAMIN);
 > [!NOTE]
 > **未解问题：Large BAR / ReBAR / Above 4G Decoding**
 >
-> 问题于 2026-07-22 14:11 被贴出，从未得到回答。它很要紧，因为出货解锁刻意钳制 BAR0/PRAMIN 窗口，而卡宣告的 ReBAR 能力又似乎不提供任何替代大小。**下一步：** 开启 Above 4G Decoding 引导，在一张 Gen2 训练过的卡上回读 ReBAR 能力的大小。如果能力结构确实为每个 BAR 只列出单个受支持大小，那么任何主机侧变通方案都无济于事——包括面向 UEFI 缺 ReBAR 支持主机的 `github.com/xCuri0/ReBarUEFI`。
+> 问题于 2026-07-22 14:11 被贴出，从未得到回答。它很要紧，因为已发布的解锁刻意钳制 BAR0/PRAMIN 窗口，而卡宣告的 ReBAR 能力又似乎不提供任何替代大小。**下一步：** 开启 Above 4G Decoding 引导，在一张 Gen2 训练过的卡上回读 ReBAR 能力的大小。如果能力结构确实为每个 BAR 只列出单个受支持大小，那么任何主机侧变通方案都无济于事——包括面向 UEFI 缺 ReBAR 支持主机的 `github.com/xCuri0/ReBarUEFI`。
 
 ### 多卡时的 BAR 压力
 
@@ -308,9 +308,9 @@ P2P 天生是一个多卡主题，而 cmpunlocker 的多卡支持只在分支里
 | 路径 | 状态 | 阻塞者 |
 |---|---|---|
 | NVLink | 熔丝禁用（`FUSE_NVLINK_DIS` `0x00820684` = `0x00000007`）、从未带起 | OTP 熔丝加缺件板卡元件；见[NVLink](nvlink.md) |
-| PCIe P2P、出货解锁 | 缺失 | 树里任何地方都没有代码 |
+| PCIe P2P、已发布的解锁 | 缺失 | 树里任何地方都没有代码 |
 | PCIe P2P、分层补丁 | 构建并加载。一个**未验证**报告对等 DMA 在 6.25 GB/s、对等同步仍坏 | 受支持配置未确定；集合被报告挂起 |
-| 更快链路（Gen2 x4） | 自 2026-07-29 在 `master` 出货 | 在陈述的张量并行阈值之下 |
+| 更快链路（Gen2 x4） | 自 2026-07-29 随 `master` 发布 | 在陈述的张量并行阈值之下 |
 | 更快链路（Gen2 x16） | 在两架机上复现、5.97 到 6.67 GB/s | 需要 24 电容焊接改装；90 分钟以上烧机未测 |
 | Gen3 / Gen4 | 未达成 | 被评估为需要一个没人生产出来的 GSP 补丁 |
 

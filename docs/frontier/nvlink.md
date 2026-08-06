@@ -2,7 +2,7 @@
 
 **本页覆盖内容。** CMP 170HX 上 NVLink 的完整状况：证明它是在一次性可编程硅片中禁用、而非在软件层禁用的熔丝读数；所有被探测过的内容；每一条被提出的覆盖路径及其关闭原因；物理连接器和桥接器的现状；以及真正能推进这个问题的简短实验清单。
 
-**头条：CMP 170HX 上的 NVLink 不工作，对语料库中的任何人都从未工作过，也从未有过寄存器级的解锁尝试。** 它是被 OTP 熔丝禁用的，而不是被软件。cmpunlocker（出货 `master`，或 12 个未发布分支快照中的任意一个）里没有一行代码碰过 NVLink。NVLink 在整套分支中的全部存在，只是两个 README 特性表里的一个词——`Planned`。
+**头条：CMP 170HX 上的 NVLink 不工作，对语料库中的任何人都从未工作过，也从未有过寄存器级的解锁尝试。** 它是被 OTP 熔丝禁用的，而不是被软件。cmpunlocker（已发布的 `master`，或 12 个未发布分支快照中的任意一个）里没有一行代码碰过 NVLink。NVLink 在整套分支中的全部存在，只是两个 README 特性表里的一个词——`Planned`。
 
 > [!NOTE]
 > **未解问题**
@@ -54,7 +54,7 @@ Drive A100 32 GB（PG199、`GA100-550F-A1`、`FUSE_PCIE_DEVIDA` = `0x000020bb`�
 
 ## 代码说什么
 
-在出货 `master` 树中，对 `nvlink` 及每个 NVLink 寄存器地址的 grep 均无结果。`common/constants.yaml`、`driver/build.sh`、`driver/VERSION`、`install.sh`、`remove.sh`、`README.md`，乃至六个补丁（`0001-sec2-postbl-plm-ss-cfg.patch` 到 `0006-persistent-sw-state.patch`）中都找不到。`constants.yaml` 只声明了两个驱动版本、设备 ID `20c2`/`2082`、算力值 `ss0: 0x88888888` / `ss1: 0x00000008`，以及两个显存档位。
+在已发布的 `master` 树中，对 `nvlink` 及每个 NVLink 寄存器地址的 grep 均无结果。`common/constants.yaml`、`driver/build.sh`、`driver/VERSION`、`install.sh`、`remove.sh`、`README.md`，乃至六个补丁（`0001-sec2-postbl-plm-ss-cfg.patch` 到 `0006-persistent-sw-state.patch`）中都找不到。`constants.yaml` 只声明了两个驱动版本、设备 ID `20c2`/`2082`、算力值 `ss0: 0x88888888` / `ss1: 0x00000008`，以及两个显存档位。
 
 未发布的分支同样如此。在全部十二个分支（`80`、`Gen2`、`PG199`、`clanker/driver-port`、`debug-gen2`、`deced`、`docs`、`ecc`、`far`、`housekeeping`、`memory`、`multiple-cards`）中，NVLink 恰好出现一次，且只是表中的一个数据行：
 
@@ -84,7 +84,7 @@ Drive A100 32 GB（PG199、`GA100-550F-A1`、`FUSE_PCIE_DEVIDA` = `0x000020bb`�
 
 ### 路径 B：`FEAT_OVR` 式攻击
 
-它有吸引力，因为出货的算力解锁恰好位于这个寄存器块，也因为在所有卡上，主覆盖灭杀 `FUSE_FEAT_OVR_DIS` 位于 `0x008203F0`，读 `0x00000000`（即**未**被烧断）。当时的推理是：如果算力节流能在这里被覆盖，也许 NVLink 也可以。
+它有吸引力，因为已发布的算力解锁恰好位于这个寄存器块，也因为在所有卡上，主覆盖灭杀 `FUSE_FEAT_OVR_DIS` 位于 `0x008203F0`，读 `0x00000000`（即**未**被烧断）。当时的推理是：如果算力节流能在这里被覆盖，也许 NVLink 也可以。
 
 它被直接排除，因为块里没有 NVLink 寄存器。`0x00823800`-`0x0082382C` 的完整清单：
 
@@ -185,7 +185,7 @@ DevInit 确实会读这颗熔丝。CMP DevInit 反汇编中 `0x1482xxxx`（MMIO 
 > [!WARNING]
 > **不要按 320 GB 数字定尺寸一个构建**
 >
-> 一场 4 卡 NVLink 讨论为四张 10 GB 卡引用了 320 GB 的内存池，那假设每卡 80 GB。出货解锁给 10 GB 卡 **40 GB**，所以四张合计 **160 GB**；四张解锁的 8 GB 卡合计 **256 GB**。80 GB 配置曾被尝试并发现不稳定：见[80 GB 尝试](80gb.md)。
+> 一场 4 卡 NVLink 讨论为四张 10 GB 卡引用了 320 GB 的内存池，那假设每卡 80 GB。已发布的解锁给 10 GB 卡 **40 GB**，所以四张合计 **160 GB**；四张解锁的 8 GB 卡合计 **256 GB**。80 GB 配置曾被尝试并发现不稳定：见[80 GB 尝试](80gb.md)。
 
 ---
 
@@ -298,10 +298,10 @@ P2P 提交改动 `install.sh`（+7）、`kernel-open/nvidia-uvm/uvm_gpu.h`（+7�
 | DevInit 对 NVLink 熔丝的读 | `0x820684` 存在于 `0x1482xxxx` 访问目录 | 只读、从不写 | 中等 |
 | `nvidia-smi nvlink` 输出 | "Device does not have or support Nvlink." | 一个租用 8 卡 64 GiB 主机、2026-07-24、GPU 名掩码；语料库里唯一捕获 | 中等 |
 | dmesg NVLink 行 | `nvidia-nvlink: Nvlink Core is being initialized, major device number 236` | 良性、软件核心加载 | 高 |
-| 出货 `master` 里的 NVLink 引用 | 0 | 全树 grep | 高 |
+| 已发布的 `master` 里的 NVLink 引用 | 0 | 全树 grep | 高 |
 | 全部 12 个分支里的 NVLink 引用 | 1 个词、`Planned`、两个 README 表 | 任何地方都无代码 | 高 |
-| 4x 解锁 10 GB 卡池 | 160 GB（4 x 40960 MiB） | 出货 `constants.yaml` | 高 |
-| 4x 解锁 8 GB 卡池 | 256 GB（4 x 65536 MiB） | 出货 `constants.yaml` | 高 |
+| 4x 解锁 10 GB 卡池 | 160 GB（4 x 40960 MiB） | 已发布的 `constants.yaml` | 高 |
+| 4x 解锁 8 GB 卡池 | 256 GB（4 x 65536 MiB） | 已发布的 `constants.yaml` | 高 |
 | A100 桥市场价 | 约 200 欧元每颗、一个受支持的 A100 对需要全部三颗 | 2026-07-26 市场检查 | 中等 |
 | 估计 NVLink 走线频率 | 37 GHz（机器写 EM 模拟器）对比约 60 GHz（二手） | 冲突；两者都非从 50 Gbps 通道速率推导 | 低 |
 | 2x RTX 3090 vLLM TP、27B 模型 | 带 NVLink 约 10% 吞吐改善 | 一手、单一测试者 | 中等 |

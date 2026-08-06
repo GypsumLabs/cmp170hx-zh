@@ -1,6 +1,6 @@
 # 权限级别掩码
 
-**本页覆盖内容。** GA100 上 PLM 是什么、掩码位如何编码、出货解锁打开的恰好四个掩码以及每个被打开到的精确值、四个中为何有一个被刻意只部分打开、哪些掩码挺过功能级复位、哪些不能，以及未发布 PCIe 分支改用的九掩码表。执行打开的机制见[ROP 链](rop-chain.md)；它运行其上的微码见[SEC2 Falcon 与 Booter Load 微码](falcon-and-booter.md)。
+**本页覆盖内容。** GA100 上 PLM 是什么、掩码位如何编码、已发布的解锁打开的恰好四个掩码以及每个被打开到的精确值、四个中为何有一个被刻意只部分打开、哪些掩码挺过功能级复位、哪些不能，以及未发布 PCIe 分支改用的九掩码表。执行打开的机制见[ROP 链](rop-chain.md)；它运行其上的微码见[SEC2 Falcon 与 Booter Load 微码](falcon-and-booter.md)。
 
 **开头的关键结果。** 解锁按固定顺序恰好打开四个掩码，而其中只有三个被打开到全一：
 
@@ -30,7 +30,7 @@ Falcon 家族的权限级别运行 L0 到 L3，映射到[falcon-and-booter.md](f
 | L1 / L2 | 轻度安全 Falcon 上下文 | 中间 |
 | L3 | 重度安全 Falcon 代码 | 一切，包括 PLM 本身 |
 
-整个解锁之所以存在，是因为改变卡显存几何布局和算力节流的寄存器，被只允许 L3 写入的掩码门控；而在这颗晶片上到达 L3 的唯一方式，是在已签名重度安全微码内运行。一旦一个 PLM 从 HS 内部被重写为允许 L0 写入，普通主机 BAR0 写入就不再需要任何利用。这个枢轴就是出货解锁的整个架构。
+整个解锁之所以存在，是因为改变卡显存几何布局和算力节流的寄存器，被只允许 L3 写入的掩码门控；而在这颗晶片上到达 L3 的唯一方式，是在已签名重度安全微码内运行。一旦一个 PLM 从 HS 内部被重写为允许 L0 写入，普通主机 BAR0 写入就不再需要任何利用。这个枢轴就是已发布的解锁的整个架构。
 
 > [!WARNING]
 > **PLM 意思是 Privilege Level Mask（权限级别掩码）**
@@ -60,11 +60,11 @@ Falcon 家族的权限级别运行 L0 到 L3，映射到[falcon-and-booter.md](f
 | `0xFFFFFE8E` | 普通驱动加载后在 `0x009A0008`、`0x00100B10` 和 `0x00100B38` 上观察到的。 |
 | `0x0000008F` / `0x000000DF` | SEC2 复位 PLM 上看到的仅低字节模式。 |
 
-对精确三字段分解的置信度，作为工作模型是高：它匹配每一个观察到的基线、每一个观察到的解锁后值，以及出货解锁器对 `0xFFFFFFFF` 的选择。它是从行为推断的，而非从一份发布头文件读出。
+对精确三字段分解的置信度，作为工作模型是高：它匹配每一个观察到的基线、每一个观察到的解锁后值，以及已发布的解锁器对 `0xFFFFFFFF` 的选择。它是从行为推断的，而非从一份发布头文件读出。
 
 编码的两个实际后果：
 
-- **`0x000000FF` 不是"打开"。** 它只设置 READ 和 WRITE 半字节、把 `SOURCE_ENABLE` 留成 0，而那会阻塞一切。ROP v2 正是因为这个原因把 `0x000000FF` 写给 `0x00823804`、结果毫无用处；每一个更晚的载荷和出货补丁都写 `0xFFFFFFFF`。
+- **`0x000000FF` 不是"打开"。** 它只设置 READ 和 WRITE 半字节、把 `SOURCE_ENABLE` 留成 0，而那会阻塞一切。ROP v2 正是因为这个原因把 `0x000000FF` 写给 `0x00823804`、结果毫无用处；每一个更晚的载荷和已发布的补丁都写 `0xFFFFFFFF`。
 - **PLM 拒绝越界值。** 即使其它掩码已打开，向一个 PLM 写入诸如 `0xff` 的任意值也会被弹回。因此对 PLM 值的暴力破解受硬件接受的编码约束，而非受整个 32 位空间约束。至少两人在两张不同卡上直接观察过。
 
 ---
@@ -86,7 +86,7 @@ static const struct {
 };
 ```
 
-这张表在出货 `master` 和除四个 Gen2 家族分支外的每个归档分支里逐字节相同，后者扩展它（第 6 节）。
+这张表在已发布的 `master` 和除四个 Gen2 家族分支外的每个归档分支里逐字节相同，后者扩展它（第 6 节）。
 
 ### 3.2 每个门控什么
 
@@ -144,11 +144,11 @@ GPU_REG_WR32(pGpu, 0x001fa828, savedWpr2Hi);
 要紧的点：
 
 - **每次尝试一次 Booter Load 发射、每次发射一次任意 BAR0 写。** 载荷携带单个 `(writeAddr, writeValue)` 对，所以打开四个掩码要花四到八次发射。
-- **WPR2 低/高在每一次尝试前重新武装**，最多八次，循环结束后再一次；因为每次发射都会重新划出 WPR2，随后一次 Booter Load 否则会以 "WPR2 already up" 中止。出货驱动恢复*保存的*那一对；它不写无驱动工具所写的常量 `0x1FFFFE00` / `0`。
+- **WPR2 低/高在每一次尝试前重新武装**，最多八次，循环结束后再一次；因为每次发射都会重新划出 WPR2，随后一次 Booter Load 否则会以 "WPR2 already up" 中止。已发布的驱动恢复*保存的*那一对；它不写无驱动工具所写的常量 `0x1FFFFE00` / `0`。
 - **成功是精确回读相等**，而非 Booter 状态。每次发射都报告 `status=0xffff` 并记录 `Booter failed with non-zero error code: 0x31`，无论结果如何。寄存器回读是唯一有效的判决。
 - **一条目的失败不会中止循环。** 它记录日志并继续。
 
-出货 `master` 每次尝试记录一行，循环后记录一行汇总：
+已发布的 `master` 每次尝试记录一行，循环后记录一行汇总：
 
 ```text
 SEC2_DEBUG: PLM[%u] %s(0x%x) attempt=%u status=0x%x reg=0x%08x
@@ -157,7 +157,7 @@ SEC2_DEBUG: PLMs: FEAT=0x%08x FBPA=0x%08x WPR=0x%08x WPR_CFG=0x%08x
 
 一条真实行读 `SEC2_DEBUG: PLM[3] FEAT(0x823804) attempt=0 status=0xffff reg=0xffffffff`，带索引到名称映射 `PLM[0]=WPR_CFG, PLM[1]=FBPA, PLM[2]=WPR, PLM[3]=FEAT`。未发布分支用相同的每条目格式。
 
-fork 线程里流传的更短 `SEC2_DEBUG: PLM FEAT before:` / `PLM FEAT after:` 对**不是**出货字符串：对出货仓库 grep 找不到这样的文本。它引用的值（锁定 `0xFFFFFF8F`、打开 `0xFFFFFFFF`）对 `FEAT` 是对的，但不要把那行本身当作 `dmesg` 里要寻找的东西。
+fork 线程里流传的更短 `SEC2_DEBUG: PLM FEAT before:` / `PLM FEAT after:` 对**不是**已发布的字符串：对已发布的仓库 grep 找不到这样的文本。它引用的值（锁定 `0xFFFFFF8F`、打开 `0xFFFFFFFF`）对 `FEAT` 是对的，但不要把那行本身当作 `dmesg` 里要寻找的东西。
 
 如果掩码事后仍读它的锁定值，说明打开没有发生；记录在案的补救是另一次冷启动。见[排障](../procedures/troubleshooting.md)。
 
@@ -175,13 +175,13 @@ fork 线程里流传的更短 `SEC2_DEBUG: PLM FEAT before:` / `PLM FEAT after:`
 > [!WARNING]
 > **`docs` 分支对 SS0 和 SS1 是错的**
 >
-> `ARCHITECTURE.md` 声称 `SEC2_DEBUG: SS0 = 0xffffffff` 和 `SS1 = 0xffffffff`，并打印一行代码里任何地方都不存在的预期日志行 `SEC2_DEBUG: Executing unlock sequence...`。出货代码写的是 SS0 = `0x88888888`、SS1 = `0x00000008`。同一文档里的几何布局表（8 GB 到 64 GB 带 `0x02779000`/`0x0000020B`，10 GB 到 40 GB 带 `0x02669000`/`0x0000028A`）却是正确的。
+> `ARCHITECTURE.md` 声称 `SEC2_DEBUG: SS0 = 0xffffffff` 和 `SS1 = 0xffffffff`，并打印一行代码里任何地方都不存在的预期日志行 `SEC2_DEBUG: Executing unlock sequence...`。已发布的代码写的是 SS0 = `0x88888888`、SS1 = `0x00000008`。同一文档里的几何布局表（8 GB 到 64 GB 带 `0x02779000`/`0x0000020B`，10 GB 到 40 GB 带 `0x02669000`/`0x0000028A`）却是正确的。
 
 ---
 
 ## 5. 持久性：哪些掩码挺过复位
 
-这种不对称是 PLM 集合里最具后果的单一属性，也是算力解锁先于显存解锁出货的原因。
+这种不对称是 PLM 集合里最具后果的单一属性，也是算力解锁先于显存解锁发布的原因。
 
 | 寄存器 | 挺过 FLR？ | 备注 |
 |---|---|---|
@@ -211,14 +211,14 @@ fork 线程里流传的更短 `SEC2_DEBUG: PLM FEAT before:` / `PLM FEAT after:`
 > [!WARNING]
 > **实验性**
 >
-> 四个未发布分支 `Gen2`、`debug-gen2`、`far` 和 `deced` 把表从四条目扩展到**九条**并循环 `plmIdx < 9`。这段代码不在 `master` 上、没有出货消费方，而且对最要紧的条目的回读结果在源码里没记录。见[PCIe Gen2](pcie-gen2.md)。
+> 四个未发布分支 `Gen2`、`debug-gen2`、`far` 和 `deced` 把表从四条目扩展到**九条**并循环 `plmIdx < 9`。这段代码不在 `master` 上、没有已发布的消费方，而且对最要紧的条目的回读结果在源码里没记录。见[PCIe Gen2](pcie-gen2.md)。
 
 | 顺序 | 名称 | 地址 | 值 | 状态 |
 |:---:|---|---|---|---|
-| 0 | `WPR_CFG` | `0x001fa7cc` | `0xfffff0ff` | 与出货相同 |
-| 1 | `FBPA` | `0x009a0148` | `0xffffffff` | 与出货相同 |
-| 2 | `WPR` | `0x001fa7c4` | `0xffffffff` | 与出货相同 |
-| 3 | `FEAT` | `0x00823804` | `0xffffffff` | 与出货相同 |
+| 0 | `WPR_CFG` | `0x001fa7cc` | `0xfffff0ff` | 与已发布的相同 |
+| 1 | `FBPA` | `0x009a0148` | `0xffffffff` | 与已发布的相同 |
+| 2 | `WPR` | `0x001fa7c4` | `0xffffffff` | 与已发布的相同 |
+| 3 | `FEAT` | `0x00823804` | `0xffffffff` | 与已发布的相同 |
 | 4 | `XVE` | `0x00088ff4` | `0xffffffff` | 添加 |
 | 5 | `XVE_B` | `0x00088ab4` | `0xffffffff` | 添加 |
 | 6 | `XVE_C` | `0x00088ff8` | `0xffffffff` | 添加 |
@@ -227,7 +227,7 @@ fork 线程里流传的更短 `SEC2_DEBUG: PLM FEAT before:` / `PLM FEAT after:`
 
 需要三个 XVE 掩码，是因为 PCIe 影子寄存器受 PLM 保护、拒绝主机读取：主机读会返回 `0xbadf5040`。
 
-最终的免驱动工具用了同一张九条目表，并报告一次引导里两块 GPU 上全部九条都在第一次尝试成功，记录为 `PLM[n] NAME(addr) attempt=0 status=0xffff reg=0xffffffff`，其中前四条逐字节与出货表交叉核对，包括部分的 `0xfffff0ff`。
+最终的免驱动工具用了同一张九条目表，并报告一次引导里两块 GPU 上全部九条都在第一次尝试成功，记录为 `PLM[n] NAME(addr) attempt=0 status=0xffff reg=0xffffffff`，其中前四条逐字节与已发布的表交叉核对，包括部分的 `0xfffff0ff`。
 
 那个结果与一个独立的、具体的观察存在张力：
 
@@ -251,7 +251,7 @@ fork 线程里流传的更短 `SEC2_DEBUG: PLM FEAT before:` / `PLM FEAT after:`
 >
 > 可能的定论方向：一个卡状态差异、命名混淆，或该寄存器只在其它掩码打开后才可写。可在冷启动的卡上、任何解锁之前，然后在九个打开的每一个之后、同一单元上，读 `0x008200FC` 来定论。
 >
-> 早期 ROP 链（v2 和 v3）写 `0x008200FC = 0xFFFFFFFF` 且写失败。它被正确诊断为不必要：可工作的算力解锁只用 `FEAT_OVR_PLM` `0x00823804` 加 SS0/SS1。**出货 `master` 不写它。**
+> 早期 ROP 链（v2 和 v3）写 `0x008200FC = 0xFFFFFFFF` 且写失败。它被正确诊断为不必要：可工作的算力解锁只用 `FEAT_OVR_PLM` `0x00823804` 加 SS0/SS1。**已发布的 `master` 不写它。**
 
 ---
 
@@ -266,17 +266,17 @@ fork 线程里流传的更短 `SEC2_DEBUG: PLM FEAT before:` / `PLM FEAT after:`
 > [!NOTE]
 > **未解问题：一个寄存器的 PLM 地址能从寄存器自己的地址推导出来吗？**
 >
-> 被直接问过、从未回答。出货集合（`FEAT 0x00823804`、`FBPA 0x009a0148`、`WPR 0x001fa7c4`、`WPR_CFG 0x001fa7cc`）相对它守护的寄存器不遵循任何明显的偏移规则，尽管"它们都放在寄存器附近"的观察成立。下一步：跨一个孔径做一次全 PLM 扫描，看掩码是否占据每个块的一个固定子范围。
+> 被直接问过、从未回答。已发布的集合（`FEAT 0x00823804`、`FBPA 0x009a0148`、`WPR 0x001fa7c4`、`WPR_CFG 0x001fa7cc`）相对它守护的寄存器不遵循任何明显的偏移规则，尽管"它们都放在寄存器附近"的观察成立。下一步：跨一个孔径做一次全 PLM 扫描，看掩码是否占据每个块的一个固定子范围。
 
 > [!NOTE]
 > **未解问题：LMR 的 PLM 在哪？**
 >
-> 没人定位到门控 LMR `0x00100CE0` 的掩码。一个候选 FBHUB 表被贴出（`0x100B10 = 0xFFFFFF8F`、`0x100B38 = 0xFFFFFF8F`、`0x100B84 = 0xFFFFFF88`、`0x100B9C = 0xFFFFFFCF`），但贴出者否定了它、后来报告找不到。出货驱动却能在打开 `WPR_CFG`、`FBPA`、`WPR` 和 `FEAT` 后从主机成功写 LMR，所以**那四个中有一个已经门控它**。对出货表做一次四方消融，就能识别出是哪个。
+> 没人定位到门控 LMR `0x00100CE0` 的掩码。一个候选 FBHUB 表被贴出（`0x100B10 = 0xFFFFFF8F`、`0x100B38 = 0xFFFFFF8F`、`0x100B84 = 0xFFFFFF88`、`0x100B9C = 0xFFFFFFCF`），但贴出者否定了它、后来报告找不到。已发布的驱动却能在打开 `WPR_CFG`、`FBPA`、`WPR` 和 `FEAT` 后从主机成功写 LMR，所以**那四个中有一个已经门控它**。对已发布的表做一次四方消融，就能识别出是哪个。
 
 > [!NOTE]
 > **未解问题：显存解锁实际需要多少个 FBPA 侧掩码**
 >
-> 一个立场认为需要四个 FBPA 掩码（`0x9A0148`、`0x9A014C`、`0x9A0008`、`0x9A000C`）加 LMR 加复位 PLM，且 `0x100b10` 被证明不必要。第二个立场被有力论证：认为 CFG1 和 LMR 单独就够、FBPA 掩码由 CFG1 广播自动设置。出货代码通过恰好打开**一个** FBPA 掩码 `0x009a0148`、然后从主机写 CFG1 和 LMR，部分地定论了这个问题——所以既不是 "four" 也不是 "none" 是出货答案。它还削减了第三个数据点：免驱动的 `geometry_chain()` 打开**五个** FB 几何掩码、包括 `0x100b10`。定论方式：在同一个卡上，一次一条目地消融两个清单。
+> 一个立场认为需要四个 FBPA 掩码（`0x9A0148`、`0x9A014C`、`0x9A0008`、`0x9A000C`）加 LMR 加复位 PLM，且 `0x100b10` 被证明不必要。第二个立场被有力论证：认为 CFG1 和 LMR 单独就够、FBPA 掩码由 CFG1 广播自动设置。已发布的代码通过恰好打开**一个** FBPA 掩码 `0x009a0148`、然后从主机写 CFG1 和 LMR，部分地定论了这个问题——所以既不是 "four" 也不是 "none" 是已发布的答案。它还削减了第三个数据点：免驱动的 `geometry_chain()` 打开**五个** FB 几何掩码、包括 `0x100b10`。定论方式：在同一个卡上，一次一条目地消融两个清单。
 >
 > 一个相关测量收窄了问题：**对 `0x009A0204` 处 CFG1 的一次重度安全广播写，会传播到全部 20 个每-FBPA `CSTATUS` 寄存器**（每个活 FBPA 上 `0x200` 到 `0x800`），所以 HS 完全绕过 FBPA 掩码。打开它们只在需要于 `0x00900204 + n*0x4000` 处做主机-PL0 每-FBPA 写时才必要。
 
@@ -298,11 +298,11 @@ fork 线程里流传的更短 `SEC2_DEBUG: PLM FEAT before:` / `PLM FEAT after:`
 主机侧过程检查的引擎复位门是 `(value & 0x77) == 0x77`。
 
 > [!NOTE]
-> **出货驱动从不碰它**
+> **已发布的驱动从不碰它**
 >
-> 对出货仓库 grep 会得到 `0x008403c4` 的零引用。整套 clean-SEC2 纪律属于免驱动工具。驱动内路径改经驱动自己的 `kflcnReset`/FWSEC 序列重发 Booter Load，所以它从不需要一次主机发出的 SFTRESET。对该解释的置信度：中等——它是推断，因为没人陈述过它。定论方式：在出货驱动下、4 到 8 次 PLM 趟的每一次前后，读 `0x008403C4`。
+> 对已发布的仓库 grep 会得到 `0x008403c4` 的零引用。整套 clean-SEC2 纪律属于免驱动工具。驱动内路径改经驱动自己的 `kflcnReset`/FWSEC 序列重发 Booter Load，所以它从不需要一次主机发出的 SFTRESET。对该解释的置信度：中等——它是推断，因为没人陈述过它。定论方式：在已发布的驱动下、4 到 8 次 PLM 趟的每一次前后，读 `0x008403C4`。
 
-完整细节，包括出货载荷无论如何都把它留在 `0xff` 的 `D[0x1900] = 7` 机制，见[falcon-and-booter.md](falcon-and-booter.md#10-leaving-heavy-secure-mode-and-the-reset-plm) 和[rop-chain.md](rop-chain.md#73-why-the-exit-is-clean)。
+完整细节，包括已发布的载荷无论如何都把它留在 `0xff` 的 `D[0x1900] = 7` 机制，见[falcon-and-booter.md](falcon-and-booter.md#10-leaving-heavy-secure-mode-and-the-reset-plm) 和[rop-chain.md](rop-chain.md#73-why-the-exit-is-clean)。
 
 ---
 
