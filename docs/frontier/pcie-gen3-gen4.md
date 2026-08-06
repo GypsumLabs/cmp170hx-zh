@@ -1,18 +1,18 @@
 # PCIe Gen3 和 Gen4：为什么它们仍被锁定
 
-**本页覆盖内容。** 关于 CMP 170HX 上 5 GT/s 之上 PCIe 代墙的一切已知：两个独立锁层（一对 OTP 熔丝加已签名 DevInit 映像里一个五字节编辑）、为什么 2026-07-24 的 Gen2 突破没有把 Gen3 带上、那个工作的 Gen2 补丁读取却从不写入的精确寄存器、一份被反驳方法的完整目录、以及按成本排名的剩余路径。
+**本页覆盖内容。** 关于 CMP 170HX 上 5 GT/s 以上 PCIe 代墙的一切已知信息：两个独立的锁层（一对 OTP 熔丝，外加已签名 DevInit 映像里一处五字节编辑）；为什么 2026-07-24 的 Gen2 突破没有连带解锁 Gen3；那个可用的 Gen2 补丁读取却从不写入的具体寄存器；一份被反驳方案的完整目录；以及按成本排序的剩余路径。
 
-**头条：从没有任何 Gen3 或 Gen4 链路在 CMP 170HX 上训练过。** 截至 2026-07-28 语料库里没有来源报告这张卡上 `LnkSta: Speed 8GT/s` 或 `16GT/s`。Gen3 *宣告* 在 2026-07-24 被做成工作（`LnkCap: Port #1, Speed 8GT/s, Width x4` 和 `LnkCtl2: Target Link Speed: 8GT/s`）而 `LnkSta` 仍钉在 `Speed 2.5GT/s, Width x4`。记录上的收官立场、由维护者于 2026-07-27 陈述，是 Gen3 需要一个 GSP-RM 固件补丁："Gen 3 doesn't work whatsoever, it's going to require a GSP patch"（Gen 3 完全不工作、它需要一个 GSP 补丁）、"I haven't seen anybody at all get a working GSP patch"（我从没见过任何人拿到一个工作的 GSP 补丁）。
+**头条：从没有任何 Gen3 或 Gen4 链路在 CMP 170HX 上训练成功。** 截至 2026-07-28，语料库中没有来源报告这张卡出现 `LnkSta: Speed 8GT/s` 或 `16GT/s`。Gen3 *宣告*在 2026-07-24 曾做到可用（`LnkCap: Port #1, Speed 8GT/s, Width x4` 和 `LnkCtl2: Target Link Speed: 8GT/s`），但 `LnkSta` 仍钉死在 `Speed 2.5GT/s, Width x4`。记录上的收官立场由维护者于 2026-07-27 陈述：Gen3 需要一个 GSP-RM 固件补丁——"Gen 3 doesn't work whatsoever, it's going to require a GSP patch"（Gen 3 完全无法工作，它需要一个 GSP 补丁），"I haven't seen anybody at all get a working GSP patch"（我从没见过任何人拿出一个可用的 GSP 补丁）。
 
 > [!NOTE]
 > **未解问题**
 >
-> 本页描述未解决的工作。这里没有任何东西出货。Gen2（5 GT/s）*是*在软件里解决并于 2026-07-29 在 `master` 出货：见[PCIe Gen2](../unlock/pcie-gen2.md)。
+> 本页描述尚未解决的工作，这里没有任何东西出货。Gen2（5 GT/s）*确实*在软件上解决，并于 2026-07-29 随 `master` 出货：见[PCIe Gen2](../unlock/pcie-gen2.md)。
 
 > [!WARNING]
 > **速度不是位宽**
 >
-> PCIe 链路**速度**（Gen1 到 Gen2）和 PCIe 链路**位宽**（x4 到 x16）在这张卡上是两个完全独立的问题、带两个完全独立的修复。速度是固件和熔丝、本页的主题。位宽是一个只靠手工焊接 24 颗交流耦合电容修复的 PCB 缺件、在[物理改装](../operations/physical-mods.md) 覆盖。一个原生 x4 位宽下的 Gen3 软件解锁正是社区陈述的下一目标、因为它不需要焊接。
+> 在这张卡上，PCIe 链路**速度**（Gen1 到 Gen2）与 PCIe 链路**位宽**（x4 到 x16）是两个完全独立的问题，各有各的修复。速度涉及固件与熔丝，是本页的主题；位宽则源于 PCB 缺件，只能靠手工焊接 24 颗交流耦合电容修复，见[物理改装](../operations/physical-mods.md)。在原生 x4 位宽下用软件解锁 Gen3，正是社区声明的下一目标——因为它无需焊接。
 
 ---
 
@@ -20,9 +20,9 @@
 
 | 代 | 速率 | 170HX 上的状态 | 机制 |
 |---|---|---|---|
-| Gen1 | 2.5 GT/s | 出厂、冷启动总训练 | 已签名 DevInit 编程 CMP PCIe 表 |
-| Gen2 | 5.0 GT/s | **软件里解决**、自 2026-07-29 在 `master` 出货 | 经 SEC2 Booter 的组合寄存器序列加一次根端口重训练 |
-| Gen3 | 8.0 GT/s | **未解决。** 能力可以被宣告；链路从不训练 | 2026-07-27 被维护者陈述需要 GSP-RM 补丁、且没有工作 GSP 补丁被生产出来 |
+| Gen1 | 2.5 GT/s | 出厂、冷启动总训练 | 由已签名 DevInit 编程 CMP PCIe 表 |
+| Gen2 | 5.0 GT/s | **软件里解决**、自 2026-07-29 在 `master` 出货 | 经 SEC2 Booter 的组合寄存器序列，加一次根端口重训练 |
+| Gen3 | 8.0 GT/s | **未解决。** 能力可以被宣告；链路从不训练 | 2026-07-27 维护者称需要 GSP-RM 补丁，且至今无人拿出可用的 GSP 补丁 |
 | Gen4 | 16.0 GT/s | **未解决且不可测试。** 没有贡献者有 Gen4 主机 | 熔丝位 25 `GEN4_SPEED_DISABLED` 加被抑制的 DevInit 块 |
 
 供参考的链路状态指纹：
@@ -34,15 +34,15 @@
 | 第 3 轮向量欺骗 | 写了 `0x00457104`（x16 位宽） | 写了 `0x0180001E`；被裁剪回 `0x00456102` / `0x00000006` | 未记录 | 未记录 |
 | Gen3 宣告、2026-07-24 | `Port #1, Speed 8GT/s, Width x4` | 未记录 | 目标 8GT/s 被接受 | 停 2.5GT/s x4 |
 
-最后两行是**两个不同的实验**、从未一起观察、它们的 `LnkCap` 值编码不同的位宽（x16 对比 x4）。不要把它们读作一次运行。
+最后两行是**两个不同的实验**，从未被一同观察，它们的 `LnkCap` 值编码的位宽也各不相同（x16 对 x4）。不要把它们当作同一次运行来读。
 
 ---
 
 ## 为什么 Gen2 倒下而 Gen3 没有
 
-2026-07-24 之前、盛行模型把受支持速度向量按规范当作连续的（Gen4 需要 Gen2 和 Gen3），所以 Gen2、Gen3 和 Gen4 被当作一个问题："either the vector opens or nothing does"（要么向量打开、要么什么都不打开）。向量随后打开了、而且只到 Gen2。
+2026-07-24 之前，主流模型按规范把受支持速度向量视为连续的（Gen4 需要 Gen2 和 Gen3），因此 Gen2、Gen3 和 Gen4 被当作同一个问题：要么向量打开，要么什么都打不开。随后向量确实打开了，却只开到 Gen2。
 
-Gen2 结果通过经 SEC2 Booter 载荷写原语打开一组权限级别掩码、清除 `CYA_0` 里的 `DIS_G2` chicken 位、把 `LINK_CONFIG_0` MAX_RATE 强制到 2、驱动 XP3G 覆盖槽和 `PRIV_MISC_1`、然后让**上游根端口**重训练链路来工作。端点的 `LnkCap`/`LnkCap2` 是 PHY 反射：一旦 Gen2 门打开、它们再生到 `0x00456102` / `0x00000006`、无需任何东西直接写它们。它们再生到 Gen2 **且不再向前**、即使一个欺骗显式写 Gen1-4 值：
+Gen2 之所以可行，是靠经 SEC2 Booter 载荷写原语打开一组权限级别掩码，清除 `CYA_0` 里的 `DIS_G2` chicken 位，把 `LINK_CONFIG_0` 的 MAX_RATE 强制为 2，驱动 XP3G 覆盖槽和 `PRIV_MISC_1`，然后让**上游根端口**重训练链路。端点的 `LnkCap`/`LnkCap2` 是 PHY 反射：一旦 Gen2 门打开，它们会自动再生为 `0x00456102` / `0x00000006`，无需任何东西直接写。它们只再生到 Gen2，**不再向前**，即使有人显式写 Gen1-4 值也一样：
 
 ```text
 第 3 轮欺骗：0x88084 <- 0x00457104   （A100 Max Link Speed = 4）
@@ -50,27 +50,27 @@ Gen2 结果通过经 SEC2 Booter 载荷写原语打开一组权限级别掩码�
 观察后：CAP=0x00456102 CAP2=0x00000006
 ```
 
-硬件把写裁剪到 Gen2。一位两天后证明出 Gen2 那一半的研究者把它总结为："Lnkctrl2 is capped at gen2 with a direct hardware mask (which is why gen 3/4 is such a pain). But you can achieve gen2 with the correct register writes."（Lnkctrl2 被一个直接硬件掩码封顶在 gen2（这就是为什么 gen 3/4 这么痛）。但你可以用正确的寄存器写达到 gen2。）
+硬件把这次写裁剪到 Gen2。一位两天后证明出 Gen2 那一半的研究者这样总结："Lnkctrl2 is capped at gen2 with a direct hardware mask (which is why gen 3/4 is such a pain). But you can achieve gen2 with the correct register writes."（Lnkctrl2 被一个直接硬件掩码封顶在 gen2——这就是为什么 gen 3/4 这么棘手——但只要寄存器写对，就能达到 gen2。）
 
-两个可能性仍活着、语料库里没有任何东西分开它们：
+两种可能性都仍存活，语料库中没有任何东西能区分它们：
 
 1. 连续性论证对这颗硅片就是错的，或
 2. Gen3 熔丝被独立强制、在受支持速度向量下游。
 
-最强的硅片上证据偏好 (2)。带 XP3G 权限级别掩码打开（`PLM[4] XP3G_PLM(0x8e1b0) reg=0xffffffff`）、PHY 速率寄存器被强制到一个 Gen3 能力的值并正确回读、链路仍以 Gen1 训练：
+硅片上的最强证据倾向 (2)。当 XP3G 权限级别掩码被打开（`PLM[4] XP3G_PLM(0x8e1b0) reg=0xffffffff`），PHY 速率寄存器被强制到一个具备 Gen3 能力的值并正确回读，链路却仍以 Gen1 训练：
 
 ```text
 XP3G rate=0x00340036 ovr0=0x4
 lnksta=0x10410040 speed=1        # lspci: Speed 2.5GT/s
 ```
 
-第二条、较弱的证据线：在 Gen2 训练过的卡上 `LnkSta2` 报告 `EqualizationComplete-` 和 `EqualizationPhase1-`、即 Gen3 强制的 PHY 均衡趟从未跑过。捕捉社区观点的那句措辞是 *"Gen2 is a software lockout, Gen3 is a hardware fuse"*（Gen2 是一个软件锁、Gen3 是一颗硬件熔丝）（置信度：中等；带实测 PHY 行为的 Gen3 强制尝试从未被报告过）。
+第二条较弱证据：在已训练到 Gen2 的卡上，`LnkSta2` 报告 `EqualizationComplete-` 和 `EqualizationPhase1-`，即 Gen3 所强制的 PHY 均衡那一趟从未运行。捕捉社区观点的措辞是 *"Gen2 is a software lockout, Gen3 is a hardware fuse"*（Gen2 是软件锁，Gen3 是硬件熔丝）（置信度：中等；从未有过带实测 PHY 行为的 Gen3 强制尝试报告）。
 
 ---
 
 ## 锁层 1：OTP 熔丝
 
-三个熔丝选项寄存器形成代锁的指纹。全部在两个物理 170HX SKU 上读取、并对照一个 15 卡 Ampere 群组。
+三个熔丝选项寄存器构成代锁的指纹。它们在两个物理 170HX SKU 上均被读取，并对照一个 15 卡 Ampere 群组。
 
 | 寄存器 | 地址 | 170HX | 对比群组 | 备注 |
 |---|---|---|---|---|
@@ -80,14 +80,14 @@ lnksta=0x10410040 speed=1        # lspci: Speed 2.5GT/s
 
 因此这个锁的三寄存器指纹是 **`1` / `1` / `0x16680000`**。
 
-两个支持性熔丝事实对任何规划攻击的人要紧：
+有两个支持性熔丝事实，对任何打算发起攻击的人都很要紧：
 
-- **通道是干净的。** `OPT_PCIE_LANE_DISABLE` `0x00820394`、`CTRL_OPT_PCIE_LANE` `0x0082082C` 和 `STATUS_OPT_PCIE_LANE` `0x00820C2C` 都读 `0x00000000`。只有速度被熔断。这是 x4 位宽是一个板卡问题的独立确认。
-- **软件覆盖路径被熔丝焊死。** `FUSE_EN_SW_OVERRIDE` `0x00820040` = `0`、`FUSE_DIS_SW_OVR` `0x00820084` = `1`。`0x00820148`、会让 DevInit 写 A100 `MAGIC_D` 值的那个 DevInit 门位、是一个读 `0` 且永不能被软件设置的 OTP 备用位。这正是为什么整个项目里最干净的 A/B（2026-07-22）看到 XVE 目标落地并持久、在同一引导里 `0x820520` 停 `0x16680000` 和 `0x820148` 停 `0`。
+- **通道是干净的。** `OPT_PCIE_LANE_DISABLE` `0x00820394`、`CTRL_OPT_PCIE_LANE` `0x0082082C` 和 `STATUS_OPT_PCIE_LANE` `0x00820C2C` 都读 `0x00000000`。被熔断的只有速度。这独立印证了 x4 位宽是个板卡问题。
+- **软件覆盖路径被熔丝焊死。** `FUSE_EN_SW_OVERRIDE` `0x00820040` = `0`，`FUSE_DIS_SW_OVR` `0x00820084` = `1`。`0x00820148` 是一个读 `0` 且永不能被软件设置的 OTP 备用位，它本会让 DevInit 写入 A100 的 `MAGIC_D` 值。这正是整个项目里最干净的一次 A/B（2026-07-22）为何看到 XVE 目标落地并持久：同一引导里 `0x820520` 停在 `0x16680000`、`0x820148` 停在 `0`。
 
 ### `OPT_GEN3` 和 `OPT_MAGIC`：读取、记录、从不写入
 
-这是本页最重要的代码级事实。工作的 Gen2 补丁 `0007-pcie-gen2.patch` `#define` 了全部三个熔丝选项寄存器并打印全部三个，但它的 23 条目 Booter 路由写表只含其中恰好一个：
+这是本页最重要的代码级事实。可用的 Gen2 补丁 `0007-pcie-gen2.patch` `#define` 了全部三个熔丝选项寄存器并逐个打印，但它的 23 条目 Booter 路由写表中，恰好只含其中一条：
 
 ```c
 /* 来自 0007-pcie-gen2.patch */
@@ -102,18 +102,18 @@ lnksta=0x10410040 speed=1        # lspci: Speed 2.5GT/s
 OPT=00000001/00000001/16680000
 ```
 
-那行本身就是一个有用的 dmesg 指纹：一个 Gen1 构建发 34 条 `SEC2_DEBUG` 行、一个 Gen2 构建发 80 条。
+那一行本身就是有用的 dmesg 指纹：Gen1 构建发出 34 条 `SEC2_DEBUG` 行，Gen2 构建发出 80 条。
 
 > [!NOTE]
 > **行数不是一个可靠的跨构建指纹**
 >
-> 34（Gen1 构建）/ 80（Gen2 构建）被高置信度记录、而一个单独的 Gen2 分支 610.43.03 引导以中等置信度数到 152。不要把不匹配读成一次失败的安装。
+> 34（Gen1 构建）/ 80（Gen2 构建）以高置信度记录；而另一次 Gen2 分支 610.43.03 引导则以中等置信度数到 152。不要把不一致当作安装失败的信号。
 
-任何分支里、以及独立净室工具集里、都没有代码路径请求高于 2 的目标链路速度：Gen2 代码里的 `constants.yaml` 钉 `target_gen: 2`、`TARGET_LINK_SPEED` 被写成 `2`、LTSSM 速度字段被设成 `2`、成功测试是 `LnkCap2 & 0x4`。
+任何分支、包括独立净室工具集里，都没有代码路径请求高于 2 的目标链路速度：Gen2 代码的 `constants.yaml` 钉死 `target_gen: 2`，`TARGET_LINK_SPEED` 写成 `2`，LTSSM 速度字段设为 `2`，成功测试是 `LnkCap2 & 0x4`。
 
 ### `OPT_GEN23` 写失败、Gen2 反正工作
 
-那一个*确实*被尝试的熔丝写不落地。逐字来自一个插桩构建、同一个引导的两张 GPU 上：
+那唯一一次*确实*被尝试的熔丝写没有落地。以下逐字摘自一个插桩构建，取自同一引导的两张 GPU：
 
 ```text
 NVRM: GPU0 _kgspBootGspRm: SEC2_DEBUG: PCIe xp3g booter OPT_GEN23(0x82057c)=0x00000000 \
@@ -122,15 +122,15 @@ NVRM: GPU0 _kgspBootGspRm: SEC2_DEBUG: PCIe xp3g booter OPT_GEN23(0x82057c)=0x00
 NVRM: GPU0 _kgspBootGspRm: SEC2_DEBUG: PCIe xp3g booter FAILED to set OPT_GEN23
 ```
 
-一次直接高安全写记录 `PLM[4] OPT_GEN23(0x82057c) status=0xffff reg=0x1 (write FAILED)`。该寄存器是一个任何权限级别都无写端口的纯 OTP 熔丝感测反射。**Gen2 因此尽管 `OPT_GEN23` 从没被清除也工作。** 熔丝影子不是杠杆；`CYA_0`、`LINK_CONFIG_0`、XP3G 覆盖和 `PRIV_MISC_1` 才是。
+一次直接的高安全写记录了 `PLM[4] OPT_GEN23(0x82057c) status=0xffff reg=0x1 (write FAILED)`。该寄存器是一个纯 OTP 熔丝感测反射，任何权限级别都无写端口。**因此，即使 `OPT_GEN23` 从未被清除，Gen2 依然工作。** 熔丝影子不是杠杆；`CYA_0`、`LINK_CONFIG_0`、XP3G 覆盖和 `PRIV_MISC_1` 才是。
 
-这对规划要紧、因为对 Gen3 最常被引用的 "cheap next step"（便宜下一步）是经同一个 "already succeeds on `0x0082057c`"（在 `0x0082057c` 上已成功）的表写 `0x00820580 = 0`。那个前提是错的：表对 `0x0082057c` 的写在硅片上被观察到失败。实验仍值得跑（它花一次引导）但它的先验应该低。
+这对规划很重要，因为 Gen3 最常被引用的 "cheap next step"（便宜的下一步）是：经那张据称"已在 `0x0082057c` 上成功"的表，写 `0x00820580 = 0`。但那个前提是错的：该表对 `0x0082057c` 的写在硅片上已被观察到失败。实验仍值得跑（只需一次引导），但它的先验应当很低。
 
 ---
 
 ## 锁层 2：DevInit 配置表
 
-PCIe 速度限制也住在 SPI 闪存里**未加密** DevInit falcon 映像内的一张 PCIe 配置表、不在传统 x86 VBIOS 部分。
+PCIe 速度限制还存在于 SPI 闪存中**未加密**的 DevInit falcon 映像内的一张 PCIe 配置表，而非传统的 x86 VBIOS 部分。
 
 | 项 | CMP 170HX | A100 |
 |---|---|---|
@@ -141,60 +141,60 @@ PCIe 速度限制也住在 SPI 闪存里**未加密** DevInit falcon 映像内�
 | DevInit 映像 | flash `0xDE00`（反汇编基址 `0x8000`）、bank 2 里 `+0x60000` 处复制 | 相同布局 |
 | BIT 表（I、i、C、D、x、p、u、B、M） | 与 A100 逐字节相同 | 与 CMP 逐字节相同 |
 
-抑制标志是决定性的字节。在反汇编 `0x31B3F-0x31B92` 里代码读取它并分支远离整个 Gen4 编程块：
+抑制标志是决定性的字节。在 `0x31B3F-0x31B92` 的反汇编中，代码读取它并分支绕开整个 Gen4 编程块：
 
 ```text
 ld b8 r9, D[tab+0x0F]
 bra ne -> skip whole block
 ```
 
-当块确实运行时它计算两个只写寄存器：
+当这个块确实运行时，它计算两个只写寄存器：
 
 ```text
 0x88CE4 = (old & ((b1<<8) | b0)) | ((b3<<8) | b2)   ; 因为 b0=b1=b3=0 归结为字节 [+0xC9]
 0x88CE0 = (old & ~0x3F) | (b4 & 0x3F)               ; 两个部件上 b4 = 0x06
 ```
 
-`0x88CE0` 和 `0x88CE4` 在整个 DevInit 反汇编里都是只写的（一次性 Gen4 init 配置）并坐在 Physical Layer 16.0 GT/s Extended Capability（PCIe 能力 ID `0x0026` 在 shadow `0x88C1C`）的 XVE 影子里。周围的 Gen4 序列也写 LTSSM 超时 `0x8D1A0 = 0x1B1F2327` 和 `0x8D1A4 = 0x0B0F1317`（与活 A100 值相同）和 `0x88610 = 0x1001`。
+`0x88CE0` 和 `0x88CE4` 在整个 DevInit 反汇编中都是只写寄存器（一次性 Gen4 初始化配置），位于 Physical Layer 16.0 GT/s Extended Capability（PCIe 能力 ID `0x0026`，shadow 在 `0x88C1C`）的 XVE 影子里。周围的 Gen4 序列还写 LTSSM 超时 `0x8D1A0 = 0x1B1F2327` 和 `0x8D1A4 = 0x0B0F1317`（与活 A100 值相同），以及 `0x88610 = 0x1001`。
 
-一个对 CMP DevInit 反汇编的符号 mini-解释器后来确立**总共**十三个 DevInit 字节不同、不是五个；其中十一个不同字节被归因到非 PCIe SKU 功能（HBM、NVLink、ECC）。与 PCIe 相关的消费者是 `[0xC9]` 到 `0x88CE4` 和 `0x132B70`、`[0x1C-0x1F]` 到 `0x8C2C0` 加 `0x918050`/`0x91C050`/`0x920050` 系列、和 `[0x3F]`（A100 上 `0x00`、CMP 上 `0x0C`）到 `0x8C040`。
+一个针对 CMP DevInit 反汇编的符号化 mini-解释器后来确认，DevInit 字节**总共**有十三个不同，而非五个；其中十一个不同字节被归因于非 PCIe 的 SKU 功能（HBM、NVLink、ECC）。与 PCIe 相关的消费方包括：`[0xC9]` 到 `0x88CE4` 和 `0x132B70`；`[0x1C-0x1F]` 到 `0x8C2C0`，外加 `0x918050`/`0x91C050`/`0x920050` 系列；以及 `[0x3F]`（A100 上 `0x00`、CMP 上 `0x0C`）到 `0x8C040`。
 
 > [!CAUTION]
 > **重刷不是一条路径**
 >
-> 全部五个 PCIe 字节**100% 落在** Davies-Meyer `csecret(2)` MAC 范围 `0x2200-0x43C00` 内。一个无钥伪造是一个 2^128 次第二原像问题。Ampere RSA 签名检查拒绝一个编辑过的映像、卡不会引导。`0x40B4B`、`0x40F05-3D` 和 `0x40FC5-CB` 处的 Gen-cap 字节也在 MAC 内。不要尝试刷一个修改过的 DevInit：见[VBIOS](../hardware/vbios.md) 和[恢复](../procedures/recovery.md)。
+> 全部五个 PCIe 字节**100% 落在** Davies-Meyer `csecret(2)` MAC 范围 `0x2200-0x43C00` 内。无钥伪造是一个 2^128 次第二原像问题。Ampere RSA 签名检查会拒绝被编辑过的映像，卡将无法引导。`0x40B4B`、`0x40F05-3D` 和 `0x40FC5-CB` 处的 Gen 能力字节也在 MAC 范围内。不要尝试刷写修改过的 DevInit：见[VBIOS](../hardware/vbios.md) 和[恢复](../procedures/recovery.md)。
 
 ### 被反驳的直觉：跳线字段是单调限制的
 
-语料库里最有价值的更正之一。社区 `pcie_set_speed` 补丁的直觉方向恰好反了。已签名 FWSEC 里的 devinit 读-改-写是 `mov r9 0x14118f78; ld; and 0x3ff / or 0x400; st` 在 VBIOS 偏移量 `0xE88C`、每个 ROM 里 26 处引用；170HX-对比-A100 的增量是**被写的值**、不是代码。跳线字段是限制的：`0` = 所有代启用、`3` = 170HX 设置（清除 Gen2/3/4）、`0xF` = 越界 / 全部禁用。提高上限需要一个**更低**的跳线值、而且不存在写端口。
+语料库里最有价值的更正之一。社区 `pcie_set_speed` 补丁的直觉方向恰好反了。已签名 FWSEC 中的 devinit 读-改-写是 `mov r9 0x14118f78; ld; and 0x3ff / or 0x400; st`，位于 VBIOS 偏移量 `0xE88C`，每个 ROM 有 26 处引用；170HX 与 A100 的差别在于**被写入的值**，而非代码。跳线字段是限制性的：`0` = 所有代启用，`3` = 170HX 的设置（清除 Gen2/3/4），`0xF` = 越界 / 全部禁用。要提高上限，需要**更低**的跳线值，而写端口并不存在。
 
-一个相关的地址空间声称于 2026-07-27 被撤回：FWSEC falcon 代码里每个 `0x14xx....` 常量是一个与孔径基址 `0x14000000` OR 的 BAR0 偏移量，所以 `0x14118F78` 是 BAR0 偏移量 `0x118F78`、在普通的 16 MB 窗口内、不在一条单独的 ">16 MB Falcon PRIV bus" 上。**带驱动加载**的主机读 `0x118F78` 返回 `0xbadf1100`、NVIDIA 的 priv 毒模式，所以 FWSEC 上下文之外的主机可达性仍未证明。
+一个相关的地址空间说法于 2026-07-27 被撤回：FWSEC falcon 代码中每个 `0x14xx....` 常量，都是一个与孔径基址 `0x14000000` OR 在一起的 BAR0 偏移量，因此 `0x14118F78` 就是 BAR0 偏移量 `0x118F78`，位于普通 16 MB 窗口内，而不在单独的 ">16 MB Falcon PRIV bus" 上。**带驱动加载**时，主机读 `0x118F78` 返回 `0xbadf1100`（NVIDIA 的 priv 毒模式），所以 FWSEC 上下文之外的主机可达性仍未得到证明。
 
 ---
 
 ## 熔丝实际在哪被消费
 
-DevInit 根本不读那两个 Gen 熔丝。CMP DevInit 反汇编里 `0x82xxxx` 访问的完整清单是 `0x820C14`/`0x820D38`（FBIO/FBP 地板清扫）、`0x820684`（`FUSE_NVLINK_DIS`）、`0x82380C`/`0x823814`、`0x820520`、`0x820148`、`0x8243xx`、`0x8202xx`、`0x8201xx`、`0x82033C`/`0x82030C`。`0x82057C` 和 `0x820580` 都不出现。
+DevInit 根本不读那两颗 Gen 熔丝。CMP DevInit 反汇编中 `0x82xxxx` 访问的完整清单是 `0x820C14`/`0x820D38`（FBIO/FBP 地板清扫）、`0x820684`（`FUSE_NVLINK_DIS`）、`0x82380C`/`0x823814`、`0x820520`、`0x820148`、`0x8243xx`、`0x8202xx`、`0x8201xx`、`0x82033C`/`0x82030C`。`0x82057C` 和 `0x820580` 均未出现。
 
-GSP-RM 确实读它们、那些读站点已定位：
+GSP-RM 确实会读它们，这些读取点已定位：
 
 | 固件 | 地址 | 指令证据 |
 |---|---|---|
 | `470.42.01 gsp.bin` | fuse-read 跳转表 at `0x5D55834` | `li a2, 0x580` 和 `li a2, 0x57c` |
 | `580.105.08 gsp_tu10x.bin` | `0x4DD9B00`（`jalr fuse_read`） | `li a2, 0x57c` |
 
-那个配对就是为什么当前的陈述是 "it needs a GSP patch"（它需要一个 GSP 补丁）。一次对 `gsp_tu10x.bin` 的完整反汇编扫描也确立 GSP **不**做什么：在任何地方都没找到对 `0x88CE4`、`0x88CE0`、`0x88084`、`0x880A4`、`0x880A8`、`0x820520` 或 `0x82057C` 的写。GSP 只为了链路管理碰 PCIe（`0x88088` 对位 0-1 的读-改-写、带 Gen1/2/3 分支的速度读、Gen4 落进默认路径、`0x8A088`、内部读 `0x88A48`/`0x88A4C`/`0x88A64`、和 `0x82000 | offset` 的动态熔丝块访问）。
+这个配对就是当前结论"需要一个 GSP 补丁"的由来。对 `gsp_tu10x.bin` 的完整反汇编扫描也确认了 GSP **不**做什么：在任何地方都没找到对 `0x88CE4`、`0x88CE0`、`0x88084`、`0x880A4`、`0x880A8`、`0x820520` 或 `0x82057C` 的写入。GSP 只在链路管理时才碰 PCIe（`0x88088` 对位 0-1 的读-改-写，带 Gen1/2/3 分支的速度读，Gen4 落入默认路径，`0x8A088`，内部读 `0x88A48`/`0x88A4C`/`0x88A64`，以及 `0x82000 | offset` 的动态熔丝块访问）。
 
 > [!NOTE]
 > **值得保留的方法注记**
 >
-> 一次早先天真的 4 字节常量搜索错误地报告 GSP 映像里 "no XVE references"（无 XVE 引用）、因为 RISC-V 经 `lui`/`addi` 动态构建这些地址。一次完整模式扫描是必需的。加密的 GSP 区域仍不可读、所以即使修正的扫描也不穷尽。
+> 一次早期天真的 4 字节常量搜索错误地报告 GSP 映像中 "no XVE references"（无 XVE 引用），因为 RISC-V 通过 `lui`/`addi` 动态构建这些地址，必须做一次完整的模式扫描。加密的 GSP 区域仍不可读，所以即使修正后的扫描也不穷尽。
 
 ---
 
 ## 速度能力的寄存器级图
 
-来自 RM 反汇编、带一个注意：工作的 Gen2 结果显示实际情况比这张图暗示的更宽容（置信度：中等）。
+以下来自 RM 反汇编，附一个提醒：可用的 Gen2 结果显示，实际情况比这张图暗示的更为宽容（置信度：中等）。
 
 | 寄存器 | 角色 | 访问 | 170HX 上观察到 |
 |---|---|---|---|
@@ -209,9 +209,9 @@ GSP-RM 确实读它们、那些读站点已定位：
 | `0x8C1C0` | `PL_LINK_RATE`、gen 字段 [19:16] | PLM 下 RW | 被 0007 写成 `0x00240036` |
 | `0x881C0` | `PPCI.UNK1C0`、[17:16] `LNK_CAP_SPEED`、[21:20] `SYSTEM_MAX_SPEED` | 主机读被挡 | `0xbadf5040`；A100 孪生 `0x8C1C0` 读 `0x00040036` |
 
-速度向量编码：Gen1 = `0x1`、Gen1_2 = `0x3`、Gen1_2_3 = `0x7`、Gen1_2_3_4 = `0xF`。
+速度向量编码：Gen1 = `0x1`，Gen1_2 = `0x3`，Gen1_2_3 = `0x7`，Gen1_2_3_4 = `0xF`。
 
-一个参考 A100 80GB 上的强制代扫描钉住了链路速率实际住在哪、是可用的最干净对照测量：
+在参考 A100 80GB 上的一次强制代扫描，钉住了链路速率究竟落在哪里，也是可用的最干净对照测量：
 
 | 强制代 | `0x88088`（[19:16] 处速度） | `0x880a8`（[3:0] 处目标） | `0x88084` |
 |---|---|---|---|
@@ -292,35 +292,35 @@ GSP-RM 确实读它们、那些读站点已定位：
 
 ## 最有希望的剩余路径
 
-按成本排名、最便宜在前。这些没有一个被做过。
+按成本排序，最便宜的在前。这些都还没人做过。
 
 ### 1. 经 xp3g 表写 `0x00820580 = 0`、然后请求 TLS = 3
 
-成本：一次引导。`FUSE_PCIE_GEN3_DIS` 从没被任何人写过。表机制已在 `0007-pcie-gen2.patch` 里存在；加一个条目并把 `target_gen` 提高是一个几行改动。预期结果、鉴于上面 #6、是一行 `booter FAILED to set` 和 `rd=0x00000001`，但那个负结果值得记录在案。决定性观察是 `LnkCap2` 是否曾到达 `0x0000000E`。
+成本：一次引导。`FUSE_PCIE_GEN3_DIS` 从未被任何人写过。表机制已存在于 `0007-pcie-gen2.patch`；加一个条目并提高 `target_gen` 只是几行改动。鉴于上面的 #6，预期结果是出现一行 `booter FAILED to set` 和 `rd=0x00000001`，但把这个负结果记录在案仍有价值。决定性的观察是 `LnkCap2` 能否达到 `0x0000000E`。
 
 ### 2. `FUSE_PCIE_MAGIC_D` 可写吗？读、写 `0x00200000`、回读
 
-成本：五分钟、从未发布。证据真的矛盾。一份分析给位 25 加注 `GEN4_SPEED_DISABLED` 并显式标记寄存器 **"(writable)"**、对比 `GEN23_DIS` "needs no write"。一个独立净室链脚本记录把 `0x00820520 = 0x00200000`（A100 / Drive 参考值）作为一条*工作* Gen2 链的一部分写。但 PCIe 实地手册把 `0x820580` / `0x820520` 列为只读熔丝选项影子、而 `0007` 只读 `0x00820520`。因为 Gen4 不可测试、这从没被操练过。
+成本：五分钟，从未发布。证据确实矛盾。一份分析给位 25 加注了 `GEN4_SPEED_DISABLED`，并显式把寄存器标成 **"(writable)"**，与 `GEN23_DIS` "needs no write" 形成对照。一个独立净室链脚本记录了把 `0x00820520 = 0x00200000`（A100 / Drive 参考值）作为一条*可用* Gen2 链的一部分来写。但 PCIe 实地手册把 `0x820580` / `0x820520` 列为只读熔丝选项影子，而 `0007` 只读 `0x00820520`。因为 Gen4 无法测试，这一点从未被实践过。
 
 ### 3. 从 SEC2 高安全上下文内读 `0x85080` / `0x85084` / `0x881C0`
 
-成本：一个插桩构建。三个从主机和注入点都读毒。`0x8e1b0` 和 `0x823800` 已被展示从 HS 可达、所以读可行。这是定位实际供给受支持速度向量的跳线层的唯一路径。
+成本：一个插桩构建。这三个寄存器从主机和注入点读都得到毒值。`0x8e1b0` 和 `0x823800` 已被证明可从 HS 到达，所以读取是可行的。这是定位真正供给受支持速度向量的跳线层的唯一路径。
 
 ### 4. 测试 `0x823830`-`0x82383C` 的第二个特性覆盖组
 
-成本：一次 HS 写-后-回读。从 PL0 读返回 `0xbadf5040`；HS 读返回真实值。没有手动 PLM 覆盖这个组、HS 写-后-回读从未被执行。被显式列在 "writability still unknown / worth testing"（可写性仍未知 / 值得测试）下。
+成本：一次 HS 写后回读。从 PL0 读返回 `0xbadf5040`；HS 读返回真实值。没有手动 PLM 覆盖这个组，HS 写后回读也从未执行过。它被显式列入"writability still unknown / worth testing"（可写性仍未知 / 值得测试）。
 
 ### 5. 在一次强制 Gen3 尝试期间转储 `LnkSta2` 均衡字段
 
-成本：一次带插桩的引导。反假设是 `GEN3_DIS` 可能在引导时被锁存进一个可重写的 PHY/strap 配置寄存器、而非被模拟 PHY 直接消费，那种情况下会存在一个引导后要覆盖的寄存器。提出者赌他们自己的想法输。能裁决它的测量是均衡 Phase 1 是否曾被进入。
+成本：一次带插桩的引导。反假设是 `GEN3_DIS` 可能于引导时被锁存进一个可重写的 PHY/strap 配置寄存器，而非由模拟 PHY 直接消费；若是如此，就会存在一个可在引导后覆盖的寄存器。提出者本人赌自己的思路会输。能裁决这一点的测量，是均衡 Phase 1 是否曾被进入。
 
 ### 6. GSP-RM 补丁
 
-截至 2026-07-27 的陈述要求、和没人交付的原因："I haven't seen anybody at all get a working GSP patch."（我从没见过任何人拿到一个工作的 GSP 补丁。）具体起点是上面那两个熔丝读站点（`470.42.01 gsp.bin` 里 `0x5D55834`、`580.105.08 gsp_tu10x.bin` 里 `0x4DD9B00`）。问题是那个消费能否被像 Gen2 覆盖分流 Gen2 路径那样分流。加密 GSP 区域仍不可读、那是常驻障碍。
+这是截至 2026-07-27 的陈述要求，也是无人交付的原因："I haven't seen anybody at all get a working GSP patch."（我从没见过任何人拿到一个可用的 GSP 补丁。）具体起点是上面那两个熔丝读取点（`470.42.01 gsp.bin` 中 `0x5D55834`，`580.105.08 gsp_tu10x.bin` 中 `0x4DD9B00`）。问题是这种消费能否像 Gen2 覆盖分流 Gen2 路径那样被分流。加密的 GSP 区域仍不可读，这是常驻障碍。
 
 ### 7. 一个带 `[+0x0F] = 0x00` 和 `[+0xC9] = 0x14` 的已签名或以其它方式被接受的闪存
 
-这是唯一能确定 DevInit 五字节编辑**单独**是否会恢复 Gen4 的实验。熔丝参考 gist 断言 "PCIe double-locked: `FUSE_PCIE_GEN23_DIS` = `0x1` (fuse) + devinit (5 bytes). Firmware-only patch insufficient"（PCIe 双锁：熔丝 + devinit。仅固件补丁不足够），但那个结论是从熔丝值的推断、不是一次被尝试的固件补丁的结果。从没人刷过修改过的 DevInit 表、没有签名密钥也没人能。
+这是唯一能确定 DevInit 五字节编辑**单独**能否恢复 Gen4 的实验。熔丝参考 gist 断言 "PCIe double-locked: `FUSE_PCIE_GEN23_DIS` = `0x1` (fuse) + devinit (5 bytes). Firmware-only patch insufficient"（PCIe 双锁：熔丝 + devinit，仅固件补丁不足够），但这个结论是从熔丝值推断出来的，并非一次实际固件补丁的结果。从未有人刷写过修改过的 DevInit 表，而没有签名密钥也没人能做到。
 
 ### 8. 一个线缆级重定时器
 
@@ -328,7 +328,7 @@ GSP-RM 确实读它们、那些读站点已定位：
 
 ### 9. 找一台 Gen4 主机
 
-被硬件阻塞先于被技术阻塞。做 Gen4 的研究者直白陈述："I can't do PCIe Gen 4 because I don't have a computer that supports it"（我不能做 PCIe Gen 4、因为我没有支持它的电脑）、并分开说 "devinit routes are genuinely horrible to try to work on"（devinit 路径真的极其难弄）。
+被硬件阻塞，先于被技术阻塞。做 Gen4 的研究者直白陈述："I can't do PCIe Gen 4 because I don't have a computer that supports it"（我没法做 PCIe Gen 4，因为没有支持它的电脑），并另言 "devinit routes are genuinely horrible to try to work on"（devinit 路径真的极其难弄）。
 
 ### 低优先级线索
 
@@ -338,7 +338,7 @@ GSP-RM 确实读它们、那些读站点已定位：
 
 ## 记录里的移动目标问题
 
-Gen3 路径在大约 40 小时内四次改变方向、把任何单一引述读作项目立场之前值得知道：
+Gen3 路径在大约 40 小时内四次转向，在把任何一条引述当作项目立场之前，这点值得先知道：
 
 | 时间戳 | 立场 |
 |---|---|
@@ -347,9 +347,9 @@ Gen3 路径在大约 40 小时内四次改变方向、把任何单一引述读�
 | 2026-07-26 14:42 | "We need to use devinit"（我们需要用 devinit） |
 | 2026-07-27 22:57 | "Gen 3 doesn't work whatsoever, it's going to require a GSP patch" / "I haven't seen anybody at all get a working GSP patch" |
 
-最后这个是截至 2026-07-28 的状态。
+最后一条就是截至 2026-07-28 的状态。
 
-更早的 "four-layer wall"（四层墙）实地手册（日期 2026-07-24）得出结论全部四层（运行时寄存器写、寄存器语义、持久固件、硅片熔丝）都被经验关闭、在两个表面验证：一次 4032 运行离线固件 fuzz 扫描（从 66 个函数抽取的 126 个函数-寄存器对、每个扫过 32 个单一位值）和硅片上直接写探测。它自己的第 6 节含它为什么对 Gen2 错的原因：*"The full community Gen2 sequence ... as a single combined write was not run: every component is individually proven inert, so it is a low-odds combination."*（完整的社区 Gen2 序列……作为单次组合写没被跑过：每个组件被单独证明惰性、所以它是一个低概率组合。）那个低概率组合工作了。**那个结论的 Gen3 一半仍站得住。**
+更早的 "four-layer wall"（四层墙）实地手册（日期 2026-07-24）得出结论，全部四层（运行时寄存器写、寄存器语义、持久固件、硅片熔丝）在经验上都已关闭，并在两个表面得到验证：一次 4032 运行量的离线固件 fuzz 扫描（从 66 个函数抽取 126 个函数-寄存器对，每对扫过 32 个单一位值），以及硅片上的直接写探测。它自己的第 6 节包含了它为何对 Gen2 判断错误的原因：*"The full community Gen2 sequence ... as a single combined write was not run: every component is individually proven inert, so it is a low-odds combination."*（完整的社区 Gen2 序列……没有作为单次组合写运行过：每个组件都被单独证明是惰性的，所以它是一个低概率组合。）结果这个低概率组合成功了。**该结论的 Gen3 那一半依然成立。**
 
 ---
 
@@ -358,7 +358,7 @@ Gen3 路径在大约 40 小时内四次改变方向、把任何单一引述读�
 > [!WARNING]
 > **用 LnkSta 验证、绝不用 LnkCap**
 >
-> `LnkCap` 是宣告的能力、链路仍以 Gen1 训练时可以读一个更高代。那个陷阱是大多数站不住脚的 "it works"（能工作）声称的陈述来源。2026-07-24 的 Gen3 宣告结果恰好是这种情况。
+> `LnkCap` 是宣告的能力，当链路仍以 Gen1 训练时，它可能读到更高的代数。这个陷阱正是大多数经不起推敲的 "it works"（能工作）声称的陈述来源。2026-07-24 的 Gen3 宣告结果恰好就是这种情况。
 
 ```bash
 # 三个诚实的字段
@@ -372,7 +372,7 @@ nvidia-smi --query-gpu=pcie.link.gen.gpucurrent --format=csv
 - 在 Gen2 训练过的 170HX 上、`/sys/.../max_link_speed` 仍读 `2.5 GT/s`、而 `current_link_speed` 读 `5.0 GT/s`。从配置空间诊断、不要从 sysfs 属性。
 - `nvidia-smi` 自 2023 年起在一张出厂卡上报告 `PCIe Generation Max : 2`、而 `Device Current` 和 `Device Max` 都读 `1`、`LnkCap2` 只列 2.5 GT/s。只作指纹有用。
 
-ASPM 在其它平台上是真实的假阴性陷阱（许多平台把链路空降到 Gen1），但 170HX 自己在它的 `LnkCap` 里宣告 `ASPM not supported`，所以它在这里是一个首选诊断、而非一个可能原因。
+ASPM 在其它平台上是一个真实的假阴性陷阱（许多平台会把链路降到 Gen1 空转），但 170HX 自己在 `LnkCap` 里宣告 `ASPM not supported`，所以在这里它更适合作为首选诊断，而非可能的成因。
 
 ---
 

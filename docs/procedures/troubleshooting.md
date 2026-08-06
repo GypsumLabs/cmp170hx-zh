@@ -132,7 +132,7 @@ cat /lib/modules/$(uname -r)/updates/cmpunlocker/driver_version
 cat /lib/modules/$(uname -r)/updates/cmpunlocker/unlock_geometry
 ```
 
-一份归档的良好结果逐字读 `65536 MiB, 1935 MHz`。注意 `clocks.max.sm = 1935 MHz` 是一个**纯报告字段**、不是一个可达时钟：持续 SM 时钟是 1410 MHz、或 `-pl 300` 下 1470 MHz。见[性能](../operations/performance.md)。
+一份归档的良好结果逐字就是 `65536 MiB, 1935 MHz`。注意 `clocks.max.sm = 1935 MHz` 是一个**纯报告字段**、不是一个可达时钟：持续 SM 时钟是 1410 MHz、或 `-pl 300` 下 1470 MHz。见[性能](../operations/performance.md)。
 
 完整安装后清单见[验证](verify.md)。
 
@@ -151,7 +151,7 @@ kgspExecuteBooterLoad_TU102: failed to execute Booter Load: 0xffff
 
 紧接着一条在 `reg=` 里显示目标值的 PLM 行。
 
-**为什么没问题。** 补丁 0001 故意为每次 PLM 趟用一个利用载荷覆写 GSP 签名缓冲区，所以 Booter Load **本应**拒绝那些运行：签名抱怨提出时注入的链已经执行了。成功纯由回读 PLM 寄存器判断、绝不由 Booter 状态判断。最坏情况真实引导 Booter Load 之前有八个这样的（四个 PLM、每个最多两次尝试）。
+**为什么没问题。** 补丁 0001 故意为每次 PLM 趟用一个利用载荷覆写 GSP 签名缓冲区，所以 Booter Load **本应**拒绝那些运行：到签名抱怨提出时，注入的链已经执行了。成功完全由回读 PLM 寄存器判断，绝不由 Booter 状态判断。最坏情况下，真实引导的 Booter Load 之前会有八个这样的失败（四个 PLM，每个最多两次尝试）。
 
 **必须成功的那行**是 `SEC2_DEBUG: normal BooterLoad status=0x0`。
 
@@ -161,7 +161,7 @@ kgspExecuteBooterLoad_TU102: failed to execute Booter Load: 0xffff
 SEC2_DEBUG: /lib/firmware/nvidia/ga100/gsp/dmem.bin not found (0x59), using built-in payload
 ```
 
-这是正常路径。外部 `dmem.bin` 是一个用 `os_open_and_read_file` 读的开发覆盖钩子；`0x59` 是那个函数的文件未找到状态。每一份归档的成功解锁引导都显示这一行。内置回退载荷目标 FBPA PLM（`writeAddr = 0x009a0148`、`writeValue = 0xffffffff`）、PLM 循环随后每次迭代重写它。
+这是正常路径。外部 `dmem.bin` 是一个用 `os_open_and_read_file` 读的开发覆盖钩子；`0x59` 是那个函数的文件未找到状态。每一份归档的成功解锁引导都显示这一行。内置回退载荷瞄准 FBPA PLM（`writeAddr = 0x009a0148`、`writeValue = 0xffffffff`），PLM 循环随后在每次迭代中重写它。
 
 它前面那行 `SEC2_DEBUG: saved stock signature (4096 bytes)` 确认这个驱动上的出厂 GSP 签名是 4096 字节。
 
@@ -201,7 +201,7 @@ ggml_cuda_host_malloc: cudaHostRegister of 439781.26 MiB failed: unknown error
 CMP Gen2: PCIe retrain completed without Gen2 link (status=0x1042, ret=0)
 ```
 
-这是一个**假阴性**：`0x1042` *就是*一个训练好的 Gen2 x4 链路。解码：速度字段 `[3:0] = 2`（5.0 GT/s）、位宽字段 `[9:4] = 4`（x4）。驱动的成功测试额外要求 `PCI_EXP_LNKSTA_DLLLA`（数据链路层链路活跃、位 13、`0x2000`），而 `0x1042` 位 13 清除，所以链路在真实处于 Gen2 时检查失败。报告 `0x7042`（位 13 置位）的主机从同一代码打印成功消息。两张主机上的四张卡显示那个矛盾配对。
+这是一个**假阴性**：`0x1042` *就是*一个训练好的 Gen2 x4 链路。解码：速度字段 `[3:0] = 2`（5.0 GT/s）、位宽字段 `[9:4] = 4`（x4）。驱动的成功测试额外要求 `PCI_EXP_LNKSTA_DLLLA`（数据链路层链路活跃、位 13、`0x2000`），而 `0x1042` 位 13 清除，所以链路实际处于 Gen2 时检查却失败。报告 `0x7042`（位 13 置位）的主机从同一代码打印成功消息。两台主机上的四张卡显示那个矛盾配对。
 
 改信这些之一：
 
@@ -281,7 +281,7 @@ sudo dmesg | grep SEC2_DEBUG         # 必须有输出
 
 `build.sh` 的分支副本（`memory`、`ecc`、`housekeeping`、`PG199`）逐字携带解释："NVIDIA often loads from initramfs. If only updates/dkms is packed there, stock modules win at boot even when updates/cmpunlocker is preferred by depmod."（NVIDIA 常从 initramfs 加载。如果那里只打包 updates/dkms，即使 depmod 偏好 updates/cmpunlocker、出厂模块也在引导时胜出。）Master 去掉注释却保留行为：`build.sh` 按可用顺序调用 `update-initramfs -u -k "${KVER}"`、`dracut --force --kver "${KVER}"` 或 `mkinitcpio -P`；一个都不存在时警告 `No initramfs tool found, rebuild manually before rebooting`。
 
-这是 "已安装、显存却仍显示出厂大小" 的一条貌似合理路线、值得先排除因为它廉价，但它是脚本自己的推理、而非一个诊断出的野外失败：语料库任何地方的聊天报告都没提 initramfs、initrd、dracut 或 mkinitcpio。如果你看到那个警告，手工重建 initramfs 并冷启动。
+这是 "已安装、显存却仍显示出厂大小" 的一条貌似合理路线、值得先排除，因为它廉价，但它是脚本自己的推理，而非诊断出的野外失败：语料库任何地方的聊天报告都没提 initramfs、initrd、dracut 或 mkinitcpio。如果你看到那个警告，手工重建 initramfs 并冷启动。
 
 ### 3.5 维护者分诊：三步 { #triage-three-step }
 
@@ -324,7 +324,7 @@ cat /proc/driver/nvidia/version
 
 ### 3.7 解锁没挺过一次关机 { #not-persistent }
 
-**原因。** 一个更老 NVIDIA 驱动和/或一个更老 `cmpunlocker` systemd 服务的残留。
+**原因。** 更老 NVIDIA 驱动和/或更老 `cmpunlocker` systemd 服务的残留。
 
 **修复。** 移除所有旧内核模块**和**旧 `cmpunlocker` 服务，然后重装。出货 `remove.sh` 现在两者都做：它停止、禁用并删除 `/etc/systemd/system/cmpunlocker.service`、杀掉 `/opt/cmpunlocker/daemon/watchdog.py`、移除 `/lib/modules/*/updates/cmpunlocker/`、逐内核跑 `depmod -a`、重建 initramfs、并重载出厂模块。见[卸载](uninstall.md) 和[恢复](recovery.md)。
 
@@ -343,7 +343,7 @@ cat /proc/driver/nvidia/version
 | 检测到的驱动不在 `driver/VERSION` 里 | `Installed driver is ${detected}, but cmpunlocker requires one of: 610.43.03,610.43.02.` |
 | 显存总量落在每个档位桶之外 | `Could not detect 8GB vs 10GB card` |
 
-安全启动门只在 `/sys/firmware/efi` 存在**且** `mokutil` 在 PATH 上时运行；在非 EFI 系统、或没有 `mokutil` 的系统上、检查被静默跳过，未签名模块随后以 `nvidia: module verification failed: signature and/or required key missing - tainting kernel` 加载失败。
+安全启动门只在 `/sys/firmware/efi` 存在**且** `mokutil` 在 PATH 上时运行；在非 EFI 系统或没有 `mokutil` 的系统上，检查会被静默跳过，未签名模块随后以 `nvidia: module verification failed: signature and/or required key missing - tainting kernel` 加载失败。
 
 驱动版本检测顺序：`/proc/driver/nvidia/version`，然后 `nvidia-smi --query-gpu=driver_version`、然后扫 `/lib/firmware/nvidia/<supported>/`、然后 `/lib/firmware/nvidia/` 下排序最高的目录。见[驱动版本](driver-versions.md)。
 
@@ -374,7 +374,7 @@ In-driver unlock path is gated on PCI ID 0x20C2 / 0x2082.
 This card reports 0x20b0; install will continue, but unlock may not activate.
 ```
 
-补丁 0001 和 0002 里的每一个解锁动作**和每一个 `SEC2_DEBUG` 打印**都只门控在 `0x20C2` / `0x2082` 上、经 `_kgspSec2PostblTimingEnabled()`、它测试 `pGpu->idInfo.PCIDeviceID >> 16`。一张 `20b0` 卡因此干净安装、走完全出厂路径引导、并应在 `dmesg | grep SEC2_DEBUG` 里打印**什么**都没有。
+补丁 0001 和 0002 里的每一个解锁动作**和每一个 `SEC2_DEBUG` 打印**都只门控在 `0x20C2` / `0x2082` 上、经 `_kgspSec2PostblTimingEnabled()`、它测试 `pGpu->idInfo.PCIDeviceID >> 16`。一张 `20b0` 卡因此会干净安装、走完全出厂路径引导，并应在 `dmesg | grep SEC2_DEBUG` 里什么都不打印。
 
 > [!NOTE]
 > **未解问题**
@@ -401,9 +401,9 @@ NVRM: rm_init_adapter failed, device minor number 0
 
 **原因。** 一次更早的 Booter 运行编程了 WPR2 MMU 寄存器然后脱轨，所以下次 modprobe 驱动看到 WPR2 已 up 并拒绝。
 
-**修复（净室时代）。** 完整驱动拆掉、然后经 `echo 1 > /sys/bus/pci/devices/0000:BDF/reset` FLR、或一次冷断电循环。
+**修复（净室时代）。** 完全拆掉驱动，然后经 `echo 1 > /sys/bus/pci/devices/0000:BDF/reset` FLR，或一次冷断电循环。
 
-出货补丁还在 PLM 循环前从 `0x001fa824` / `0x001fa828` 保存一次 WPR2 低/高、在**每一次** Booter Load 尝试前重写两个寄存器、并在循环后再重写一次。它从不清除它们。
+出货补丁还在 PLM 循环前从 `0x001fa824` / `0x001fa828` 保存一次 WPR2 低/高、在**每一次** Booter Load 尝试前重写两个寄存器，并在循环后再重写一次。它从不清除它们。
 
 ### 4.2 Xid 119，60 秒超时，函数 4097 { #xid119-60s }
 
@@ -423,7 +423,7 @@ falconMailbox 0:00000031
 
 **修复。** 复位让 WPR2 被清除，然后重试：先 FLR、如果 FLR 不清除它就 SBR 或冷断电循环。见[恢复](recovery.md)。
 
-**支持细节。** 它前面的 `_threadNodeCheckTimeout` 显示 4000 ms 的 Falcon-停机超时；GSP 事件本身花了 59 秒。一份捕获里 CPU 到 GSP 的 RPC 历史只含条目 0 `SET_REGISTRY` 和条目 -1 `GSP_SET_SYSTEM_INFO`、意味着 GPU 从没越过早期引导。在两张主机、两个内核和两个驱动构建（580.159.03 和 580.167.08）上捕获。
+**支持细节。** 它前面的 `_threadNodeCheckTimeout` 显示 4000 ms 的 Falcon-停机超时；GSP 事件本身花了 59 秒。一份捕获里 CPU 到 GSP 的 RPC 历史只含条目 0 `SET_REGISTRY` 和条目 -1 `GSP_SET_SYSTEM_INFO`、意味着 GPU 从未越过早期引导。在两台主机、两个内核和两个驱动构建（580.159.03 和 580.167.08）上捕获。
 
 ### 4.3 Xid 119，6 秒超时，函数 103 { #xid119-6s }
 
@@ -439,7 +439,7 @@ falconMailbox 0:00000031
 
 **原因。** 精心构造的签名缓冲区 / Booter 序列让 GSP 无法启动。`0x65` 是驱动侧 `NV_ERR_TIMEOUT`。
 
-**修复。** 完全断电循环并重试。对报告它的测试者来说、只移除旧内核模块**不足够**。
+**修复。** 完全断电循环并重试。对报告它的测试者来说，只移除旧内核模块**不足够**。
 
 > [!CAUTION]
 > **`0x65` 不是 `0x31`**
@@ -495,7 +495,7 @@ kgspInitRm_IMPL: Max GSP-RM boot attempts exceeded: 4/4
 NVRM: RmInitAdapter failed! (0x62:0xffff:2119)
 ```
 
-**原因。** PLM 被一次脏的 SEC2 退出部分锁住。`reg=0xffffff8f` 是破绽：`0x8f` 是 "secure_teardown ran" 标记值。Booter `0x29` 来自 `check_1180f8_nibbles`、它要求 `0x001180f8` 的进入顶半字节是 `0`。
+**原因。** PLM 被一次脏的 SEC2 退出部分锁住。`reg=0xffffff8f` 就是关键线索：`0x8f` 是 "secure_teardown ran" 标记值。Booter `0x29` 来自 `check_1180f8_nibbles`、它要求 `0x001180f8` 的进入顶半字节是 `0`。
 
 **可复现 A/B。** 没有几何或算力写、也没有 `0x1180f8` 写的发射走得更远、只在 `FBPA_00C (0x9a000c)` 失败；加一次 `0x1180f8 = 0x17100000` 写让 `FBPA_008` 和 `FBPA_00C` 两者都失败。
 
@@ -507,14 +507,14 @@ NVRM: RmInitAdapter failed! (0x62:0xffff:2119)
 
 **原因。** 不是显存损坏、也不是 SCP 加密失败。一次前后探测显示 BAR0 到 vidmem 的路径仍返回写的模式 `0xabcdabcd`。失败的是 `kbusVerifyBar2` 里的第二个、BAR2-虚拟（MMU 翻译）测试，因为真实 Booter 在 `0x2777000` 到 `0x27fee00` 划出 WPR2 并在它正常的 ACR 工作期间设置 FBIF `0x800` 位、而驱动的 BAR2 测试缓冲区 / 实例块落进那个写保护区域。
 
-**修复。** 在离开重度安全模式的路上把 WPR2 拆回：
+**修复。** 在离开重度安全模式时把 WPR2 拆回：
 
 ```text
 0x1FA824 = 0x1FFFFE00
 0x1FA828 = 0x00000000
 ```
 
-**逃生门、从未动用。** BAR2 自检经 `PDB_PROP_GPU_BROKEN_FB`、`gpuIsCacheOnlyModeEnabled` 或 `kbusIsBar2TestSkipped` 可跳过。这些在 `0x24:0x72` 仍阻塞引导时从源码识别，但 WPR2 teardown 先修复了底层原因，所以它们保持有记录、未尝试。
+**逃生门、从未动用。** BAR2 自检经 `PDB_PROP_GPU_BROKEN_FB`、`gpuIsCacheOnlyModeEnabled` 或 `kbusIsBar2TestSkipped` 可跳过。这些在 `0x24:0x72` 仍阻塞引导时从源码识别，但 WPR2 teardown 先修复了底层原因，所以它们只被记录、从未尝试。
 
 一次无驱动利用运行产生相同的 `0x72` 映射：它让 GPU 的 BAR2/L2/MMU（POST/DEVINIT）状态保持 ACR 配置，所以 CPU-RM 的显存自检失败。
 
@@ -588,7 +588,7 @@ kgspBootstrap_TU102: [sigtest] DEVICE IS UP: GSP booted and RISCV is active
 
 这次运行在 580.167.08 上演示了漏洞。它 60 秒后仍撞上通常的 Xid 119 / WPR2-already-up 路径。
 
-出货签名缓冲区是 `0xf800` 字节（`SEC2_POSTBL_TIMING_SIGNATURE_SIZE 0x0000f800ULL`、63,488 字节）、**不是** `0xf700`。一次社区复现被 GSP 二进制里 `fwsignature_ga100` 节只有 `0x1000` 字节对一个硬编码 `0xf700` 载荷所阻塞；解决方案是停止补丁固件、改从驱动放大 `pSignatureMemdesc`。
+出货签名缓冲区是 `0xf800` 字节（`SEC2_POSTBL_TIMING_SIGNATURE_SIZE 0x0000f800ULL`、63,488 字节）、**不是** `0xf700`。一次社区复现受阻于 GSP 二进制里 `fwsignature_ga100` 节只有 `0x1000` 字节、而载荷硬编码为 `0xf700`；解决方案是停止补丁固件，改为从驱动放大 `pSignatureMemdesc`。
 
 ---
 
@@ -615,7 +615,7 @@ kgspBootstrap_TU102: [sigtest] DEVICE IS UP: GSP booted and RISCV is active
 | `0xFFFFFFFF` | GSP 邮箱未读 | |
 | `0x15` | Booter 的 `csb_write` 错误路径，报告进 SEC2 MAILBOX0 | |
 
-对从活 dmesg 读的码置信度高、对 `0x54` 和 `0xffff` 机制归因低。一种解读把 `0xffff` 归因于 Booter 在几何布局改动后、于 FB 顶部、把一个 WPR2 划进一个无后备的区域；那未解决。
+从活 dmesg 读出的码置信度高，对 `0x54` 和 `0xffff` 的机制归因则低。一种解读把 `0xffff` 归因于 Booter 在几何布局改动后、于 FB 顶部、把一个 WPR2 划进一个无后备的区域；这一点尚未解决。
 
 **邮箱地址。** SEC2 MAILBOX0 是 BAR0 `0x00840040`；GSP 邮箱是 `0x00110040`。
 
@@ -691,7 +691,7 @@ nvAssertOkFailedNoLog: Assertion failed: Reset required [NV_ERR_RESET_REQUIRED] 
 > [!CAUTION]
 > **语料库里唯一最具操作重要性的坑**
 >
-> **`rmmod nvidia` 清除 PCI `COMMAND.BusMaster`。** SEC2 Booter 经 DMA 从系统内存取 ROP 载荷，所以总线主控关闭时它取不到任何东西、带一个空载荷运行、不执行任何 ROP 并故障退出。**日志里没有任何东西提 DMA。** 每个写都弹回、唯一可见的痕迹是 `resetPLM` 从 `0xff` 变 `0x8f`。
+> **`rmmod nvidia` 清除 PCI `COMMAND.BusMaster`。** SEC2 Booter 经 DMA 从系统内存取 ROP 载荷，所以总线主控关闭时它取不到任何东西，只能带一个空载荷运行、不执行任何 ROP 并故障退出。**日志里没有任何地方提到 DMA。** 每个写都会弹回，唯一可见的痕迹是 `resetPLM` 从 `0xff` 变 `0x8f`。
 
 **诊断：**
 
@@ -727,7 +727,7 @@ STATE NOT CLEAN, FLR + re-fire
 EXIT_CODE=1
 ```
 
-**修复。** 卸载驱动。驱动卸载后、同一个命令给出 `PLMs: 9/9 open (fired 0 closed)`、`resetPLM=0x00ff`、`CSTATUS=20/24` 和 `READY`。失败和修复在几分钟内、在同一硬件上背靠背观察到。
+**修复。** 卸载驱动。驱动卸载后，同一个命令给出 `PLMs: 9/9 open (fired 0 closed)`、`resetPLM=0x00ff`、`CSTATUS=20/24` 和 `READY`。失败和修复在几分钟内、同一硬件上被背靠背观察到。
 
 ### 6.3 正确拆掉驱动 { #teardown }
 
@@ -795,11 +795,11 @@ check KFUSE_LOAD_CTL bit 0 set, bit 1 clear
 
 ### 6.6 活 CUDA 上下文旁发射 { #live-cuda-context }
 
-在活 CUDA 上下文旁发射解锁**确实**打开 FB-几何 PLM（`0x00100b10`：`0xffffff8f -> 0xffffffff`），却随后挂起 `nvidia-smi`，因为让 SEC2 停在 HS（旋转停放）不稳定驱动的健康路径。恢复是一次 `FALCON_ENGINE` 复位，它清除 HS 状态却不碰 FB 内容。*（置信度：中等。）*
+在活 CUDA 上下文旁发射解锁**确实**打开 FB-几何 PLM（`0x00100b10`：`0xffffff8f -> 0xffffffff`），却随后挂起 `nvidia-smi`，因为让 SEC2 停在 HS（旋转停放）会使驱动的健康路径不稳定。恢复是一次 `FALCON_ENGINE` 复位，它清除 HS 状态却不碰 FB 内容。*（置信度：中等。）*
 
 ### 6.7 在 `0x82xxxx` 块外写安全寄存器 { #resetplm-8f }
 
-在 `0x82xxxx` 外写任何安全寄存器把 SEC2 复位 PLM 重新提高到 `0x8f`、它阻塞出厂的 `kflcnReset`、让第二次 Booter Load 以 `0x65` 失败。具名罪魁祸首：`0x1183A4`（容量临时区）、`0x9A0204`（FBPA strap）、`0x1FA8xx`（WPR）。只有 `0x82xxxx` 写豁免。**这就是算力容易解锁、显存不行的原因。** *（置信度：中等；可复现症状带一致的 `resetPLM=0x8f` 标记，但寄存器身份被质疑。）*
+在 `0x82xxxx` 外写任何安全寄存器会把 SEC2 复位 PLM 重新提高到 `0x8f`，这会阻塞出厂的 `kflcnReset`、让第二次 Booter Load 以 `0x65` 失败。具名罪魁祸首：`0x1183A4`（容量临时区）、`0x9A0204`（FBPA strap）、`0x1FA8xx`（WPR）。只有 `0x82xxxx` 写豁免。**这就是算力容易解锁、显存不行的原因。** *（置信度：中等；可复现症状带一致的 `resetPLM=0x8f` 标记，但寄存器身份被质疑。）*
 
 ### 6.8 用一次复位把 PLM 打开和几何写分开 { #flr-between }
 
@@ -817,7 +817,7 @@ check KFUSE_LOAD_CTL bit 0 set, bit 1 clear
 
 **修复。** 恢复版本匹配的固件目录、用版本匹配的 `nvidia-smi`。恢复固件立即复现先前的工作状态。
 
-**当时记录的实际教训：** 当代理修改驱动时、保留一个 diff 或变更日志，因为重装新驱动静默丢弃每次需要的注入。
+**当时记录的实际教训：** 当代理修改驱动时、保留一个 diff 或变更日志，因为重装新驱动会静默丢弃所有需要的注入。
 
 ### 6.10 磁盘上一个陈旧的已补丁 `gsp_tu10x.bin` { #stale-firmware }
 
@@ -832,13 +832,13 @@ sudo cp $GSP_DIR/gsp_tu10x.bin.cmpunlocker.bak $GSP_DIR/gsp_tu10x.bin
 
 ### 6.11 重复驱动加载把错误码向前走 { #nondeterminism }
 
-重复的 CPU-RM 驱动加载渐进清理一张脏设备、把错误码向前走。一个单变量对照显示一次单独的 MMU-invalidate 运行停在 `0x24`，所以更早的 `0x24 -> 0x25` 前进来自**双重加载**（CPU-RM 自己的部分 init 清理状态）、而非 MMU 写。这也解释观察到的非确定性：脏设备清理非确定、结果每次发射都有噪声。*（置信度：中等；底层清理机制从未确认。）*
+重复的 CPU-RM 驱动加载会渐进清理一张脏设备、把错误码向前走。一个单变量对照显示一次单独的 MMU-invalidate 运行停在 `0x24`，所以更早的 `0x24 -> 0x25` 前进来自**双重加载**（CPU-RM 自己的部分 init 清理状态）、而非 MMU 写。这也解释了观察到的非确定性：脏设备的清理是非确定的，结果每次发射都有噪声。*（置信度：中等；底层清理机制从未确认。）*
 
 ---
 
 ## 7. 构建失败 { #build }
 
-`build.sh` 在 `set -euo pipefail` 下运行，所以任何失败的 hunk 都中止构建。它下载 `https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${VERSION}.tar.gz` 进 `driver/.build/`（缓存、经 `CMPUNLOCKER_BUILD_DIR` 可覆盖）、每次运行删除并重新解压一棵干净树、用 `patch -p1` 按字典序应用 `patches/*.patch`、然后跑 `make -j$(nproc) modules SYSSRC=/lib/modules/$(uname -r)/build`。构建时间约 5 分钟 *（单一报告、依赖硬件）*。
+`build.sh` 在 `set -euo pipefail` 下运行，所以任何失败的 hunk 都中止构建。它下载 `https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${VERSION}.tar.gz` 进 `driver/.build/`（缓存、经 `CMPUNLOCKER_BUILD_DIR` 可覆盖）、每次运行删除并重新解压一棵干净树，用 `patch -p1` 按字典序应用 `patches/*.patch`，然后跑 `make -j$(nproc) modules SYSSRC=/lib/modules/$(uname -r)/build`。构建时间约 5 分钟 *（单一报告、依赖硬件）*。
 
 | 失败 | 原因 | 修复 |
 |---|---|---|
@@ -854,7 +854,7 @@ sudo cp $GSP_DIR/gsp_tu10x.bin.cmpunlocker.bak $GSP_DIR/gsp_tu10x.bin
 
 因为补丁按 glob 应用，把一个叫 `0007-*.patch` 的第三方 diff 丢进 `driver/patches/` 会和解锁系列干净组合。那是分层层 P2P 补丁的文档化机制。见[驱动补丁](../unlock/driver-patches.md)。
 
-**安装前移除。** 切换分支时维护者的规则是 "always remove the old one before adding the new one."（加新的之前总是移除旧的。）一位克隆 Gen2 分支、在现有安装之上安装的测试者报告它不工作、先卸载就修好了。这是指导、不是硬法律：至少另两位测试者在上层安装成功了。先移除是*受支持的*路径。*（置信度：中等；没人识别出区分因素。）*
+**安装前移除。** 切换分支时维护者的规则是 "always remove the old one before adding the new one."（加新的之前总是移除旧的。）一位克隆 Gen2 分支、在现有安装之上安装的测试者报告它不工作、先卸载就修好了。这是指导、不是硬法律：至少另两位测试者叠加安装成功了。先移除是*受支持的*路径。*（置信度：中等；没人识别出区分因素。）*
 
 ---
 
@@ -865,17 +865,17 @@ sudo cp $GSP_DIR/gsp_tu10x.bin.cmpunlocker.bak $GSP_DIR/gsp_tu10x.bin
 >
 > **`master` 上不发货任何 PCIe Gen2 补丁。** 补丁 `0007-pcie-gen2.patch` 和 `0008-pcie-gen2-probe-retrain.patch`、加 `tools/retrain.sh`、只存在于分支 `Gen2`、`far`、`debug-gen2`（只 0007 和 `tools/retrain.sh`）和 `deced` 上。`verify.sh` 是一个独立工具、发货于 `Gen2`、`far`、`deced` 和 `multiple-cards`，见[11.2](#verify-sh)。本节一切适用于实验分支。
 
-记住**速度和位宽是各自独立的成果**。Gen1 到 Gen2 是一个驱动和固件解锁。超过 x4 位宽需要物理焊接 24 颗 0402 X7R 电容到通道 4 到 15。两者都不改变另一个。见[PCIe Gen2](../unlock/pcie-gen2.md) 和[物理改装](../operations/physical-mods.md)。
+记住**速度和位宽是各自独立的成果**。Gen1 到 Gen2 是一个驱动和固件解锁。超过 x4 位宽需要物理焊接 24 颗 0402 X7R 电容到通道 4 到 15。两者互不改变。见[PCIe Gen2](../unlock/pcie-gen2.md) 和[物理改装](../operations/physical-mods.md)。
 
 ### 8.1 Gen2 在某些机器上工作、另一些不 { #gen2-hardcoded-bdf }
 
-**根因：一个硬编码的 PCI 地址 `0a:00.0`。** 硬编码在 *用户态辅助* `tools/retrain.sh` 里、三处（`SYS=/sys/bus/pci/devices/0000:0a:00.0`、`GPU, UP = "0a:00.0", "09:01.0"`、和 `resource0` 路径）、**不在**内核补丁里：`0008-pcie-gen2-probe-retrain.patch` 在 `Gen2` 和 `deced` 之间逐字节相同。
+**根因：一个硬编码的 PCI 地址 `0a:00.0`。** 硬编码在 *用户态辅助* `tools/retrain.sh` 里的三处（`SYS=/sys/bus/pci/devices/0000:0a:00.0`、`GPU, UP = "0a:00.0", "09:01.0"`、和 `resource0` 路径），**不在**内核补丁里：`0008-pcie-gen2-probe-retrain.patch` 在 `Gen2` 和 `deced` 之间逐字节相同。
 
 分支 `deced`（提交消息："Stupid mistake - it appears to be hardcoded"）用 `find_gpu_bdf()` 取代它、它经 `lspci -d 10de:20c2` / `lspci -d 10de:2082` 发现卡、最多等 120 秒等 `resource0` 和 `nvidia-smi -L`、并用 `readlink -f` 推导上游桥。**分支 `Gen2` 和 `far` 仍含硬编码。**
 
 ### 8.2 安装后 PCIe 仍在 Gen1 { #gen2-still-gen1 }
 
-**第一检查：IOMMU passthrough。** `Gen2`、`far` 和 `deced` 安装器都经 `/etc/default/grub` 或 `/etc/kernel/cmdline` 把 `intel_iommu=on iommu=pt`（Intel）或 `amd_iommu=on iommu=pt`（AMD）追加到内核命令行、替换冲突条目、把文件备份到 `*.cmpunlocker.bak`、重新生成引导配置、每个分支自己的 `remove.sh` 恢复它。`--no-iommu` 退出。Master 一个都不碰，所以用你安装自的同一分支卸载。IOMMU 也必须在 BIOS/UEFI 里启用（VT-d / AMD-Vi / SVM）。
+**第一检查：IOMMU passthrough。** `Gen2`、`far` 和 `deced` 安装器都经 `/etc/default/grub` 或 `/etc/kernel/cmdline` 把 `intel_iommu=on iommu=pt`（Intel）或 `amd_iommu=on iommu=pt`（AMD）追加到内核命令行、替换冲突条目、把文件备份到 `*.cmpunlocker.bak`、重新生成引导配置、每个分支自己的 `remove.sh` 恢复它。`--no-iommu` 退出。Master 一个都不碰，所以请用你安装时用的同一分支卸载。IOMMU 也必须在 BIOS/UEFI 里启用（VT-d / AMD-Vi / SVM）。
 
 **第二检查：你的检出是最新吗？** 2026-07-29 前 Gen2 补丁是仅分支的，用户反复因为他们在 `master` 上而失败。Gen2 现在在 `master` 里，所以一个早于那次合并的检出是要排除的东西。
 
@@ -890,7 +890,7 @@ sudo cp $GSP_DIR/gsp_tu10x.bin.cmpunlocker.bak $GSP_DIR/gsp_tu10x.bin
 
 它还在 `nvidia-smi` 不可用、显存读 `[N/A]`、链路已是 Gen2、或最大链路代不是 2、3 或 4 时带状态 0 **静默**退出。
 
-驱动内重训练在 probe 时运行、在 `msleep(50)` 后最多轮询 2 秒（20 次尝试 × 100 ms）。它清 BAR0 `0x8c2c0` 位 2（DIS_G2）、把 `0x8c040` 位 `[19:18]` 强到 2、写 `0x00000006` 到 `0x8872c`、在 GPU 和上游桥两者上设 `PCI_EXP_LNKCTL2_TLS_5_0GT`、然后在上游桥上设 `PCI_EXP_LNKCTL_RL`（重训练链路）。它的失败打印：
+驱动内重训练在 probe 时运行、在 `msleep(50)` 后最多轮询 2 秒（20 次尝试 × 100 ms）。它清除 BAR0 `0x8c2c0` 位 2（DIS_G2），把 `0x8c040` 的位 `[19:18]` 强到 2，向 `0x8872c` 写入 `0x00000006`，在 GPU 和上游桥上同时设置 `PCI_EXP_LNKCTL2_TLS_5_0GT`，然后在上游桥上设置 `PCI_EXP_LNKCTL_RL`（重训练链路）。它的失败输出：
 
 ```text
 CMP Gen2: no upstream PCIe bridge; skipping link retrain
@@ -909,7 +909,7 @@ CMP Gen2: PCIe capability access failed (%d); skipping link retrain
 
 ### 8.4 虚拟机里的 Gen2 { #gen2-vm }
 
-Proxmox 直通下显存和算力解锁工作（一位操作者直通了八张 8 GB 卡、全部解锁）。**截至 2026-07-24 PCIe Gen2 链路速度改动在 VM 里不工作**、被维护者承认。重训练序列是否需要被虚拟机监控程序拦截的配置空间或链路层访问、未确立。
+Proxmox 直通下显存和算力解锁工作（一位操作者直通了八张 8 GB 卡、全部解锁）。**截至 2026-07-24 PCIe Gen2 链路速度改动在 VM 里不工作**、被维护者承认。重训练序列是否需要虚拟机监控程序会拦截的配置空间或链路层访问，尚未确立。
 
 > [!NOTE]
 > **未解问题**
@@ -936,7 +936,7 @@ Proxmox 直通下显存和算力解锁工作（一位操作者直通了八张 8 
 
 ### 9.2 一般无头引导 { #headless }
 
-CMP 170HX 没有视频输出，所以某些板子不会把它当唯一卡 POST（一块 ASRock X370-I 被报告拒绝）。规划一张第三块可显示卡、或确认板子能无头引导。也见[主机不引导](#no-post)。
+CMP 170HX 没有视频输出，所以某些板子不会把它当唯一卡 POST（一块 ASRock X370-I 被报告拒绝）。请另配一张带显示的卡，或确认板子能无头引导。也见[主机不引导](#no-post)。
 
 ---
 
@@ -953,7 +953,7 @@ ENGINE CE2      HUBCLIENT_HSCE2 faulted @ 0xf_f7400000 ... ACCESS_TYPE_PHYS_WRIT
 
 **原因。** 分配越过解锁窗口可用顶端。物理地址 `0xf_f7400000` 是 63.86 GiB、正好在 64 GB 窗口顶部。
 
-**修复。** 给那块 GPU 少卸载一层 LLM。恢复需要一次完整重启。*（建议的修复未被确认应用。）*
+**修复。** 少往那张 GPU 上卸载一层 LLM。恢复需要一次完整重启。*（建议的修复未被确认应用。）*
 
 > [!NOTE]
 > **Xid 31 本身不是 80 GB 签名**
@@ -962,7 +962,7 @@ ENGINE CE2      HUBCLIENT_HSCE2 faulted @ 0xf_f7400000 ... ACCESS_TYPE_PHYS_WRIT
 
 ### 10.2 杀掉 CUDA 作业后 Xid 45 { #xid45 }
 
-用 SIGKILL 杀一个活 CUDA 验证内核可以以 Xid 45 卡死卡、强制一次复位循环。已发布的工具携带警示：在**前台**运行、绝不要中途 SIGKILL；内核启动之间 Ctrl-C 没问题。稠密填充/检查内核在 64 GB 卡上跑很久（超过一百万个 64 KB 页），所以后台化并杀掉它们的诱惑很真实。*（置信度：中等；作为艰难赢得的操作警告陈述、未附 dmesg 捕获。）*
+用 SIGKILL 杀一个活 CUDA 验证内核可以以 Xid 45 卡死卡、强制一次复位循环。已发布的工具带有警示：在**前台**运行、绝不要中途 SIGKILL；内核启动之间 Ctrl-C 没问题。稠密填充/检查内核在 64 GB 卡上跑很久（超过一百万个 64 KB 页），所以把它们后台化再杀掉的诱惑很真实。*（置信度：中等；作为艰难赢得的操作警告陈述、未附 dmesg 捕获。）*
 
 ### 10.3 过度配置配置上的 Xid 154 { #xid154 }
 
@@ -1003,7 +1003,7 @@ Xid 154 是过度配置 80 GB 配置上 CUDA 显存测试后的主导失败、�
 2.1%  proc'd: 777 (12153 Gflop/s)   errors: 24433  (WARNING!)  temps: 85 C
 ```
 
-错误在前几分钟出现。12153 Gflop/s 数字显示算力解锁是活跃的。**稳定的 10 GB → 40 GB 配置干净通过一次 5 分钟 gpu-burn**、8 GB → 64 GB 配置稳定且在生产中。
+错误在前几分钟出现。12153 Gflop/s 数字表明算力解锁是活跃的。**稳定的 10 GB → 40 GB 配置干净通过一次 5 分钟 gpu-burn**、8 GB → 64 GB 配置稳定且在生产中。
 
 > [!NOTE]
 > **未解问题**
@@ -1046,13 +1046,13 @@ Xid 154 是过度配置 80 GB 配置上 CUDA 显存测试后的主导失败、�
 
 ### 11.1 解锁在一个多-GPU 机架上静默什么都不做 { #multicard-silent }
 
-**症状。** 热和冷重启后全部五张 8 GB 卡都停在出厂；验证器对每个 BDF（01:00.0、05:00.0、06:00.0、07:00.0、12:00.0）报告 `MISSING` 和 `✗ 0000:01:00.0: not found in nvidia-smi`、每个 `20c2 / 8gb` 预期约 65536 MiB、加 `! No SEC2_DEBUG lines in dmesg`。
+**症状。** 热和冷重启后全部五张 8 GB 卡都停在出厂；验证器对每个 BDF（01:00.0、05:00.0、06:00.0、07:00.0、12:00.0）报告 `MISSING` 和 `✗ 0000:01:00.0: not found in nvidia-smi`、每个 `20c2 / 8gb` 预期约 65536 MiB，再加上 `! No SEC2_DEBUG lines in dmesg`。
 
 **原因。** 早期工具没有多卡处理。同一个人的单卡机架用相同驱动工作。
 
-**修复。** 对双卡 HiveOS 案例：`remove.sh`、重启、重装。两张卡随后都以 40 GB 起来。一个 `multiple-cards` 分支和一个 `verify.sh` 随后被添加、却**没有合并进 master**：master 的 `install.sh` 仍经 `head -1` 只取第一行匹配的 `lspci`。
+**修复。** 对双卡 HiveOS 案例：`remove.sh`、重启、重装。两张卡随后都以 40 GB 启动。一个 `multiple-cards` 分支和一个 `verify.sh` 随后被添加、却**没有合并进 master**：master 的 `install.sh` 仍经 `head -1` 只取第一行匹配的 `lspci`。
 
-也见[depmod 任意挑一个模块](#module-resolution)、那是同一个外表下的一个独立多-GPU 失败。
+也见[depmod 任意挑一个模块](#module-resolution)，那是同一个外表下的一个独立多-GPU 失败。
 
 ### 11.2 读 `verify.sh` 输出 { #verify-sh }
 
@@ -1084,25 +1084,25 @@ Xid 154 是过度配置 80 GB 配置上 CUDA 显存测试后的主导失败、�
 
 **症状。** 没有蜂鸣码、没有主板诊断 LED、"No display adapter, press F1" 已被禁用。
 
-**有文档案例里的原因：与 GPU 无关。** 改变 PCI 插槽把网络接口改名了（从一个 `XXX5XX` 到一个 `XXX6XX` 可预测名字），所以箱子无头引导了、却没有 IP。
+**有文档案例里的原因：与 GPU 无关。** 改变 PCI 插槽把网络接口改名了（从一个 `XXX5XX` 到一个 `XXX6XX` 可预测名字），所以箱子能无头引导，却没有 IP。
 
 **修复。** 修复网络配置。
 
-**诊断时给出的一般建议：** 用正确的电源线缆（不带转接座的 ATX/EPS 式连接器、带转接座的 PCIe 连接器）、一次试一张 GPU、并预期硬件改动后两到三次重启。卡带一个 EPS 8-pin（额定 300 W）需要一个 2 × PCIe-to-EPS 转接座。见[供电与 PSU](../operations/power-and-psu.md)。
+**诊断时给出的一般建议：** 用正确的电源线缆（不带转接座的 ATX/EPS 式连接器、带转接座的 PCIe 连接器）、一次试一张 GPU、并预期硬件改动后两到三次重启。卡带一个 EPS 8-pin（额定 300 W），需要一个 2 × PCIe-to-EPS 转接座。见[供电与 PSU](../operations/power-and-psu.md)。
 
 ### 12.2 虚拟机 { #vm }
 
 **Proxmox 直通需要 SeaBIOS、不要 UEFI/OVMF。** UEFI 产生看起来恰好像利用根本不工作的 RM init / 适配器失败。一个人在意识到他们旧的可用 VM 是 SeaBIOS 前、在 "rm init adapt failures" 上花掉大量时间；第二个成员立即认出它是自己无法复现的原因。
 
-至少一些利用开发是在一张直通进 QEMU Q35 VM（`QEMU Standard PC (Q35 + ICH9, 2009)`、BIOS `rel-1.17.0-0-gb52ca86e094d-prebuilt.qemu.org 04/01/2014`、GPU 在 `0000:01:00`、Ubuntu 内核 6.8.0-136-generic、nvidia-modeset 580.159.03）的 GPU 上做的、而非裸机。那里的崩溃发出一个坏帧指针栈展开警告、故障路径走 `nvidia_drm`/`nvidia_modeset`（`EnumerateGpus -> AllocateDevice -> nvkms_open_gpu`）。
+至少一部分利用开发是在一张直通进 QEMU Q35 VM 的 GPU 上完成的、而非裸机（`QEMU Standard PC (Q35 + ICH9, 2009)`、BIOS `rel-1.17.0-0-gb52ca86e094d-prebuilt.qemu.org 04/01/2014`、GPU 在 `0000:01:00`、Ubuntu 内核 6.8.0-136-generic、nvidia-modeset 580.159.03）。那里的崩溃发出一个坏帧指针栈展开警告，故障路径走 `nvidia_drm`/`nvidia_modeset`（`EnumerateGpus -> AllocateDevice -> nvkms_open_gpu`）。
 
 VM 里显存和算力解锁工作；PCIe Gen2 不，见[8.4](#gen2-vm)。
 
 ### 12.3 卡掉下 PCIe 总线 { #off-bus }
 
-**症状。** 一张卡运行一小时后永久掉下 PCIe 总线、不再被检测到。如果 BAR0 读 `0xffffffff`、卡掉线了。先试[恢复](recovery.md#reset-ladder) 里的恢复阶梯、包括 `echo 1 > /sys/bus/pci/devices/$BDF/remove` 随后 `echo 1 > /sys/bus/pci/rescan`。
+**症状。** 一张卡运行一小时后永久掉下 PCIe 总线、不再被检测到。如果 BAR0 读 `0xffffffff`，说明卡掉线了。先试[恢复](recovery.md#reset-ladder) 里的恢复阶梯、包括 `echo 1 > /sys/bus/pci/devices/$BDF/remove` 随后 `echo 1 > /sys/bus/pci/rescan`。
 
-如果它从不回来，原因可能是硬件。A100/170HX 级硬件上一个完全诊断的实例：
+如果它从不回来，原因可能是硬件。这是 A100/170HX 级硬件上一个得到完全诊断的实例：
 
 **原因。** 一颗死的 GS7155NVTD 3.3 V LDO 把 `PS_5V_PGOOD` 网络短路到 5 欧姆、阻止 MP1475DJ 5 V 转换器启动。可见为打嗝模式保护：一个几十纳秒的瞬时 SW-节点脉冲、几十微秒后重试。
 
@@ -1113,11 +1113,11 @@ VM 里显存和算力解锁工作；PCIe Gen2 不，见[8.4](#gen2-vm)。
 > [!CAUTION]
 > **信任一颗新焊的 GS7155NVTD 前先做台架测试**
 >
-> 把 7.68 千欧反馈电阻换成 20 千欧、把输出从 3.3 V 重新编程到 1.8 V、在 5 V 轨上注入 3.3 V、确认一个调节后的 1.8 V、然后恢复 7.68 千欧部件。要防范的危险是一个**开路反馈引脚**（QFN 上一个可能的冷焊点失败）、它让 LDO 看到一个永久欠压并把输出驱到最大、把完整 5 V 放到 3.3 V 轨上、毁掉几乎所有 3.3 V 逻辑。这块 8 到 12 层板的返工基准：任何芯片能拆下前、热风 420 °C 吹 2 分钟。GS7155NVTD 是一颗其完整数据手册在 NDA 下的 GSTEK QFN 部件。
+> 把 7.68 千欧反馈电阻换成 20 千欧、把输出从 3.3 V 重新编程到 1.8 V、在 5 V 轨上注入 3.3 V、确认一个稳压后的 1.8 V、然后恢复 7.68 千欧部件。要防范的危险是一个**开路反馈引脚**（QFN 上一个可能的冷焊点失败）：它会让 LDO 看到永久欠压并把输出驱到最大、把完整 5 V 放到 3.3 V 轨上、毁掉几乎所有 3.3 V 逻辑。这块 8 到 12 层板的返工基准：任何芯片能拆下前、热风 420 °C 吹 2 分钟。GS7155NVTD 是一颗其完整数据手册在 NDA 下的 GSTEK QFN 部件。
 
 ### 12.4 到货时的卡况 { #dirty-cards }
 
-退役矿卡到货时脏得吓人：厚重灰尘、生锈 PCIe 挡板、散热器里盐壳、金手指裸露且无连接器盖。使用前需要清洁、重打导热膏和换新导热垫。**外观状况不是解锁失败的预测器：** 一张肉眼可见脏污的卡第一次尝试就干净解锁到 64 GB。*（对跨多个独立开箱的状况报告置信度高；对 "not a predictor" 结论、它建立在单一样本上、置信度中等。从未发布过批次级解锁良率。）*
+退役矿卡到货时脏得吓人：厚重灰尘、生锈 PCIe 挡板、散热器里盐壳、金手指裸露且无连接器盖。使用前需要清洁、重打导热膏和换新导热垫。**外观状况不是解锁失败的预测器：** 一张肉眼可见脏污的卡，第一次尝试就干净解锁到 64 GB。*（对跨多个独立开箱的状况报告置信度高；对 "not a predictor" 结论、它建立在单一样本上、置信度中等。从未发布过批次级解锁良率。）*
 
 > [!WARNING]
 > **实验性**
@@ -1140,7 +1140,7 @@ VM 里显存和算力解锁工作；PCIe Gen2 不，见[8.4](#gen2-vm)。
 
 ## 13. 升级和报告 { #escalation }
 
-`install.sh` 写一个带时间戳的日志到 `logs/install_YYYYMMDD_HHMMSS.log`；`remove.sh` 写 `logs/remove_YYYYMMDD_HHMMSS.log`。`remove.sh` 在仓库目录不可写时回退到 `/tmp`；`install.sh` 不、并在启动时中止。**把最新的安装日志附到任何支持请求。**
+`install.sh` 写一个带时间戳的日志到 `logs/install_YYYYMMDD_HHMMSS.log`；`remove.sh` 写 `logs/remove_YYYYMMDD_HHMMSS.log`。`remove.sh` 在仓库目录不可写时回退到 `/tmp`；`install.sh` 则不会，而是在启动时就中止。**把最新的安装日志附到任何支持请求。**
 
 一份有用的报告包含：
 

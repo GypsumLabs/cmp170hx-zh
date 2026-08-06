@@ -2,18 +2,18 @@
 
 ## 本页覆盖内容
 
-这是一个**本项目中任何地方文档化的每个 BAR0 寄存器地址的扁平查找表、按数值地址升序排列。** 它唯一的工作是快速回答一个问题：你刚在 `dmesg` 一行、一个补丁、或某人脚本里看到一个陌生的十六进制地址、想知道它属于哪个块、做什么。
+这是一张**扁平的查找表，收录本项目中任何地方文档化的每一个 BAR0 寄存器地址，按数值地址升序排列。** 它的唯一用途是快速回答一个问题：你在 `dmesg` 的一行、一个补丁或某人的脚本里刚看到一个陌生的十六进制地址，想知道它属于哪个块、做什么用的。
 
-它刻意浅显。每行携带一行含义和一个链接、指向恰当解释那个寄存器的页面。出厂值、解锁值、PLM 门控、FLR 存活和任何背后的推理、去[寄存器参考](../unlock/register-reference.md)、它是本索引的解释配套。
+它刻意保持浅显。每一行只给出含义的一句话和一个链接，指向真正解释该寄存器的页面。至于出厂值、解锁值、PLM 门控、FLR 存活以及背后的任何推理，请到[寄存器参考](../unlock/register-reference.md)查阅——那是本索引的解释配套。
 
 两条最省时的规则：
 
-- **地址列里一切都是 BAR0 字节偏移量**、绝对从 region 0 起点。几个解锁*值*看起来像貌似合理的地址、却不是。如果你的数字不在此索引里、在假设索引不完整前、检查[不是 BAR0 地址的数字](../unlock/register-reference.md#numbers-that-are-not-bar0-addresses)。
-- **一个返回 `0xbadf....` 的读不是数据。** 它是一个 PRI 毒或权限违规哨兵。见[哨兵值](../unlock/register-reference.md#sentinel-values)。
+- **地址列里的一切都是 BAR0 字节偏移量**，从 region 0 起点开始算起。有几个解锁*值*看上去像是合理的地址，其实并不是。如果你的数字不在本索引里，先别急着断定索引不完整，请检查[不是 BAR0 地址的数字](../unlock/register-reference.md#numbers-that-are-not-bar0-addresses)。
+- **一个返回 `0xbadf....` 的读不是数据。** 它是 PRI 毒值或权限违规哨兵。见[哨兵值](../unlock/register-reference.md#sentinel-values)。
 
-项目从没确立一个寄存器做什么的地方、行说 **not documented**。那个短语承重：它意味着档案里没人解决它、不是它在这里被省略。
+凡项目从未确认某个寄存器用途的地方，行内会标注 **not documented**。这个短语举足轻重：它表示档案里没人解开它，而不是此处遗漏未写。
 
-手工读一张 `0000:05:00.0` 处卡上的地址：
+手工读取 `0000:05:00.0` 处显卡上的一个地址：
 
 ```bash
 sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
@@ -143,7 +143,7 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 | `0x00409668` | `FECS_FEAT_READOUT_1` | FECS | 相同、到处 `0xbadf5040` | [算力节流](../unlock/compute-throttle.md) |
 | `0x00504204` | `SM_ISSUE_RATE_MODIFIER` | SM | **不是**算力节流：13 张对比 Ampere 卡和一颗每个速度选择熔丝都在 0 的 96-SM GA100 上读 `0x00000005`。主机可写；清零它什么都不改变。无驱动加载时 `0xbadf1201` | [算力节流](../unlock/compute-throttle.md) |
 | `0x00820000` | `FUSE_FUSECTRL` | FUSE | 熔丝控制器、群组里全部 15 张卡上 `0xe0040000` 相同 | [熔丝与 OTP](../hardware/fuses-and-otp.md) |
-| `0x00820040` | `FUSE_EN_SW_OVERRIDE` | FUSE | 170HX 和 A100 上 `0x00000000`、消费级和工程样品部件上 `0x00000001`。在 170HX 上可写且持久、却什么都不可观察地改变、那正是排除软件熔丝覆盖路线的东西 | [熔丝控制](../unlock/register-reference.md#fuse-control) |
+| `0x00820040` | `FUSE_EN_SW_OVERRIDE` | FUSE | 170HX 和 A100 上 `0x00000000`、消费级和工程样品部件上 `0x00000001`。在 170HX 上可写且持久、却不会带来任何可观察的改变、这正是排除软件熔丝覆盖路线的原因 | [熔丝控制](../unlock/register-reference.md#fuse-control) |
 | `0x00820078` | `FUSE_EN_PROGRAM` | FUSE | 全部 15 张卡上 `0x00000001` | [熔丝控制](../unlock/register-reference.md#fuse-control) |
 | `0x0082007c` | `FUSE_DIS_PROGRAM` | FUSE | `0x00000000`；GA10x 上 `0xbadf5040` | [熔丝控制](../unlock/register-reference.md#fuse-control) |
 | `0x00820080` | `FUSE_BYPASS_STATUS` | FUSE | `0x00000000`；GA10x 上 `0xbadf5040` | [熔丝控制](../unlock/register-reference.md#fuse-control) |
@@ -157,7 +157,7 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 | `0x00820340` | `OPT_MEMORY_LOCKED_ENABLED`（`FUSE_MEM_LOCKED`） | FUSE | 群组里全部 15 张卡上 `0x00000001`、意味着显存配置名义上不可运行时改变。它不阻塞解锁：出货链反正重写 CFG1 和 LMR | [显存子系统](../hardware/memory-subsystem.md) |
 | `0x00820350` | `OPT_GPC_DISABLE` | FUSE | 每卡 GPC 禁用掩码：四张不同卡上 `0x85`、`0x45`、`0x13`、`0xa8`。高安全写被弹回、值被锁存 | [地板清扫熔丝](../unlock/register-reference.md#floorsweep-fuses) |
 | `0x00820364` | `OPT_FBP_DISABLE` | FUSE | FBP 禁用掩码：10 GB 卡上 `0x00000840`（FBP 6 和 11 关）、社区转储上 `0x00000852`、另两个单元上 `0x00000009` 和 `0x00000180` | [地板清扫熔丝](../unlock/register-reference.md#floorsweep-fuses) |
-| `0x00820368` | `OPT_FBPA_DISABLE` | FUSE | FBPA 禁用掩码：10 GB 卡上 `0x000000c3`（20 活）、8 GB 卡上 `0x00c0330c`（16 活）。**这、不是 CFG1、决定 FBPA 数** | [显存子系统](../hardware/memory-subsystem.md) |
+| `0x00820368` | `OPT_FBPA_DISABLE` | FUSE | FBPA 禁用掩码：10 GB 卡上 `0x000000c3`（20 活）、8 GB 卡上 `0x00c0330c`（16 活）。**决定 FBPA 数的正是它，而不是 CFG1** | [显存子系统](../hardware/memory-subsystem.md) |
 | `0x0082036c` | `OPT_FBIO_DISABLE` | FUSE | 镜像 `0x00820368` | [地板清扫熔丝](../unlock/register-reference.md#floorsweep-fuses) |
 | `0x0082038c` | `FUSE_QUADRO_WR_SEC` | FUSE | `0x00000001`；这是允许 `0x00823804` 被完全打开的东西 | [熔丝控制](../unlock/register-reference.md#fuse-control) |
 | `0x00820394` | `OPT_PCIE_LANE_DISABLE` | FUSE | 170HX 和每个对比部件上 `0x00000000`。**证明 x4 位宽是一个板级电容问题、不是熔丝** | [PCIe 子系统](../hardware/pcie-subsystem.md) |
@@ -186,7 +186,7 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 | `0x008207e0` | `FUSE_SS_IMLA1` | FUSE | `0x00000005` | [SM 速度选择熔丝](../unlock/register-reference.md#sm-speed-select-fuses-the-throttle-itself) |
 | `0x008207e4` | `FUSE_SS_IMLA2` | FUSE | `0x00000005` | [SM 速度选择熔丝](../unlock/register-reference.md#sm-speed-select-fuses-the-throttle-itself) |
 | `0x008207e8` | `FUSE_SS_IMLA3` | FUSE | `0x00000005` | [SM 速度选择熔丝](../unlock/register-reference.md#sm-speed-select-fuses-the-throttle-itself) |
-| `0x008207ec` | `FUSE_SS_IMLA4` | FUSE | `0x00000005`；一张 RTX 3070 读 1。全部九个速度选择熔丝解锁后停 `0x5`、因为覆盖取代它们 | [SM 速度选择熔丝](../unlock/register-reference.md#sm-speed-select-fuses-the-throttle-itself) |
+| `0x008207ec` | `FUSE_SS_IMLA4` | FUSE | `0x00000005`；一张 RTX 3070 读 1。解锁后，全部九个速度选择熔丝都停在 `0x5`，因为覆盖取代了它们 | [SM 速度选择熔丝](../unlock/register-reference.md#sm-speed-select-fuses-the-throttle-itself) |
 | `0x00820800` | `CTRL_OPT_HALF_FBPA` | FUSE | 半容量熔丝的合并覆盖状态、来自 `probe.sh` 目录 | [显存子系统](../hardware/memory-subsystem.md) |
 | `0x00820818` | `CTRL_OPT_FBPA` | FUSE | `0x00000000`、无覆盖存在 | [地板清扫熔丝](../unlock/register-reference.md#floorsweep-fuses) |
 | `0x00820820` | `CTRL_OPT_PERLINK` | FUSE | 每-NVLink 覆盖影子；从没写测试过 | [NVLink 熔丝](../unlock/register-reference.md#nvlink-fuses) |
@@ -209,7 +209,7 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 | `0x00821060` | `OPT_SKU_ID` | FUSE | 8 GB 卡（`0x20C2`）上 `0x00000080`；10 GB 卡（`0x2082`）上 `0x00000068` | [熔丝控制](../unlock/register-reference.md#fuse-control) |
 | `0x00823800` | `FEAT_OVR_ECC_PLM` | FEAT_OVR | 权限掩码、出厂 `0xffffff8f`。**一个与 `0x00823804` 不同的寄存器**、一个频繁的转写失误。被 Gen2 `xp3gTable` 打开、master 从不 | [特性覆盖](../unlock/register-reference.md#feature-override-and-compute-0x008238xx) |
 | `0x00823804` | `FEAT_OVR_PLM` | FEAT_OVR | **门控 SS0/SS1 的权限掩码。** 出厂 `0xffffff8f`、出货 PLM 索引 3、打开到 `0xffffffff`。常开岛里唯一条目、所以它**挺过 FLR** | [算力节流](../unlock/compute-throttle.md) |
-| `0x00823808` | `FEAT_OVR_QUADRO` | FEAT_OVR | **按晶片且无法解释。** 观察到：`0x00100183`（出厂、PLM 范围扫描、中等）、`0x00000081`（解锁后探测、中等）、`0x00000181` / `0x00000182`（两块物理 170HX 单元、高、13 个分级差异之一）、`0x01000282`（A100 80 GB）。只读。**开放问题：** 为什么值跨全部三份转储都不同。解锁或驱动里的某个东西可能正在碰 Quadro-对比-消费级分类字、那可能是驱动可见特性类的杠杆。下一步：在一张卡上、出货序列每个阶段前后重读这个寄存器 | [特性覆盖](../unlock/register-reference.md#feature-override-and-compute-0x008238xx) |
+| `0x00823808` | `FEAT_OVR_QUADRO` | FEAT_OVR | **按晶片且无法解释。** 观察到：`0x00100183`（出厂、PLM 范围扫描、中等）、`0x00000081`（解锁后探测、中等）、`0x00000181` / `0x00000182`（两块物理 170HX 单元、高、13 个分级差异之一）、`0x01000282`（A100 80 GB）。只读。**开放问题：** 为什么值跨全部三份转储都不同。解锁或驱动里的某个东西可能正在碰 Quadro-对比-消费级分类字、那可能是驱动可见特性类的杠杆。下一步：在一张卡上、出货序列的每个阶段前后重读这个寄存器 | [特性覆盖](../unlock/register-reference.md#feature-override-and-compute-0x008238xx) |
 | `0x0082380c` | `FEAT_OVR_ECC` | FEAT_OVR | `0x00888888`；只读 | [ECC](../frontier/ecc.md) |
 | `0x00823810` | `FEAT_OVR_ECC_1` | FEAT_OVR | `0x002aaaaa`；只读 | [ECC](../frontier/ecc.md) |
 | `0x00823814` | `FEAT_READOUT_0` | FEAT_OVR | 170HX 上只读 `0x00000233`；一颗参考 GA100 板读 `0xef8ff100`。**字段布局 not documented** | [特性覆盖](../unlock/register-reference.md#feature-override-and-compute-0x008238xx) |
@@ -289,14 +289,14 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 
 ## 载荷偏移量
 
-这些**不是 BAR0 地址。** 它们是驱动交给 Booter 的 `0x0000f800`-字节（63,488 字节）假签名缓冲区里的字节偏移量、Booter 把它 DMA 到 SEC2 DMEM `0x0800`。因此：
+这些**不是 BAR0 地址。** 它们是字节偏移量，指向驱动交给 Booter 的那个 `0x0000f800` 字节（63,488 字节）假签名缓冲区，Booter 会把它 DMA 到 SEC2 DMEM `0x0800`。因此：
 
 > [!NOTE]
 > **换算规则**
 >
-> **DMEM 地址 = 载荷偏移量 + `0x800`。** 缓冲区 1:1 映射到 DMEM `0x0800`..`0xffff`、因为 `0x0800 + 0xf800 = 0x10000`、恰好 64 KB DMEM 的顶部。
+> **DMEM 地址 = 载荷偏移量 + `0x800`。** 缓冲区与 DMEM `0x0800`..`0xffff` 一一对应，因为 `0x0800 + 0xf800 = 0x10000`，恰好是 64 KB DMEM 的顶部。
 
-整个缓冲区先用 dword `0x000004a7` 填充、然后恰好 24 个槽被覆写。下面每个值都直接读自 `0001-sec2-postbl-plm-ss-cfg.patch` 里的 `_kgspSec2PostblTimingFillPayload()`、该表在**出货 `master` 和全部十二个归档分支里逐字节相同**。其中两个槽是参数：你想写的地地址和你想写的值。其它一切都是 ROP 尾。
+整个缓冲区先用 dword `0x000004a7` 填满，然后恰好覆写 24 个槽。下面每个值都直接读自 `0001-sec2-postbl-plm-ss-cfg.patch` 里的 `_kgspSec2PostblTimingFillPayload()`，该表在**出货 `master` 和全部十二个归档分支里逐字节相同**。其中两个槽是参数：你要写入的地址和你要写入的值。其余一切都是 ROP 尾。
 
 | 载荷偏移量 | DMEM 地址 | 值 | 角色 |
 |---|---|---|---|
@@ -326,16 +326,16 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 | `0xf7f4` | `0xfff4` | `0x00000ccb` | `regtable_rw_indexed`、一个开放问题：它索引的恰是载荷砸碎的那些描述符表、解锁却工作 |
 | `0xf7f8` | `0xfff8` | `0x00007f2f` | 最外槽；角色 **not documented** |
 
-金丝雀 `0xc0deca7e` 每份副本恰好出现五次：`0x5b40` 和载荷偏移量 `0xf758`、`0xf794`、`0xf7a0`、`0xf7c4`。
+金丝雀 `0xc0deca7e` 在每份副本里恰好出现五次：`0x5b40` 处，以及载荷偏移量 `0xf758`、`0xf794`、`0xf7a0`、`0xf7c4` 处。
 
 > [!NOTE]
 > **开放问题：无法解释的载荷常量**
 >
-> 二十四个槽中十五个没有确认角色、携带十到十五个不同常量。ROP 写稿命名一个邻近 gadget 家族（`0x1fb9`、`0x1fca`、`0x814e`、`0x8173`、`0x7f82`）、所以这些貌似合理地是同一个被翻译的尾、但没人走过带注释反汇编确认它。见[ROP 链](../unlock/rop-chain.md) 和[未解问题](../frontier/open-questions.md)。
+> 二十四个槽中有十五个没有确认角色，它们一共携带十种不同的常量。ROP 的写稿命名了一个邻近的 gadget 家族（`0x1fb9`、`0x1fca`、`0x814e`、`0x8173`、`0x7f82`），所以这些常量看起来像是同一个尾翻译而来，但没人走过带注释的反汇编来确认。见[ROP 链](../unlock/rop-chain.md) 和[未解问题](../frontier/open-questions.md)。
 
 ### 载荷引用的承重 DMEM 地址
 
-与上面右列同一个空间、这里按 DMEM 地址给出、因为反汇编这么引用它们。
+与上面表格的右列处于同一空间，这里按 DMEM 地址给出，因为反汇编是这样引用它们的。
 
 | DMEM 地址 | 含义 |
 |---|---|
@@ -358,7 +358,7 @@ sudo dd if=/sys/bus/pci/devices/0000:05:00.0/resource0 \
 | 净室 ROP 写稿 | `0x0000f800` | `0x0800` | `0xfaceb13d` |
 | 被取代的 `builder.py` / `patcher.py` | `0x0000f700` = 63,232 B | `0x0900` | `0xdead2c20` at `0x2c20` |
 
-被取代工具 `0x0900` 的 DMA 基址是一条归档消息把金丝雀地址给成 `0x6440` 的原因：`0x5b40 + 0x900 = 0x6440`。出货路径上基址是 `0x0800`、金丝雀活在 `0x6340`。
+被取代工具使用的 `0x0900` DMA 基址，正是某条归档消息把金丝雀地址写成 `0x6440` 的原因：`0x5b40 + 0x900 = 0x6440`。在出货路径上基址是 `0x0800`，金丝雀位于 `0x6340`。
 
 ---
 

@@ -4,14 +4,14 @@
 
 **塑造这里一切的三个事实。**
 
-1. **唯一工作的超频杠杆是经 NVML 的 GPC 时钟 VF 偏移**（`nvmlDeviceSetGpcClkVfOffset`、范围 `[-1000 .. +1000]` MHz）。显存时钟 VF 偏移范围是 `[0 .. 0]`、驱动拒绝它。610.43.03 上的 `nvidia-smi` 只暴露负方向（`--set-vf-derate`）、这让超频看起来不可用，但 NVML 导出完整 API。
-2. **偏移真的是一个表达为频率偏移的降压。** 在钉住的 1350 MHz SM 时钟下、从 +0 到 +300 把功耗从 **174.6 W 砍到 132.0 W（-24.4%）**、吞吐相同（179.7 对比 180.7 TFLOPS BF16）。调优这张卡的最佳价值是省电、不是提吞吐。
-3. **约 +300 MHz 之上、失败模式是静默数据损坏、不是崩溃。** 一次完成的运行不是设置安全的证据。
+1. **唯一工作的超频杠杆是经 NVML 的 GPC 时钟 VF 偏移**（`nvmlDeviceSetGpcClkVfOffset`、范围 `[-1000 .. +1000]` MHz）。显存时钟 VF 偏移范围是 `[0 .. 0]`、驱动拒绝它。610.43.03 上的 `nvidia-smi` 只暴露负方向（`--set-vf-derate`），这让超频看起来不可用，但 NVML 导出完整 API。
+2. **偏移真的是一个表达为频率偏移的降压。** 在钉住的 1350 MHz SM 时钟下，从 +0 到 +300 把功耗从 **174.6 W 砍到 132.0 W（-24.4%）**，吞吐相同（179.7 对比 180.7 TFLOPS BF16）。调优这张卡的最佳价值是省电，不是提吞吐。
+3. **约 +300 MHz 之上，失败模式是静默数据损坏、不是崩溃。** 一次完成的运行不是设置安全的证据。
 
 > [!CAUTION]
 > **1400 MHz 上限下 +300 MHz 偏移之上、静默显存损坏**
 >
-> 用全-VRAM 模式扫描作门测量：**+250** 在 142.2 W 通过 3 次扫描、0 错误；**+300** 在 138.5 W 通过 4 次扫描、0 错误；**+325** 在 132.7 W 给出 **6 个错误、然后 3 个、然后 0 个** 跨 3 次扫描；**+375** 在负载下取了一次 CUDA 设备故障。1400 MHz 上限下安全窗口在 +300 之上**只有一个 25 MHz 步宽**，而越过它你得到坏数据而非栈迹。跑四次扫描、不要跑两次、两个设置测量相等时偏好余量。
+> 用全-VRAM 模式扫描作门测量：**+250** 在 142.2 W 通过 3 次扫描、0 错误；**+300** 在 138.5 W 通过 4 次扫描、0 错误；**+325** 在 132.7 W 给出 **6 个错误、然后 3 个、然后 0 个**，跨 3 次扫描；**+375** 在负载下取了一次 CUDA 设备故障。1400 MHz 上限下安全窗口在 +300 之上**只有一个 25 MHz 步宽**，而越过它你得到坏数据而非栈迹。跑四次扫描、不要跑两次，两个设置测量相等时偏好余量。
 
 ---
 
@@ -30,17 +30,17 @@
 | 显存时钟域 | 恰好**一个**条目、`Supported Clocks / Memory: 1728 MHz` | 没什么可选。*出厂* 8 GB 显存时钟未解决、见下面方框 |
 | 核心时钟下限 | 210 MHz | 不会更低、这是空转功耗居高不下的部分原因 |
 
-10 GB 卡**完全没有时钟余量**：`nvidia-smi -q` 在捕获时报告 Graphics 1140 MHz、SM 1140 MHz、Memory 1215 MHz，Max Clocks Graphics 1410 MHz、SM 1410 MHz、Memory 1215 MHz（当前等于最大）。10 GB 卡上、核心时钟偏移和显存时钟锁在解锁后**特别地**仍保持原地。
+10 GB 卡**完全没有时钟余量**：`nvidia-smi -q` 在捕获时报告 Graphics 1140 MHz、SM 1140 MHz、Memory 1215 MHz，Max Clocks Graphics 1410 MHz、SM 1410 MHz、Memory 1215 MHz（当前等于最大）。10 GB 卡上，核心时钟偏移和显存时钟锁在解锁后**特别地**仍保持原地。
 
 > [!NOTE]
 > **未解问题：出厂 8 GB 显存时钟未解决**
 >
-> 出厂 8 GB 显存时钟未解决：1458 MHz（一次扫描和 TechPowerUp）、1728 MHz（`nvidia-smi -q` Supported Clocks、标注 "432 MHz x 4"）、1890 MHz（300 W 下解锁 64 GB `gpu_burn` 期间 `nvtop`）。1215 MHz 是 10 GB 卡、很可靠。貌似合理的调和（1458 出厂、1728 OC VBIOS、1890 超频 OC VBIOS）未证实；一次原始 FBPA PLL 读就能解决。本页为此在不同的地方打印 1728、1890 和 1215。
+> 出厂 8 GB 显存时钟未解决：1458 MHz（一次扫描和 TechPowerUp）、1728 MHz（`nvidia-smi -q` Supported Clocks、标注 "432 MHz x 4"）、1890 MHz（300 W 下解锁 64 GB `gpu_burn` 期间 `nvtop`）。1215 MHz 是 10 GB 卡，很可靠。貌似合理的调和（1458 出厂、1728 OC VBIOS、1890 超频 OC VBIOS）未证实；一次原始 FBPA PLL 读就能解决。本页为此在不同的地方打印 1728、1890 和 1215。
 
 > [!NOTE]
 > **未解问题：8 GB OC VBIOS 上的 1470 MHz 上限无法解释**
 >
-> VBIOS 92.00.6D.00.0A 宣告 Max Customer Boost Clocks 图形/SM 1695 MHz、显存 1728 MHz（标注 432 MHz x 4）、视频 1545 MHz。`mmapeak` 下卡坐在 **1470 MHz**、功耗上限 300 W、GPU-T 报告 `PerfCap: None`、GPU 只抽约 150 W。功耗和显式性能上限都解释不了它。
+> VBIOS 92.00.6D.00.0A 宣告 Max Customer Boost Clocks 图形/SM 1695 MHz、显存 1728 MHz（标注 432 MHz x 4）、视频 1545 MHz。`mmapeak` 下卡坐在 **1470 MHz**、功耗上限 300 W，GPU-T 报告 `PerfCap: None`，GPU 只抽约 150 W。功耗和显式性能上限都解释不了它。
 
 显存时钟锁定被直接拒绝：
 
@@ -69,7 +69,7 @@ Setting locked Memory clocks is not supported for GPU 00000000:21:00.0.
 | perf | +350 | 1590 MHz | 212.2 | 181.2 W | 1171 | +15% / -9% |
 | max | +350 | 1650 MHz | 215.3 | 186.1 W | 1157 | +17% 在出厂功耗 |
 
-1400 MHz 上限下最高的 *验证过* 点是 **+250 到 +300**（+300 通过 4 次扫描、0 错误）。配套 GFLOP/W 表的 1390 GFLOP/W 峰值在 1400/+350、它从未被扫描验证、且坐在两个失败之间（+325 损坏、+375 故障）。1350/+300 处的 1376 GFLOP/W 格同类：一次完成运行、从不被模式扫描把关。同一个 1350 阶梯也含 1350/+400、它通过两次扫描、随后一次返回 `mem_errors=1`。最高的 **扫描验证过** 效率点是出货 `eff` 档位：**+250 / 1350 MHz 处 1366 GFLOP/W**（180.3 TFLOPS、132.0 W）。1650 上限下效率跑 +250 处 1067 GFLOP/W 到 +350 处约 1149 GFLOP/W；那里更高的数字只来自故障的偏移。`eff` 档位是出货默认、因为它用三分之一的功耗换来 2% 的吞吐。
+1400 MHz 上限下最高的 *验证过* 点是 **+250 到 +300**（+300 通过 4 次扫描、0 错误）。配套 GFLOP/W 表的 1390 GFLOP/W 峰值在 1400/+350，它从未被扫描验证，且坐在两个失败之间（+325 损坏、+375 故障）。1350/+300 处的 1376 GFLOP/W 格同类：一次完成运行，从不被模式扫描把关。同一个 1350 阶梯也含 1350/+400，它通过两次扫描，随后一次返回 `mem_errors=1`。最高的 **扫描验证过** 效率点是出货 `eff` 档位：**+250 / 1350 MHz 处 1366 GFLOP/W**（180.3 TFLOPS、132.0 W）。1650 上限下效率跑 +250 处 1067 GFLOP/W 到 +350 处约 1149 GFLOP/W；那里更高的数字只来自故障的偏移。`eff` 档位是出货默认，因为它用三分之一的功耗换来 2% 的吞吐。
 
 ### 电压下限
 
@@ -83,7 +83,7 @@ Setting locked Memory clocks is not supported for GPU 00000000:21:00.0.
 
 ### 故障和挂起边界
 
-同一张参考卡。**+350 是 1650 MHz 上限下最高的验证偏移。** 安全偏移是上限依赖的：1400 MHz 上限下最高验证偏移是 **+300**、因为 1400/+325 静默损坏。
+同一张参考卡。**+350 是 1650 MHz 上限下最高的验证偏移。** 安全偏移是上限依赖的：1400 MHz 上限下最高验证偏移是 **+300**，因为 1400/+325 静默损坏。
 
 | 时钟上限 | 偏移量 | TFLOPS | 功耗 | 结果 |
 |---|---|---|---|---|
@@ -98,11 +98,11 @@ Setting locked Memory clocks is not supported for GPU 00000000:21:00.0.
 
 观察到的故障字符串：`illegal instruction`、`illegal memory access`、`misaligned address`、`cublas 14`。
 
-**为什么 +400 能比 +375 基准更慢：** Ampere 的 NAFLL 有下垂检测、电压不足时拉伸时钟。在 +400、请求的 VF 点越过曲线足够远、拉伸器持续接合，所以时钟*读* 1650 MHz 而交付的工作相对 +375 掉约 4%。在约 +355 到 +390 之间部件以完整请求速度运行、余量太少、那正是间歇故障所在。**一个基准更慢的更高偏移是一个警告信号、不是胜利。**
+**为什么 +400 能比 +375 基准更慢：** Ampere 的 NAFLL 有下垂检测、电压不足时拉伸时钟。在 +400，请求的 VF 点越过曲线足够远、拉伸器持续接合，所以时钟*读* 1650 MHz 而交付的工作相对 +375 掉约 4%。在约 +355 到 +390 之间，部件以完整请求速度运行、余量太少，那正是间歇故障所在。**一个基准更慢的更高偏移是一个警告信号、不是胜利。**
 
 ### 资格阶梯
 
-每卡硅片差异足够大、一张卡上验证过的偏移绝不能假设到另一张上。文档化流程：
+每卡硅片差异足够大，一张卡上验证过的偏移绝不能假设到另一张上。文档化流程：
 
 1. 跑 `sudo nvml_oc` 并确认 GPC 范围**不是** `[0..0]`。（这也充当卡真被解锁的最快测试。）
 2. `sudo 170hx-oc stock`、然后 `sudo oc_eff 10` 作基线。
@@ -133,7 +133,7 @@ Setting locked Memory clocks is not supported for GPU 00000000:21:00.0.
 | 偏移 +60 | 1515 MHz | 13.40 TF/s |
 | 偏移 +225 | 1695 MHz | **14.97 TF/s（+24%）** |
 
-这在 8 GB 部件上工作、因为 VBIOS 条目 `0x47177` / `0x47179` 那里持有 `freqDelta = +/-1000`。两者在 A100 和 CMP 10 GB 上都读 0。见[VBIOS](../hardware/vbios.md)。
+这在 8 GB 部件上工作，因为 VBIOS 条目 `0x47177` / `0x47179` 那里持有 `freqDelta = +/-1000`。两者在 A100 和 CMP 10 GB 上都读 0。见[VBIOS](../hardware/vbios.md)。
 
 ---
 
@@ -148,7 +148,7 @@ Setting locked Memory clocks is not supported for GPU 00000000:21:00.0.
 | 插槽功耗限制（DevCap） | 75 W | 卡需要它的 EPS 连接器 |
 | 电源连接器 | 1 x EPS 8-pin（额定 300 W）、需要 2 x PCIe-to-EPS 转接座 | 见[供电与 PSU](power-and-psu.md) |
 
-所以在出厂固件上 `nvidia-smi -pl` 只能**降低**卡、在 100 W 和 250 W 之间。出厂之上没有余量、除非带 OC VBIOS，而那个 VBIOS 是一个 8 GB 卡的故事：显存解锁后、10 GB 卡被确认仍携带核心时钟偏移锁和显存时钟锁、钉在 1215 MHz。档案里没人验证过 300 W VBIOS 与 10 GB 卡上解锁的组合。
+所以在出厂固件上 `nvidia-smi -pl` 只能**降低**卡、在 100 W 和 250 W 之间。出厂之上没有余量，除非带 OC VBIOS；而那个 VBIOS 是一个 8 GB 卡的故事：显存解锁后，10 GB 卡被确认仍携带核心时钟偏移锁和显存时钟锁、钉在 1215 MHz。档案里没人验证过 300 W VBIOS 与 10 GB 卡上解锁的组合。
 
 ```bash
 nvidia-smi -pl 160          # 有效；文档化用途跨越 100/150/160/175/200/250（和 OC VBIOS 上的 300）
@@ -159,9 +159,9 @@ nvidia-smi -q -d POWER      # 确认 Current / Min / Max / Default
 
 ### 提高上限有帮助吗？
 
-几乎不。对照同一测试者自己的 250 W 基线、在一张带更快显存 VBIOS 和大鼓风机的卡上测量，去到 300 W 把 BF16 从 **约 180 移到 185 TFLOPS（约 +2.8%）**、而热不是限制（核心和显存都低于 65 C）。得出的结论是核心就是不想跑更高。
+几乎不。对照同一测试者自己的 250 W 基线、在一张带更快显存 VBIOS 和大鼓风机的卡上测量，去到 300 W 把 BF16 从 **约 180 移到 185 TFLOPS（约 +2.8%）**，而热不是限制（核心和显存都低于 65 C）。得出的结论是核心就是不想跑更高。
 
-反方向几乎免费。功耗限制到 **150 W 在原始吞吐压力测试里没有测得任何吞吐损失**（单一来源、特定于那个工作负载类），而上面整个 `eff` 档位之所以存在、是因为功耗曲线急剧递减。在 hashcat DES 里、一张超频 VBIOS 卡在 190 W 给 1800 MHash、对比出厂卡 150 W 的 1700 MHash：26.7% 的功耗增长换 5.9% 的性能、所以功耗约比性能快 4.5 倍增长。硅片泄漏随温度上升、热时曲线更糟。
+反方向几乎免费。功耗限制到 **150 W 在原始吞吐压力测试里没有测得任何吞吐损失**（单一来源、特定于那个工作负载类），而上面整个 `eff` 档位之所以存在，是因为功耗曲线急剧递减。在 hashcat DES 里，一张超频 VBIOS 卡在 190 W 给 1800 MHash、对比出厂卡 150 W 的 1700 MHash：26.7% 的功耗增长换 5.9% 的性能，所以功耗约比性能快 4.5 倍增长。硅片泄漏随温度上升，热时曲线更糟。
 
 ### 卡实际抽多少
 
@@ -182,11 +182,11 @@ nvidia-smi -q -d POWER      # 确认 Current / Min / Max / Default
 > [!WARNING]
 > **不要用 FP32 烧机验证散热或稳定性**
 >
-> 这张卡很难加负载。一个常规 FP32 烧机只到 60-75 W、而整型或显存基准测试到 160+ W。用 hashcat、一次显存扫描、或 `gpu_burn -tc` 加一个真实工作负载验证、不要只用 FP32。
+> 这张卡很难加负载。一个常规 FP32 烧机只到 60-75 W，而整型或显存基准测试到 160+ W。用 hashcat、一次显存扫描、或 `gpu_burn -tc` 加一个真实工作负载验证，不要只用 FP32。
 
-**给卡散热更好会降低它的空转功耗**、那是泄漏反馈回路的良性一半、也是跨测试者 30 W-对比-44 W 空转分布最可能的解释。
+**给卡散热更好会降低它的空转功耗**，那是泄漏反馈回路的良性一半，也是跨测试者 30 W-对比-44 W 空转分布最可能的解释。
 
-对机架：20 张卡各空转约 30 W 是**只是放着约 600-700 W**。一个六卡 llama.cpp 层拆分系统抽约 **600 W 总计**、远低于 6 x 250 W、因为层和流水线拆分不会同时饱和所有 GPU。主机平台选择主导：双 socket Xeon 6200 带 Optane PMem 200 和 1.2 TB 显存空转 400-600 W、对比带 1 TB DDR4 的双 EPYC 7713 约 200-250 W、单 EPYC 7D12 系统 80 W、带一根内存条的 EPYC 7261 30 W。
+对机架：20 张卡各空转约 30 W 是**只是放着约 600-700 W**。一个六卡 llama.cpp 层拆分系统抽约 **600 W 总计**，远低于 6 x 250 W，因为层和流水线拆分不会同时饱和所有 GPU。主机平台选择主导：双 socket Xeon 6200 带 Optane PMem 200 和 1.2 TB 显存空转 400-600 W，对比带 1 TB DDR4 的双 EPYC 7713 约 200-250 W、单 EPYC 7D12 系统 80 W、带一根内存条的 EPYC 7261 30 W。
 
 ---
 
@@ -205,7 +205,7 @@ ExecStart=/usr/local/bin/170hx-oc eff
 ExecStop=/usr/local/bin/170hx-oc stock
 ```
 
-应用器在 PCI 设备 ID `0x20C2` 上守卫、并循环每张 GPU，所以插槽里的非 170HX 被跳过并记录、而非被超频。一条代表性日志行：
+应用器在 PCI 设备 ID `0x20C2` 上守卫，并循环每张 GPU，所以插槽里的非 170HX 被跳过并记录、而非被超频。一条代表性日志行：
 
 ```text
 170hx-oc: GPU 0 (…) profile=eff offset=+250 clk_max=1350 power_limit=300 W
@@ -213,19 +213,19 @@ ExecStop=/usr/local/bin/170hx-oc stock
 
 关于 `nvidia-persistenced` 本身的注记：
 
-- 打过补丁的模块为两个设备 ID 设置 `NV_FLAG_PERSISTENT_SW_STATE`（`0006-persistent-sw-state.patch`），所以 RM 在最后一个客户端关闭时不会拆除软件状态。那实际就是内置持久化、也是不需要守护进程的原因；不过、一张新卡上的 `nvidia-smi -q` 仍报告 `Persistence Mode: Disabled`。
-- **解锁脚本要求所有 NVIDIA 服务被停止。** `build.sh` 在它的热重载里停 `nvidia-persistenced`。可靠地拆除驱动意味着停止显示管理器和持久化守护进程、不只 `modprobe -r`。见[排障](../procedures/troubleshooting.md)。
+- 打过补丁的模块为两个设备 ID 设置 `NV_FLAG_PERSISTENT_SW_STATE`（`0006-persistent-sw-state.patch`），所以 RM 在最后一个客户端关闭时不会拆除软件状态。那实际就是内置持久化，也是不需要守护进程的原因；不过，一张新卡上的 `nvidia-smi -q` 仍报告 `Persistence Mode: Disabled`。
+- **解锁脚本要求所有 NVIDIA 服务被停止。** `build.sh` 在它的热重载里停 `nvidia-persistenced`。可靠地拆除驱动意味着停止显示管理器和持久化守护进程，不只 `modprobe -r`。见[排障](../procedures/troubleshooting.md)。
 
 > [!CAUTION]
 > **不要在一台解锁主机上把 `nvidia-pstated` 装成一个 systemd 服务**
 >
-> 解锁脚本需要每个 NVIDIA 服务被杀掉、与 pstate 守护进程的交互未测试。如果你想实验它、从一个启动器跑、不要从服务。
+> 解锁脚本需要每个 NVIDIA 服务被杀掉、与 pstate 守护进程的交互未测试。如果你想实验它，从一个启动器跑，不要从服务。
 
 ---
 
 ## 性能状态（pstate）管理
 
-**170HX 只暴露 P0。** `NvAPI_GPU_SetForcePstate` 返回 `NVAPI_ERROR`，而在 2-P 状态卡（P100、V100）上工作的 `nvidia-pstated` 社区 fork 在一张 170HX 上试过、产生**零变化**。该守护进程的默认值、供参考：`iterationsBeforeSwitch = 30`、`performanceStateHigh = 16`、`performanceStateLow = 8`、`sleepInterval = 100`、`temperatureThreshold = 80`。
+**170HX 只暴露 P0。** `NvAPI_GPU_SetForcePstate` 返回 `NVAPI_ERROR`，而在 2-P 状态卡（P100、V100）上工作的 `nvidia-pstated` 社区 fork 在一张 170HX 上试过，产生**零变化**。该守护进程的默认值、供参考：`iterationsBeforeSwitch = 30`、`performanceStateHigh = 16`、`performanceStateLow = 8`、`sleepInterval = 100`、`temperatureThreshold = 80`。
 
 这是卡专属的、不是工具故障：`nvidia-pstated` 把一张 **CMP 90HX 从 75 W 带到 5 W** 空转、跨多-GPU 设置工作、跨重启持久。
 
@@ -249,16 +249,16 @@ ExecStop=/usr/local/bin/170hx-oc stock
 实际分配指导：
 
 - 把 64 GB 中的**约 1 GB 预算给驱动和上下文开销**：上面的 gpu_burn 捕获显示总 65052 MB、工具取 90% 前可用 64733 MB。
-- **vLLM**：8 卡 GLM-5.2 配方用 `--gpu-memory-utilization 0.90` 并在实践中达到 0.92 利用率、产出 438,107 个 token 的 KV。把利用率保持在 0.90 或以下：0.95 崩过一张卡、因为解锁的几何布局暴露 65052 MB、实际只有 64733 MB 可用、所以 0.95 处余量很薄。配方也设置 `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`。
-- **llama.cpp**：一个 4 卡机架上观察到的稳定态驻留是 53G/64G、60G/64G、60G/64G 和 56G/64G、带一个 8192.000 MiB / 65536 token 的提示缓存。
-- RM 把整个解锁范围建模为**统一性能内存**（扩展区域上 `supportCompressed = NV_TRUE`、`supportISO = NV_TRUE`、`performance = 20`），所以分配策略无法偏好快速区域、即使那里存在一个。8 GiB 偏移之上实测的带宽台阶（下面 98% 峰值、上面平坦 79%、在 32 GB 块大小完全闭合）对分配器不可见。见[性能](performance.md)。
+- **vLLM**：8 卡 GLM-5.2 配方用 `--gpu-memory-utilization 0.90` 并在实践中达到 0.92 利用率，产出 438,107 个 token 的 KV。把利用率保持在 0.90 或以下：0.95 崩过一张卡，因为解锁的几何布局暴露 65052 MB、实际只有 64733 MB 可用，所以 0.95 处余量很薄。配方也设置 `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`。
+- **llama.cpp**：一个 4 卡机架上观察到的稳定态驻留是 53G/64G、60G/64G、60G/64G 和 56G/64G，带一个 8192.000 MiB / 65536 token 的提示缓存。
+- RM 把整个解锁范围建模为**统一性能内存**（扩展区域上 `supportCompressed = NV_TRUE`、`supportISO = NV_TRUE`、`performance = 20`），所以分配策略无法偏好快速区域，即使那里存在一个。8 GiB 偏移之上实测的带宽台阶（下面 98% 峰值、上面平坦 79%、在 32 GB 块大小完全闭合）对分配器不可见。见[性能](performance.md)。
 - 出货 `master` 把两个设备 ID 的 BAR0/PRAMIN 窗口钳到 8 GiB（`0004-bar0-pramin-clamp.patch`）。这是一个 CPU 侧孔径、不是设备侧分配限制，但它是基于 PRAMIN 的工具只看到前 8 GiB 的原因。
-- 安装器的**档位自动检测**读 `nvidia-smi --query-gpu=memory.total` 并把 `>= 60000 MiB` 映射到 8 GB 档位、`35000-59999 MiB` 到 10 GB 档位，所以一张已解锁的卡正确重新检测。出厂窗口是 7680-8704 MiB 和 9728-10752 MiB、为保留 FB 带 ±512 MiB 容差。
+- 安装器的**档位自动检测**读 `nvidia-smi --query-gpu=memory.total` 并把 `>= 60000 MiB` 映射到 8 GB 档位、`35000-59999 MiB` 到 10 GB 档位，所以一张已解锁的卡正确重新检测。出厂窗口是 7680-8704 MiB 和 9728-10752 MiB，为保留 FB 带 ±512 MiB 容差。
 
 > [!CAUTION]
 > **80 GB 几何布局不是更多 VRAM、是更少**
 >
-> 一张发射到 80 GB 的 10 GB 卡报告约 81920 MiB 和 85,545,582,592 字节、`cudaMalloc` 77 GiB 甚至成功，但触碰超过约 40 GB 的内核造成致命 GPU 丢失、与功耗上限无关。报告的 Xid 码包括 Xid 31（被描述为无害）和 CUDA 显存测试后的 Xid 154；主导报告症状是挂起。Xid 31 单独是一个旁观者提出的、并未被带故障卡的操作者佐证为*那个*签名。对一位测试者模型加载在约 20 GB 后挂起、而第二位多卡测试者在 40 到 60 GB 波段看到失败；无论哪种方式、之前装进 40 GB 解锁的模型都停止加载。物理 DRAM 存在（一次 PRAMIN 走查证明 80 个不同的 GiB），而这个分支上那堵墙行为像地址解码。一个脚本驱动的连贯寄存器集确实在 40 GiB 后到达真实内存、但它未出货、且每次发射约交付一个 CUDA 上下文。**8 GB 卡到 64 GB；10 GB 卡到 40 GB。** 见[80 GB 问题](../frontier/80gb.md) 和[显存几何布局](../unlock/memory-geometry.md)。
+> 一张发射到 80 GB 的 10 GB 卡报告约 81920 MiB 和 85,545,582,592 字节，`cudaMalloc` 77 GiB 甚至成功，但触碰超过约 40 GB 的内核造成致命 GPU 丢失，与功耗上限无关。报告的 Xid 码包括 Xid 31（被描述为无害）和 CUDA 显存测试后的 Xid 154；主导报告症状是挂起。Xid 31 单独是一个旁观者提出的，并未被带故障卡的操作者佐证为*那个*签名。对一位测试者模型加载在约 20 GB 后挂起、而第二位多卡测试者在 40 到 60 GB 波段看到失败；无论哪种方式，之前装进 40 GB 解锁的模型都停止加载。物理 DRAM 存在（一次 PRAMIN 走查证明 80 个不同的 GiB），而这个分支上那堵墙行为像地址解码。一个脚本驱动的连贯寄存器集确实在 40 GiB 后到达真实内存，但它未出货、且每次发射约交付一个 CUDA 上下文。**8 GB 卡到 64 GB；10 GB 卡到 40 GB。** 见[80 GB 问题](../frontier/80gb.md) 和[显存几何布局](../unlock/memory-geometry.md)。
 
 > [!WARNING]
 > **没有 ECC、也没有 ECC 遥测**
@@ -282,16 +282,16 @@ ExecStop=/usr/local/bin/170hx-oc stock
 
 ### 峰值线指导
 
-对一张**锁定**卡 2023 选择规则仍成立：算术强度在带出厂 FMA 时低于 **0.3 FLOPs/byte**、或禁用 FMA 后低于 **4.6 FLOPs/byte** 的卡有用（脊点来自 394 和 6250 GFLOPS 除以 1355 GB/s 实测上限）。算力解锁后 FP32 升约 30x、带宽不变，所以脊点以同样因子外移、该规则停止约束：一张解锁卡对大多数内核表现得像一颗普通显存绑定 GA100。（那句是从两个规范数字的推导、不是一个单独测量的结果。）
+对一张**锁定**卡，2023 选择规则仍成立：算术强度在带出厂 FMA 时低于 **0.3 FLOPs/byte**、或禁用 FMA 后低于 **4.6 FLOPs/byte** 的卡有用（脊点来自 394 和 6250 GFLOPS 除以 1355 GB/s 实测上限）。算力解锁后 FP32 升约 30x、带宽不变，所以脊点以同样因子外移、该规则停止约束：一张解锁卡对大多数内核表现得像一颗普通显存绑定 GA100。（那句是从两个规范数字的推导、不是一个单独测量的结果。）
 
 ### 最便宜的未测试调优线索
 
-在 CMP 100-210 上、设置 `n_ubatch 56` 把 llama.cpp pp512 从 353.59 提到 **977.20 t/s**（关 flash attention）和从 380.96 到 **1159.39 t/s**（开）、一个标志 **3.04x** 增益，而 tg128 基本不变。小进一步增益坚持到 uBatch 62、然后性能崩塌。那张卡有 84 个 SM 中的 68 个、所以 70-SM 170HX 上的类似调优点应正好在 70 之下。
+在 CMP 100-210 上，设置 `n_ubatch 56` 把 llama.cpp pp512 从 353.59 提到 **977.20 t/s**（关 flash attention）和从 380.96 到 **1159.39 t/s**（开），一个标志 **3.04x** 增益，而 tg128 基本不变。小进一步增益坚持到 uBatch 62，然后性能崩塌。那张卡有 84 个 SM 中的 68 个，所以 70-SM 170HX 上的类似调优点应正好在 70 之下。
 
 > [!NOTE]
 > **未解问题：uBatch 悬崖存在于 170HX 上吗？**
 >
-> 没人跑过这个扫描。在一张算力解锁的 170HX 上用 `llama-bench` 把 `n_ubatch` 从 48 扫到 80 是一个下午的工作、也是档案里最大的未测试上行。
+> 没人跑过这个扫描。在一张算力解锁的 170HX 上用 `llama-bench` 把 `n_ubatch` 从 48 扫到 80，是一个下午的工作，也是档案里最大的未测试上行。
 
 ### 验证一个调优点
 
@@ -307,9 +307,9 @@ make COMPUTE=80                       # github.com/wilicc/gpu-burn
 nvidia-smi --query-gpu=memory.total,clocks.max.sm,pcie.link.gen.current,pcie.link.gen.max --format=csv
 ```
 
-一张解锁 8 GB 到 64 GB 卡上、300 W 限制下一次干净的 30 分钟 `gpu_burn` 看起来像这样：225 次迭代、checkpoint 保持 **12,472-12,485 GFLOP/s** 带 `errors: 0`、温度只升 75 C 到 77 C、活遥测 `PCIe GEN 1@ 4x`、`GPU 1440MHz MEM 1890MHz TEMP 76C FAN N/A POW 278 / 300 W`、`GPU 100% MEM 57.534Gi/64.000Gi`、以 `Tested 1 GPUs: GPU 0: OK` 结束。
+一张解锁 8 GB 到 64 GB 卡上、300 W 限制下一次干净的 30 分钟 `gpu_burn` 看起来像这样：225 次迭代、checkpoint 保持 **12,472-12,485 GFLOP/s** 带 `errors: 0`、温度只升 75 C 到 77 C、活遥测 `PCIe GEN 1@ 4x`、`GPU 1440MHz MEM 1890MHz TEMP 76C FAN N/A POW 278 / 300 W`、`GPU 100% MEM 57.534Gi/64.000Gi`，以 `Tested 1 GPUs: GPU 0: OK` 结束。
 
-热通常不是约束：一次持续 GEMM 烧机在晶片约 25-30 秒内从 62 到 73 C 时保持平坦 flops、一个全能力部件只在约 85 C 之上节流。要紧的是空转功耗和泄漏一起上升、所以更好散热付两次。见[散热](cooling.md) 和[热设计](../hardware/thermals.md)。
+热通常不是约束：一次持续 GEMM 烧机在晶片约 25-30 秒内从 62 到 73 C 时保持平坦 flops，一个全能力部件只在约 85 C 之上节流。要紧的是空转功耗和泄漏一起上升，所以更好散热付两次。见[散热](cooling.md) 和[热设计](../hardware/thermals.md)。
 
 ### 效率参考点
 

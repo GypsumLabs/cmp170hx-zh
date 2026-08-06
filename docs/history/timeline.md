@@ -2,7 +2,7 @@
 
 ## 本页覆盖内容
 
-CMP 170HX 如何从一颗熔丝削弱矿卡变成一张 64 GB、全速 GA100 的带日期记录、覆盖活跃期 **2026-06-22 到 2026-07-28**、带让它成为可能的更早背景。聊天时间戳是 UTC、除非显示本地偏移、凡时间给到秒都是从一个消息 snowflake 解码或从 git 作者时间戳读出。Git 行按**作者本地偏移**（大多 `-07:00`）定日期、这是提交呈现自己的方式；三个分支 tip 因此在这里比它们的 UTC 瞬间早一个日历日。
+CMP 170HX 如何从一颗熔丝削弱矿卡变成一张 64 GB、全速 GA100 的带日期记录，覆盖活跃期 **2026-06-22 到 2026-07-28**，并带上使其成为可能的更早背景。聊天时间戳默认是 UTC，除非显示了本地偏移；凡时间给到秒，都是从消息 snowflake 解码或从 git 作者时间戳读出。Git 行按**作者本地偏移**（大多 `-07:00`）定日期，这正是提交呈现自己的方式；三个分支 tip 因此在这里比它们的 UTC 瞬间早一个日历日。
 
 读者应该锚定的五个里程碑：
 
@@ -14,7 +14,7 @@ CMP 170HX 如何从一颗熔丝削弱矿卡变成一张 64 GB、全速 GA100 的
 | **2026-07-23 / 24** | 免驱动路径作为独立 Python refire 链回归、**PCIe Gen2** 被宣布 |
 | **2026-07-26 / 27** | Gen2 分支谱系稳定；在一张电容改装卡上捕获一个 Gen2 x16 观察 |
 
-这个时间线严格分开保持的两件事、按管束整个维基的规则：PCIe 链路**速度**（Gen1 到 Gen2、一个软件和固件解锁）和 PCIe 链路**位宽**（x4 到 x16、只能靠手工焊接 24 颗缺件电容达成）。它们是不同日期的不同成就。见[PCIe 子系统](../hardware/pcie-subsystem.md) 和[物理改装](../operations/physical-mods.md)。
+这个时间线严格分开保持的两件事，依据管束整个维基的规则：PCIe 链路**速度**（Gen1 到 Gen2，一个软件和固件解锁）和 PCIe 链路**位宽**（x4 到 x16，只能靠手工焊接 24 颗缺件电容达成）。它们是不同日期的不同成就。见[PCIe 子系统](../hardware/pcie-subsystem.md) 和[物理改装](../operations/physical-mods.md)。
 
 ---
 
@@ -46,7 +46,7 @@ CMP 170HX 如何从一颗熔丝削弱矿卡变成一张 64 GB、全速 GA100 的
 | **2026-06** | 第一条能在 booter 里跳到任意地址的 ROP 链被演示并在开放服务器上宣布。开发移进一个**七人**私人群组、产出概念证明、论文、和两份内部驱动修改指南 |
 | **2026-06（论文日期）** | **"A Canary in the Crypto Mine: Defeating Stack Protection in a GPU Secure Coprocessor"**、16 页、Zenodo 记录 `20916112`、ResearchGate `408132536`。头条声称：三个 cap 都是软的；约 31-62x 算力、8x 容量、2x 链路 |
 
-利用的代号是 **FACEB13D**、"fake bird"（假鸟）、按那个必须被击败的栈守卫金丝雀。列举的障碍是 obscurity 式安全、栈金丝雀、安全级别 L0 到 L3、不可变引导 ROM、一个安全协处理器、代码的 AES 加密、和代码的 RSA 签名。
+利用的代号是 **FACEB13D**、"fake bird"（假鸟），取自那个必须被击败的栈守卫金丝雀。列举的障碍是 obscurity 式安全、栈金丝雀、安全级别 L0 到 L3、不可变引导 ROM、一个安全协处理器、代码的 AES 加密，以及代码的 RSA 签名。
 
 ---
 
@@ -85,7 +85,7 @@ CMP 170HX 如何从一颗熔丝削弱矿卡变成一张 64 GB、全速 GA100 的
 > [!NOTE]
 > **未解问题**
 >
-> 一条净室消息日期 **2026-07-05** 把 PCIe Gen2 当作已解锁、比复现结果早三周。要么一个从未传播的更早独立结果、要么一个误归属时间戳。只有原始消息元数据能定论它。
+> 一条净室消息日期 **2026-07-05** 把 PCIe Gen2 当作已解锁，比复现结果早了三周。要么是一个从未传播的更早独立结果，要么是一个误归属的时间戳。只有原始消息元数据能定论它。
 
 ---
 
@@ -93,17 +93,17 @@ CMP 170HX 如何从一颗熔丝削弱矿卡变成一张 64 GB、全速 GA100 的
 
 ### 算力解锁
 
-**2026-07-12** 是节流下来的日期。工作手动流程、在任何驱动内补丁存在前：
+**2026-07-12** 是节流解除的日子。这是在驱动内补丁存在之前的工作手动流程：
 
 ```text
 run the ROP script  ->  FLR  ->  kill the NVIDIA driver  ->  FLR again  ->  run the SM unlock script
 ```
 
-FLR 意思是 `echo 1 | sudo tee /sys/bus/pci/devices/0000:${PCI}/reset`。它必须从 TTY 跑。驱动是 580.159.04 的开源内核模块、载荷由 `patch_gsp.py` 拼接进 `gsp_tu10x.bin`。`Guide_SM.sh` 把它实现为一个三写 ROP 阶段（CFG1 `0x02779000`、LMR `0x0000020B`、PLM `0xFFFFFFFF`）、一次 FLR、一次激进驱动卸载、第二次 FLR、然后经 `resource0` 带回读验证的主机写 `0x0082381C = 0x88888888` 和 `0x00823820 = 0x00000008`。
+FLR 意思是 `echo 1 | sudo tee /sys/bus/pci/devices/0000:${PCI}/reset`。它必须从 TTY 跑。驱动是 580.159.04 的开源内核模块，载荷由 `patch_gsp.py` 拼接进 `gsp_tu10x.bin`。`Guide_SM.sh` 把它实现为一个三写 ROP 阶段（CFG1 `0x02779000`、LMR `0x0000020B`、PLM `0xFFFFFFFF`）、一次 FLR、一次激进驱动卸载、第二次 FLR，然后经 `resource0` 带回读验证的主机写 `0x0082381C = 0x88888888` 和 `0x00823820 = 0x00000008`。
 
-同日测得：首次完整 SM 解锁上 **12.28 TFLOPS SGEMM FP32**、由两位独立测试者报告。那张卡那次会话没取锁定基线。伴随它的 "32x" 是熔丝值 `0x5` 隐含的架构除数、引用的约 0.38 TFLOPS 出厂速率是 12.28 除以 32、不是一次分开测量。一个独立测得的约 0.39 TFLOPS 锁定速率佐证除数；见[性能](../operations/performance.md)。出厂 `FEATURE_OVERRIDE` 块被完整转储（`regs_01.txt`）、主灭杀熔丝 `0x008203f0` 被确认在 `0x00000000` 未烧断、那是这一切为何可能的理由。
+同日测得：首次完整 SM 解锁上 **12.28 TFLOPS SGEMM FP32**，由两位独立测试者报告。那张卡那次会话没取锁定基线。伴随它的 "32x" 是熔丝值 `0x5` 隐含的架构除数，引用的约 0.38 TFLOPS 出厂速率是 12.28 除以 32，不是一次分开测量。一个独立测得的约 0.39 TFLOPS 锁定速率佐证了这个除数；见[性能](../operations/performance.md)。出厂 `FEATURE_OVERRIDE` 块被完整转储（`regs_01.txt`），主灭杀熔丝 `0x008203f0` 被确认在 `0x00000000` 未烧断——这正是这一切之所以可能的理由。
 
-到达那里花了 **超过 1100 次 fire**、其中只有约 50 次是真正不同的尝试、做工作的人后来如此说："I just couldn't have known that in advance."（我事先就是不可能知道。）
+到达那里花了 **超过 1100 次 fire**，其中只有约 50 次是真正不同的尝试。做工作的人后来如此说："I just couldn't have known that in advance."（我事先就是不可能知道。）
 
 ### 那周的其余部分
 
@@ -122,13 +122,13 @@ FLR 意思是 `echo 1 | sudo tee /sys/bus/pci/devices/0000:${PCI}/reset`。它�
 > [!WARNING]
 > **哪个仓库最先未解决**
 >
-> 2026-07-22 的三份独立一手复述把净室算力解锁器的发布放在 "about 10 days ago"（约 10 天前）、指向大约 2026-07-12、而 2026-07-13 的陈述说一个算力解锁 "was released and it's basically available to the public at this point in time"（已被发布、此时基本公开可用）。但源码被归档的那个仓库初始提交在 2026-07-14、而一个**不同拥有者**的同名仓库在 2026-07-15 正在被分享并变砖测试者。最可能的调和是至少两个不同账户下的同名仓库、"about 10 days ago" 是一个取整的回忆。归档树不能被假定是最早的净室发布。
+> 2026-07-22 的三份独立一手复述把净室算力解锁器的发布放在 "about 10 days ago"（约 10 天前），指向大约 2026-07-12；而 2026-07-13 的一份陈述说一个算力解锁 "was released and it's basically available to the public at this point in time"（已被发布，此时基本公开可用）。但源码被归档的那个仓库初始提交在 2026-07-14，而一个**不同拥有者**的同名仓库在 2026-07-15 正在被分享并变砖测试者。最可能的调和是至少两个不同账户下的同名仓库，"about 10 days ago" 是一个取整的回忆。归档树不能被假定是最早的净室发布。
 
 ---
 
 ## 2026-07-18：显存、一天内
 
-项目里最密集的一天。时间戳是 UTC。
+项目里最密集的一天。时间戳均为 UTC。
 
 | 时间 | 事件 |
 |---|---|
@@ -147,7 +147,7 @@ FLR 意思是 `echo 1 | sudo tee /sys/bus/pci/devices/0000:${PCI}/reset`。它�
 | 8 GB | `10de:20c2` | 8192 MiB | **65536 MiB (64 GB)** | `0x02779000` | `0x0000020B` | `0x0000001000000000` |
 | 10 GB | `10de:2082` | 10240 MiB | **40960 MiB (40 GB)** | `0x02669000` | `0x0000028A` | `0x0000000A00000000` |
 
-出厂 CFG1 在**两个** SKU 上都是 `0x02449000`；出厂 LMR 是 `0x00000208`（8 GB）或 `0x00000288`（10 GB）。同在 2026-07-18：`multiple-cards` 分支被提交、`housekeeping` 分支给所有补丁加 `0x2082` 支持、master 提交 `0f9aca5 "Unlock isn't gated anymore"` 把安装门从仅 `0x20C2` 拓宽到 `0x20C2`/`0x2082`。
+出厂 CFG1 在**两个** SKU 上都是 `0x02449000`；出厂 LMR 是 `0x00000208`（8 GB）或 `0x00000288`（10 GB）。同在 2026-07-18：`multiple-cards` 分支被提交，`housekeeping` 分支给所有补丁加 `0x2082` 支持，而 master 提交 `0f9aca5 "Unlock isn't gated anymore"` 把安装门从仅 `0x20C2` 拓宽到 `0x20C2`/`0x2082`。
 
 完整细节：[显存几何布局](../unlock/memory-geometry.md) 和[六个驱动补丁](../unlock/driver-patches.md)。
 
@@ -168,7 +168,7 @@ FLR 意思是 `echo 1 | sudo tee /sys/bus/pci/devices/0000:${PCI}/reset`。它�
 > [!WARNING]
 > **实验性**
 >
-> Gen2 是真实的、被复现、**且未出货**。`master` 只携带补丁 `0001` 到 `0006`、`constants.yaml` 里没有 `pcie:` 块。`0007-pcie-gen2.patch` 存在于 `debug-gen2`、`Gen2`、`far` 和 `deced`；`0008-pcie-gen2-probe-retrain.patch` 在 `Gen2`、`far` 和 `deced`。安装 Gen2 意味着跑一个未发布分支。见[PCIe Gen2](../unlock/pcie-gen2.md)。
+> Gen2 是真实的、被复现，且**未出货**。`master` 只携带补丁 `0001` 到 `0006`，`constants.yaml` 里没有 `pcie:` 块。`0007-pcie-gen2.patch` 存在于 `debug-gen2`、`Gen2`、`far` 和 `deced`；`0008-pcie-gen2-probe-retrain.patch` 在 `Gen2`、`far` 和 `deced`。安装 Gen2 意味着跑一个未发布分支。见[PCIe Gen2](../unlock/pcie-gen2.md)。
 
 ---
 
@@ -202,7 +202,7 @@ FLR 意思是 `echo 1 | sudo tee /sys/bus/pci/devices/0000:${PCI}/reset`。它�
 > [!CAUTION]
 > **80 GB 档位不是一个里程碑**
 >
-> `80` 分支报告约 81920 MiB 和 85,545,582,592 字节、`cudaMalloc` of 77 GiB 成功、但在 80 GB、触碰超过约 40 GB 的内核造成致命 GPU 丢失、与功耗上限无关。报告的 Xid 码包括 Xid 31（被描述为无害）和 CUDA 显存测试后的 Xid 154；主导报告症状是挂起。Xid 31 单独是一个旁观者提出的、并未被带故障卡的操作者佐证为*那个*签名。`cuda_memtest` 除非封顶在 39 GB 否则挂起。40 GB 反而出货。见[80 GB 问题](../frontier/80gb.md)。
+> `80` 分支报告约 81920 MiB 和 85,545,582,592 字节，`cudaMalloc` of 77 GiB 成功；但在 80 GB，触碰超过约 40 GB 的内核会造成致命 GPU 丢失，与功耗上限无关。报告的 Xid 码包括 Xid 31（被描述为无害）和 CUDA 显存测试后的 Xid 154；主导报告症状是挂起。Xid 31 单独出现是旁观者提出的，并未被持有故障卡的操作者佐证为*那个*签名。`cuda_memtest` 除非封顶在 39 GB 否则挂起。40 GB 反而出货。见[80 GB 问题](../frontier/80gb.md)。
 
 ---
 

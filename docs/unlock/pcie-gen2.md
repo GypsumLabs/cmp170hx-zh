@@ -5,13 +5,13 @@
 > [!NOTE]
 > **已出货：Gen2 于 2026-07-29 合并进 `master`**
 >
-> Gen2 头一周只在分支上。它在提交 `2e0a2c02`（"PCIe Gen 2 unlock!"）合并，`master` 现在带着 `0007-pcie-gen2.patch` 和 `0008-pcie-gen2-probe-retrain.patch` 连同 `0001` 到 `0006`。master 的 README 列出 `PCIe Gen 2 speeds | Working`。多台独立机器复现了它。
+> Gen2 头一周只在分支上。它在提交 `2e0a2c02`（"PCIe Gen 2 unlock!"）合并，`master` 现在带着 `0007-pcie-gen2.patch` 和 `0008-pcie-gen2-probe-retrain.patch`，连同 `0001` 到 `0006`。master 的 README 列出 `PCIe Gen 2 speeds | Working`。多台独立机器复现了它。
 >
-> 仅分支时期两个细节仍成立、值得知道：`common/constants.yaml` 仍没有 `pcie:` 块，所以寄存器数据活在补丁里而非配置里；一位贡献者把这种方法描述为 "like a script spamming stuff and hoping it sticks"（像个脚本乱喷东西、希望它粘住），那是对一个步骤之间无回读的 25 写序列的公道描述。它有效，而且不优雅。
+> 仅分支时期有两个细节仍成立、值得知道：`common/constants.yaml` 仍没有 `pcie:` 块，所以寄存器数据活在补丁里而非配置里；一位贡献者把这种方法描述为 "like a script spamming stuff and hoping it sticks"（像个脚本乱喷东西、希望它粘住）——那是对一个步骤之间无回读的 25 写序列的公道描述。它有效，而且不优雅。
 
 ## 结果，先说
 
-Gen2 使链路**速度**翻倍。它不碰链路**位宽**，任何分支里都没有代码读或写位宽字段。一张 Gen2 补丁的、没焊接过的卡跑在 Gen2 x4。
+Gen2 使链路**速度**翻倍。它不碰链路**位宽**，任何分支里都没有代码读或写位宽字段。一张打过 Gen2 补丁、未焊接的卡跑在 Gen2 x4。
 
 | | 出厂，无解锁 | 带解锁器 |
 |---|---|---|
@@ -58,7 +58,7 @@ a4de322  (merge)                                            2026-07-26   <- Gen2
 
 "advertises Gen2 but will not retrain"（宣告 Gen2 却不肯重训练，`Effort on PCIe Gen 2`、2026-07-22 22:02:43 -0700，即 2026-07-23 05:02 UTC）与 "trains"（训练成功，`PCIe Gen 2 works!`、2026-07-23 18:21:35 -0700，即 2026-07-24 01:21 UTC）之间隔了约二十小时。结果于 2026-07-24 00:59 公开宣布，几小时内被多位独立测试者在不同硬件上复现。
 
-`far` 是 `Gen2` 加恰好一个提交，其在整个树里唯一的内容改动是一行里的一个字符。`deced` 是 `far` 加一个提交、给安装器删除的一个脚本重新加回 BDF 自动发现。
+`far` 是 `Gen2` 加恰好一个提交，其在整个树里唯一的内容改动是一行里的一个字符。`deced` 是 `far` 加一个提交，给安装器删除的一个脚本重新加回 BDF 自动发现。
 
 ## 机制
 
@@ -72,11 +72,11 @@ a4de322  (merge)                                            2026-07-26   <- Gen2
 
 ### 注入点
 
-补丁 `0007` 把它的整个寄存器块注入 `src/nvidia/src/kernel/gpu/gsp/kernel_gsp.c`、`@@ -4942,6 +4942,260 @@`、紧接现有 `devId` 打印之后、紧接 `plmStatus = kgspSec2PostblTimingRebuildStockSignature(pGpu, pKernelGsp);` **之前**。因此它在 SEC2 post-bootloader 解锁窗口内运行，此时 PLM 仍打开、构造的 Falcon 签名载荷仍通过 Booter Load 提供一条任意 BAR0 写原语。那是显存和算力解锁用的同一次提权；见[Falcon 与 Booter](falcon-and-booter.md) 和[如何工作](how-it-works.md)。
+补丁 `0007` 把它的整个寄存器块注入 `src/nvidia/src/kernel/gpu/gsp/kernel_gsp.c`、`@@ -4942,6 +4942,260 @@`、紧接现有 `devId` 打印之后、紧接 `plmStatus = kgspSec2PostblTimingRebuildStockSignature(pGpu, pKernelGsp);` **之前**。因此它在 SEC2 post-bootloader 解锁窗口内运行——此时 PLM 仍打开、构造的 Falcon 签名载荷仍通过 Booter Load 提供一条任意 BAR0 写原语。那是显存和算力解锁用的同一次提权；见[Falcon 与 Booter](falcon-and-booter.md) 和[如何工作](how-it-works.md)。
 
 ### 阶段 A：23 条目 `xp3gTable`
 
-每条目是一个 `{address, value}` 对、经 Booter 载荷原语推入。每条目代码恢复 WPR2 低和高（`GPU_REG_WR32(pGpu, 0x001fa824U, wpr2Lo)` 和 `0x001fa828U, wpr2Hi`）、调用 `kgspSec2PostblTimingRefillPayload(pGpu, pKernelGsp, addr, value)`、调用 `kgspExecuteBooterLoad_HAL(...)`、回读目标、并重试一次（`xattempt < 2`）、失败时打印 `SEC2_DEBUG: PCIe xp3g booter FAILED to set <name>`。
+每条目是一个 `{address, value}` 对、经 Booter 载荷原语推入。对每条目，代码恢复 WPR2 低和高（`GPU_REG_WR32(pGpu, 0x001fa824U, wpr2Lo)` 和 `0x001fa828U, wpr2Hi`）、调用 `kgspSec2PostblTimingRefillPayload(pGpu, pKernelGsp, addr, value)`、调用 `kgspExecuteBooterLoad_HAL(...)`、回读目标，并重试一次（`xattempt < 2`），失败时打印 `SEC2_DEBUG: PCIe xp3g booter FAILED to set <name>`。
 
 | # | 地址 | 名称 | 值 | 目的 |
 |---|---|---|---|---|
@@ -102,21 +102,21 @@ a4de322  (merge)                                            2026-07-26   <- Gen2
 | `0x0008860c` | `VSEC_DEVICE` | 设位 0（`|= 1 << 0`） | **失败**：`pre=0x00000800 want=0x00000801`、回读 `0x00000800` 两次、然后 `PCIe VSEC_DEVICE booter FAILED` |
 | `0x0008841c` | `PRIV_MISC_1` | 设位 11 和 13，清位 12 和 14 | 第一次尝试**成功**：`0x20340500` 变成 `0x20342d00`、真实 BooterLoad 后仍读 `0x20342d00` |
 
-XP3G 覆盖块是三个平行的四-dword 数组：状态基址 `0x0008e100`、覆盖使能基址 `0x0008e110`、值基址 `0x0008e120`，槽 *n* 在基址 + 4*n*，所以槽 3 是基址 + `0xC`。值总是在使能之前写、所以覆盖从不锁存陈旧数据，而使能编码按槽 one-hot（槽 0 是 `0x1`、槽 3 是 `0x4`）。
+XP3G 覆盖块是三个平行的四-dword 数组：状态基址 `0x0008e100`、覆盖使能基址 `0x0008e110`、值基址 `0x0008e120`，槽 *n* 在基址 + 4*n*，所以槽 3 是基址 + `0xC`。值总是在使能之前写，所以覆盖从不锁存陈旧数据；而使能编码按槽 one-hot（槽 0 是 `0x1`、槽 3 是 `0x4`）。
 
 > [!NOTE]
 > **两个条目失败，Gen2 照样工作**
 >
-> `OPT_GEN23` 是一个纯 OTP 熔丝感测反射、没有写端口；每个权限级别的每次尝试都返回 `status=0xffff rd=0x00000001`。`VSEC_DEVICE` 也失败。出货补丁仍尝试两者、仍在两者上失败、链路仍训练成 Gen2。工作的杠杆是 `CYA_0`、`LINK_CONFIG_0`、XP3G 覆盖和 `PRIV_MISC_1`。
+> `OPT_GEN23` 是一个纯 OTP 熔丝感测反射、没有写端口；每个权限级别的每次尝试都返回 `status=0xffff rd=0x00000001`。`VSEC_DEVICE` 也失败。出货补丁仍尝试两者、仍在这两者上失败、链路仍训练成 Gen2。工作的杠杆是 `CYA_0`、`LINK_CONFIG_0`、XP3G 覆盖和 `PRIV_MISC_1`。
 
 > [!NOTE]
 > **二手文档里的计数错误**
 >
-> 三个已发布的计数是错的、可直接对照补丁验证：OPTB 跑是**十个**寄存器（`D0, D4, D8, DC, E0, E4, E8, EC, F0, F4`），不是十一个也不是九个；该表在一个 **23** 条目表里打开 **18** 个 PLM，不是 22；以及晚 hunk 坐在 `kernel_gsp_tu102.c` 里、紧接 Booter Load 返回后，即 GSP-RM **开始运行之前**、不是之后。
+> 三个已发布的计数是错的、可直接对照补丁验证：OPTB 跑是**十个**寄存器（`D0, D4, D8, DC, E0, E4, E8, EC, F0, F4`），不是十一个也不是九个；该表在一个 **23** 条目表里打开 **18** 个 PLM，不是 22；以及晚 hunk 坐在 `kernel_gsp_tu102.c` 里、紧接 Booter Load 返回后——即 GSP-RM **开始运行之前**、不是之后。
 
 ### 阶段 B：普通 BAR0 写
 
-`0x00088fe8` / `fec` / `ff0` 处的 XVE PLM 打开后，普通 `GPU_REG_WR32` 写入落地。在那之前 priv 环丢弃它们；一次对 `0x08c044` 的探测返回 priv 屏蔽的哨兵 `0xbadf5040` 并被跳过，而 `0x0880a8` 干净地写并回读。
+`0x00088fe8` / `fec` / `ff0` 处的 XVE PLM 打开后，普通 `GPU_REG_WR32` 写入才落地。在那之前 priv 环会丢弃它们；一次对 `0x08c044` 的探测返回 priv 屏蔽的哨兵 `0xbadf5040` 并被跳过，而 `0x0880a8` 干净地写入并回读。
 
 | 寄存器 | 地址 | 操作 | 备注 |
 |---|---|---|---|
@@ -175,7 +175,7 @@ const NvU32 PCIE_GEN2_LINK_SPEED = 0x00000002U;
 const NvU32 PCIE_GEN2_PL_LINK_RATE_VALUE = 0x00240036U;
 ```
 
-`OPT_GEN3` 和 `OPT_MAGIC` 被读并记录（在 `NV_PRINTF` 参数列表里、带 `OPT=%08x/%08x/%08x` 的格式、针对 GEN23 / GEN3 / MAGIC）但**从不写**。代码试图写的唯一熔丝选项寄存器是 `OPT_GEN23`，而那次写失败。任何地方都没有代码路径请求高于 2 的目标链路速度。
+`OPT_GEN3` 和 `OPT_MAGIC` 被读取并记录（在 `NV_PRINTF` 参数列表里、带 `OPT=%08x/%08x/%08x` 的格式、针对 GEN23 / GEN3 / MAGIC），但**从不写**。代码试图写的唯一熔丝选项寄存器是 `OPT_GEN23`，而那次写失败。任何地方都没有代码路径请求高于 2 的目标链路速度。
 
 ### PLM 表从四个长到九个
 
@@ -269,7 +269,7 @@ msleep(50)
 >
 > 后果：在每张工作的 Gen2 170HX 上，补丁 `0008` 烧掉完整的 20 × 100 ms、然后以 `NV_DBG_ERRORS` 打印 `CMP Gen2: PCIe retrain completed without Gen2 link (status=0x1042, ret=0)`。那条消息是一个假阴性。它已经误导过至少一份下游分析、得出 `0008` "runs too late"（跑得太晚）的结论。
 
-日志级别约定复合了它。`0008` 里成功在 `NV_DBG_INFO` 打印、而全部四个失败路径在 `NV_DBG_ERRORS` 打印；`0007` 反过来、连例行 pre 和 post 转储都在 `LEVEL_ERROR` 发出、所以它们活过默认 dmesg 过滤。**不要读 dmesg 来判断 Gen2 是否工作。** 读 `nvidia-smi --query-gpu=pcie.link.gen.current` 或 `lspci` 的 `LnkSta`。
+日志级别约定复合了它。`0008` 里成功在 `NV_DBG_INFO` 打印，而全部四个失败路径在 `NV_DBG_ERRORS` 打印；`0007` 反过来，连例行的 pre 和 post 转储都在 `LEVEL_ERROR` 发出，所以它们活过默认 dmesg 过滤。**不要读 dmesg 来判断 Gen2 是否工作。** 读 `nvidia-smi --query-gpu=pcie.link.gen.current` 或 `lspci` 的 `LnkSta`。
 
 ## 重训练
 
@@ -318,14 +318,14 @@ pre-state 转储
   -> 读 CAP_EXP+12.w，打印 "retrain: speed_after=<sta & 0xF>"
 ```
 
-早退前提：`nvidia-smi` `memory.total` 为空或 `[N/A]`；`pcie.link.gen.current` 已经是 2；`pcie.link.gen.max` 不在 {2, 3, 4} 里；BAR0 或 CYA 读 `0xFFFFFFFF`；`DIS_G2` 仍置位；`LINK_CAP` 速度半字节低于 2；以及 BAR0 写后 "not alive or DIS_G2 set or mx != 2"。只有 Python 块里的检查打印 skip 行。前三个在 shell 包装器里跑、是带无输出的裸 `exit 0`，所以一次完全静默的运行是正常的、不是脚本没启动的证据。
+早退前提：`nvidia-smi` `memory.total` 为空或 `[N/A]`；`pcie.link.gen.current` 已经是 2；`pcie.link.gen.max` 不在 {2, 3, 4} 里；BAR0 或 CYA 读 `0xFFFFFFFF`；`DIS_G2` 仍置位；`LINK_CAP` 速度半字节低于 2；以及 BAR0 写后 "not alive or DIS_G2 set or mx != 2"。只有 Python 块里的检查打印 skip 行。前三个在 shell 包装器里跑、是带无输出的裸 `exit 0`，所以一次完全静默的运行是正常的，不是脚本没启动的证据。
 
-每个实现都先等驱动起来。`debug-gen2` 用 systemd `ExecStartPre=/bin/sleep 15` 加 `for _ in $(seq 1 60); do nvidia-smi -L && break; sleep 1; done`。`Gen2`、`far` 和 `deced` 在 `resource0` 存在和 `nvidia-smi -L` 两者上轮询 `for i in $(seq 1 120)`。`0008` 在 probe 内跑、所以只需要 `msleep(50)` 加 20 × `msleep(100)`。
+每个实现都先等驱动起来。`debug-gen2` 用 systemd `ExecStartPre=/bin/sleep 15` 加 `for _ in $(seq 1 60); do nvidia-smi -L && break; sleep 1; done`。`Gen2`、`far` 和 `deced` 在 `resource0` 存在和 `nvidia-smi -L` 两者上轮询 `for i in $(seq 1 120)`。`0008` 在 probe 内跑，所以只需要 `msleep(50)` 加 20 × `msleep(100)`。
 
 > [!WARNING]
 > **实验性：`tools/retrain.sh` 在 Gen2、far 和 deced 上是死代码**
 >
-> 那些分支带一个它们自己安装器从 `/usr/local/sbin` 删除的脚本。对它们的安装器 grep `retrain` 只返回删除块。任何地方都没有 `install -m 0755 tools/retrain.sh`。要使用它必须作为 root 手工跑。更糟的是，`Gen2` 和 `far` 上脚本硬编码一位开发者的 PCI 地址（`SYS=/sys/bus/pci/devices/0000:0a:00.0`、`GPU, UP = "0a:00.0", "09:01.0"`、`PATH = "/sys/bus/pci/devices/0000:0a:00.0/resource0"`）并在任何其它机器上静默瞄准错误的设备。这是一次回归：`debug-gen2` 自动发现两者。`deced`（`2326599`）恢复发现、用
+> 那些分支带一个它们自己安装器从 `/usr/local/sbin` 删除的脚本。对它们的安装器 grep `retrain` 只返回删除块。任何地方都没有 `install -m 0755 tools/retrain.sh`。要使用它必须作为 root 手工跑。更糟的是，`Gen2` 和 `far` 上脚本硬编码一位开发者的 PCI 地址（`SYS=/sys/bus/pci/devices/0000:0a:00.0`、`GPU, UP = "0a:00.0", "09:01.0"`、`PATH = "/sys/bus/pci/devices/0000:0a:00.0/resource0"`）并在任何其它机器上静默瞄准错误的设备。这是一次回归：`debug-gen2` 自动发现两者。`deced`（`2326599`）恢复发现，用
 >
 > ```bash
 > find_gpu_bdf() {
@@ -340,14 +340,14 @@ pre-state 转储
 
 ### 独立的早引导 hammer
 
-一个单独的社区设置脚本采取相反方法、尽可能早跑，因为 "late is the same as never"（晚了就等于永远不做）。它的模型：`0007` 的 `CYA_0`、`LINK_CONFIG_0` 和 `VSEC_DEVICE` 写仍持有时，端点**瞬态地**宣告 `LnkCap2 = 0x06`；窗口在引导后约 8 到 14 秒、GSP 引导期间打开、在 RM 清除 `VSEC_DEVICE` 位 0 时关闭。陈述的关键洞见是能力不需要持久，因为窗口打开时训练成 Gen2 的链路在它关闭后保持训练。
+一个单独的社区设置脚本采取相反方法、尽可能早跑，因为 "late is the same as never"（晚了就等于永远不做）。它的模型：`0007` 的 `CYA_0`、`LINK_CONFIG_0` 和 `VSEC_DEVICE` 写仍持有时，端点**瞬态地**宣告 `LnkCap2 = 0x06`；窗口在引导后约 8 到 14 秒、GSP 引导期间打开，在 RM 清除 `VSEC_DEVICE` 位 0 时关闭。陈述的关键洞见是，能力不需要持久，因为窗口打开时训练成 Gen2 的链路在它关闭后保持训练。
 
-实现：`/usr/local/sbin/cmp170hx-gen2-hammer` 以 `MAX_ITER=600`、`SLEEP_S=0.05`（30 秒覆盖）循环，两端把 LnkCtl2 目标设成 Gen2、每趟切换**根端口的** Retrain 位。它典型地在约第 30 次迭代、约 1.5 秒内成功。它的单元用 `DefaultDependencies=no`、`After=sysinit.target`、`Before=multi-user.target`、`Type=oneshot`、`TimeoutStartSec=120`、`WantedBy=sysinit.target`，并用 `strings /lib/modules/$(uname -r)/updates/cmpunlocker/nvidia.ko | grep -q 'SEC2_DEBUG: PCIe'` 检查已安装的驱动，记录到 `/var/log/cmp170hx-gen2.log`。
+实现：`/usr/local/sbin/cmp170hx-gen2-hammer` 以 `MAX_ITER=600`、`SLEEP_S=0.05`（30 秒覆盖）循环，两端把 LnkCtl2 目标设成 Gen2，每趟切换**根端口的** Retrain 位。它典型地在约第 30 次迭代、约 1.5 秒内成功。它的单元用 `DefaultDependencies=no`、`After=sysinit.target`、`Before=multi-user.target`、`Type=oneshot`、`TimeoutStartSec=120`、`WantedBy=sysinit.target`，并用 `strings /lib/modules/$(uname -r)/updates/cmpunlocker/nvidia.ko | grep -q 'SEC2_DEBUG: PCIe'` 检查已安装的驱动，记录到 `/var/log/cmp170hx-gen2.log`。
 
 > [!NOTE]
 > **未解问题：Gen2 窗口是瞬态的吗？**
 >
-> hammer 的瞬态窗口模型被一份归档的稳态转储（内核 6.12.0-hiveos、驱动 610.43.03、两张 `10de:20c2` 卡）矛盾，它**在引导完成后**读 `LnkCap2 = 0x00000006` 和 `LnkCap = 0x00456102`。`0007` 自己的 dmesg 也显示 `VSEC_DEVICE` 写失败，所以 RM 应该清除的那个位可能从没置位过。双方都是一手。什么能定论它：从早引导到 60 秒、每 100 ms 对 `setpci -s <bdf> CAP_EXP+0x2c.l` 做一次带时间戳的轮询，在 AMD CachyOS 主机和 HiveOS 主机上各一次。在那之前，把瞬态窗口当一个主机的观察、不是卡的一个属性。
+> hammer 的瞬态窗口模型被一份归档的稳态转储（内核 6.12.0-hiveos、驱动 610.43.03、两张 `10de:20c2` 卡）矛盾，它**在引导完成后**读到 `LnkCap2 = 0x00000006` 和 `LnkCap = 0x00456102`。`0007` 自己的 dmesg 也显示 `VSEC_DEVICE` 写失败，所以 RM 应该清除的那个位可能从没置位过。双方都是一手。什么能定论它：从早引导到 60 秒、每 100 ms 对 `setpci -s <bdf> CAP_EXP+0x2c.l` 做一次带时间戳的轮询，在 AMD CachyOS 主机和 HiveOS 主机上各一次。在那之前，把瞬态窗口当一个主机的观察，不是卡的一个属性。
 
 ## Modprobe 注册表键
 
@@ -357,18 +357,18 @@ pre-state 转储
 options nvidia NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"
 ```
 
-净室工具把该键记为承重、在一个带日期、2026-07-24 在卡上确认的 docstring 里：`"REQUIRES: driver loaded with NVreg_RegistryDwords=\"RmForceEnableGen2=1;RMPcieLinkSpeed=0x1\" (else the RM re-clamps Gen1 every retrain)."`（要求：驱动带……加载，否则 RM 每次重训练都把 Gen1 重新钳制。）分开地，同一个设置脚本把 `RmForceEnableGen2` 列在 "tested and confirmed unnecessary"（测试并确认不必要）的事物里，而没人显示过那个键单独做任何事。
+净室工具把该键记为承重，在一个带日期、2026-07-24 在卡上确认的 docstring 里：`"REQUIRES: driver loaded with NVreg_RegistryDwords=\"RmForceEnableGen2=1;RMPcieLinkSpeed=0x1\" (else the RM re-clamps Gen1 every retrain)."`（要求：驱动带……加载，否则 RM 每次重训练都把 Gen1 重新钳制。）分开地，同一个设置脚本把 `RmForceEnableGen2` 列在 "tested and confirmed unnecessary"（测试并确认不必要）的事物里，而没人显示过那个键单独做任何事。
 
 > [!NOTE]
 > **未解问题：`RMPcieLinkSpeed=0x1` 还是 `0x2`？**
 >
-> 两种拼写都出货。`debug-gen2`（`install.sh:191`）和 `Gen2`（`install.sh:280`）写 `0x1`；`far`（`install.sh:280`）和 `deced`（`install.sh:280`）写 `0x2`，由提交 `8854d3e` "Remove clamp link to Gen1" 引入。注意 `Gen2` 分支、那个 README 声称 Gen2 "Working ✓" 的，出货 `0x1`，而卡上确认是用 `0x1` 做的。两种读数内部都自洽、取决于该键意思是 "clamp to gen N"（钳制到代 N）还是 "enable up to gen N"（使能到代 N）。不存在 A/B 引导测试。两个值都不应作为规范呈现。什么能定论它：同一张卡和内核引导三次，无键、带 `0x1`、带 `0x2`，每次贴 `LnkSta`。便宜又决定性。
+> 两种拼写都出货。`debug-gen2`（`install.sh:191`）和 `Gen2`（`install.sh:280`）写 `0x1`；`far`（`install.sh:280`）和 `deced`（`install.sh:280`）写 `0x2`，由提交 `8854d3e` "Remove clamp link to Gen1" 引入。注意，`Gen2` 分支——那个 README 声称 Gen2 "Working ✓" 的——出货 `0x1`，而卡上确认是用 `0x1` 做的。两种读数内部都自洽，取决于该键意思是 "clamp to gen N"（钳制到代 N）还是 "enable up to gen N"（使能到代 N）。不存在 A/B 引导测试。两个值都不应作为规范呈现。什么能定论它：同一张卡和内核引导三次——无键、带 `0x1`、带 `0x2`——每次贴 `LnkSta`。便宜又决定性。
 
 ## IOMMU 使能
 
-从提交 `6a85e6c`（2026-07-24）起安装器自动配置 IOMMU passthrough。在那之前忘记它是 Gen2 结果失败最常见的原因。
+从提交 `6a85e6c`（2026-07-24）起，安装器自动配置 IOMMU passthrough。在那之前忘记它是 Gen2 结果失败最常见的原因。
 
-`install.sh` 读 `/proc/cpuinfo`、对 `GenuineIntel` 选 `intel_iommu=on iommu=pt`、对 `AuthenticAMD` 选 `amd_iommu=on iommu=pt`，剥离任何现有 `intel_iommu=*`、`amd_iommu=*` 或 `iommu=*` 令牌、重写 `/etc/default/grub`（`GRUB_CMDLINE_LINUX_DEFAULT`，回退到 `GRUB_CMDLINE_LINUX`）或 `/etc/kernel/cmdline`、取一个 `*.cmpunlocker.bak` 备份。`--no-iommu` 退出。它警告 IOMMU 也必须在 BIOS 或 UEFI 里启用（VT-d、AMD-Vi 或 SVM）。`remove.sh` 恢复备份、打印 `Reverted IOMMU kernel parameters (effective after reboot)` 或警告 `No IOMMU config backup found - kernel command line left as-is`。
+`install.sh` 读 `/proc/cpuinfo`：对 `GenuineIntel` 选 `intel_iommu=on iommu=pt`，对 `AuthenticAMD` 选 `amd_iommu=on iommu=pt`，剥离任何现有 `intel_iommu=*`、`amd_iommu=*` 或 `iommu=*` 令牌，重写 `/etc/default/grub`（`GRUB_CMDLINE_LINUX_DEFAULT`，回退到 `GRUB_CMDLINE_LINUX`）或 `/etc/kernel/cmdline`，并取一个 `*.cmpunlocker.bak` 备份。`--no-iommu` 退出。它警告 IOMMU 也必须在 BIOS 或 UEFI 里启用（VT-d、AMD-Vi 或 SVM）。`remove.sh` 恢复备份、打印 `Reverted IOMMU kernel parameters (effective after reboot)`，或警告 `No IOMMU config backup found - kernel command line left as-is`。
 
 `debug-gen2` 完全没有 IOMMU 处理，出货 master 也没有。`6a85e6c` 之前的手动配方：
 
@@ -382,7 +382,7 @@ dmesg | grep -i iommu
 > [!NOTE]
 > **未解问题：IOMMU passthrough 真的必需吗？**
 >
-> 支持：多位测试者从 "got 64GB memory, BUT still PCIe 1" 到一次 grub 改动后成功；维护者的 `DEBUGGING.md` 把它作为 "PCIe still at Gen1 after install"（安装后 PCIe 仍在 Gen1）的*唯一*补救；安装器现在自动做它。反对：独立设置脚本把 `iommu=pt` 和 VT-d 列在 "tested and confirmed unnecessary"（测试并确认不必要）的事物里，而它确认的主机加 AMD HiveOS 成功案例**根本没做 grub 改动**。对 `iomem=relaxed` 也存在直接矛盾的单一测试者报告：一位测试者卡在 2.5 GT/s "until i messed with iommu configuration in grub / because mmap was failing"（直到我在 grub 里摆弄 iommu 配置 / 因为 mmap 失败），另一位跑了 `intel_iommu=on iommu=pt iomem=relaxed` 却一无所获。一个貌似合理却未演示的调和是 `iomem=relaxed` 只对基于用户态 `mmap` 的重训练要紧、IOMMU 模式只在某些芯片组上要紧。什么能定论它：在相同软件上做 {IOMMU off、on、pt} × {Intel、AMD} × {用户态 hammer、驱动内 0008} 的矩阵。
+> 支持方：多位测试者从 "got 64GB memory, BUT still PCIe 1" 到一次 grub 改动后成功；维护者的 `DEBUGGING.md` 把它作为 "PCIe still at Gen1 after install"（安装后 PCIe 仍在 Gen1）的*唯一*补救；安装器现在自动做它。反对方：独立设置脚本把 `iommu=pt` 和 VT-d 列在 "tested and confirmed unnecessary"（测试并确认不必要）的事物里，而它确认的主机加 AMD HiveOS 成功案例**根本没做 grub 改动**。对 `iomem=relaxed` 也存在直接矛盾的单一测试者报告：一位测试者卡在 2.5 GT/s "until i messed with iommu configuration in grub / because mmap was failing"（直到我在 grub 里摆弄 iommu 配置 / 因为 mmap 失败），另一位跑了 `intel_iommu=on iommu=pt iomem=relaxed` 却一无所获。一个貌似合理却未演示的调和是：`iomem=relaxed` 只对基于用户态 `mmap` 的重训练要紧，IOMMU 模式只在某些芯片组上要紧。什么能定论它：在相同软件上做 {IOMMU off、on、pt} × {Intel、AMD} × {用户态 hammer、驱动内 0008} 的矩阵。
 
 ## 验证
 
@@ -396,8 +396,8 @@ sudo lspci -d 10de:20c2 -vv | grep -E 'LnkCap:|LnkSta:'
 
 三条规则，按重要性：
 
-1. **用 `LnkSta` 验证，绝不用 `LnkCap`。** 链路仍在以 Gen1 训练时 `LnkCap` 可能读 Gen2。那个陷阱是大多数经不起推敲的 "it works"（能工作）声称的既定来源。
-2. **预期 sysfs 说谎。** 一张 Gen2 训练过的卡上 `/sys/bus/pci/devices/<bdf>/max_link_speed` 可能仍读 `2.5 GT/s`、而 `current_link_speed` 读 `5.0 GT/s`。一台机器报告一致的 `max 5.0 GT/s`；三张卡跨两台机器报告了不匹配。那是预期的、不是故障。
+1. **用 `LnkSta` 验证，绝不用 `LnkCap`。** 链路仍在以 Gen1 训练时，`LnkCap` 可能读 Gen2。那个陷阱是大多数经不起推敲的 "it works"（能工作）声称的既定来源。
+2. **预期 sysfs 说谎。** 一张 Gen2 训练过的卡上，`/sys/bus/pci/devices/<bdf>/max_link_speed` 可能仍读 `2.5 GT/s`、而 `current_link_speed` 读 `5.0 GT/s`。一台机器报告一致的 `max 5.0 GT/s`；三张卡跨两台机器报告了不匹配。那是预期的、不是故障。
 3. **主机带宽大致翻倍、从约 0.85 GB/s 到约 1.7 GB/s，才是真正的证明。**
 
 `Gen2/verify.sh` 只检查**显存几何布局**、完全不包含 PCIe 检查，尽管分支 README 列出 `| PCIe Gen2 link (5GT/s, Device Max >= 2) | Working ✓ |`。见[验证](../procedures/verify.md)。
@@ -428,7 +428,7 @@ sudo lspci -d 10de:20c2 -vv | grep -E 'LnkCap:|LnkSta:'
 > [!NOTE]
 > **Booter 运行状态总是 `0xffff`**
 >
-> `kgspExecuteBooterLoad_HAL` 对每次载荷运行返回 `0xffff`，无论写入是否落地。每次运行后 seccode 错误码坐在 mailbox0，而 `mailbox0 != 0` 从 `s_executeBooterUcode_TU102` 产生 `NV_ERR_GENERIC`。对载荷运行这是预期的 "invalid signature" 抱怨、在 priv 序列器脚本已经运行*之后*提出。**寄存器回读是唯一有效的成功标准。** 对真实 BooterLoad，`mailbox0 != 0` 是一个真实失败。
+> `kgspExecuteBooterLoad_HAL` 对每次载荷运行返回 `0xffff`，无论写入是否落地。每次运行后 seccode 错误码坐在 mailbox0，而 `mailbox0 != 0` 从 `s_executeBooterUcode_TU102` 产生 `NV_ERR_GENERIC`。对载荷运行，这是预期的 "invalid signature" 抱怨，在 priv 序列器脚本已经运行*之后*提出。**寄存器回读是唯一有效的成功标准。** 对真实 BooterLoad，`mailbox0 != 0` 是一个真实失败。
 
 ## 要求和约束
 
@@ -439,7 +439,7 @@ sudo lspci -d 10de:20c2 -vv | grep -E 'LnkCap:|LnkSta:'
 
 ### 持久性
 
-冷启动总是用锁定的 CMP 表从闪存运行签名的 DevInit，所以首次枚举总是显示 Gen1。普通 `rmmod` 和 `modprobe` **不**重跑 DevInit（无 PERST），所以补丁在每次 GSP 引导时重新触发、恢复寄存器值，但重训练必须在每次重载后重新触发。完整复位路径（PERST、`nvidia-smi --gpu-reset`、`echo 1 > /sys/bus/pci/devices/<bdf>/reset`）重跑签名的 DevInit、丢弃修复。这个模型与每个观察一致、但从未被一次直接的 PERST 前后测量确认。
+冷启动总是用锁定的 CMP 表从闪存运行签名的 DevInit，所以首次枚举总是显示 Gen1。普通 `rmmod` 和 `modprobe` **不**重跑 DevInit（无 PERST），所以补丁会在每次 GSP 引导时重新触发、恢复寄存器值；但重训练必须在每次重载后重新触发。完整复位路径（PERST、`nvidia-smi --gpu-reset`、`echo 1 > /sys/bus/pci/devices/<bdf>/reset`）会重跑签名的 DevInit、丢弃修复。这个模型与每个观察一致，但从未被一次直接的 PERST 前后测量确认。
 
 Gen2 家族上的 `remove.sh` 清理整个足迹：禁用并复位失败 `cmpretrain.service` 和 `cmp-gen2-retrain.service`、移除两个单元文件、`/usr/local/sbin/retrain.sh`、`/usr/local/sbin/cmp-gen2-retrain.sh` 和 `/etc/modprobe.d/cmp-pcie-gen2.conf`（`Removed PCIe Gen2 helpers`），然后恢复 `*.cmpunlocker.bak` 内核命令行备份。
 
@@ -447,7 +447,7 @@ Gen2 家族上的 `remove.sh` 清理整个足迹：禁用并复位失败 `cmpret
 
 | 症状 | 状态 |
 |---|---|
-| `install.sh` 后 `nvidia-smi` 报 `2, 2`、重启后却报 `1, 1`、可复现 | 未解释。重跑 `install.sh` 每次都恢复。一位 NixOS 用户通过在内核层面应用补丁、让它在每次引导重新应用来回避它。工作假设：*打过补丁的*模块实际上不是引导时加载的那个。责怪重训练前先查 `modinfo`、找重启后的 `SEC2_DEBUG: PCIe` 行 |
+| `install.sh` 后 `nvidia-smi` 报 `2, 2`、重启后却报 `1, 1`、可复现 | 未解释。重跑 `install.sh` 每次都恢复。一位 NixOS 用户通过在内核层面应用补丁、让它在每次引导重新应用来回避它。工作假设：*打过补丁的*模块实际上不是引导时加载的那个。责怪重训练前先查 `modinfo`，并找重启后的 `SEC2_DEBUG: PCIe` 行 |
 | 一个 Intel 平台从未到达 Gen2 | 一块 ASUS W890 SAGE、四个 PCIe 5.0 x16 槽、Ubuntu 24.04、内核 7.0.0-28-generic、两张卡。试过：`Gen2` 分支、`debug-gen2`、一个外部 fork、grub 行包括 `intel_iommu=on iommu=pt iomem=relaxed`、一张焊接过的卡和一张未改装的卡、槽 1 和 4。每次都：`LnkSta: Speed 2.5GT/s (downgraded), Width x4 (downgraded)` 而 `LnkCap` 正确宣告 5 GT/s。内核版本被一位把 CachyOS 回滚到 6.12-LTS 却无变化的独立测试者排除。对比工作案例：AMD、HiveOS Ubuntu 22.04、内核 6.12.0、根本没有任何 grub 改动 |
 | Proxmox 或 VFIO 下的客户机 VM | 宣告能力、不发生训练。重训练需要从**宿主机**在物理根端口上驱动，因为客户机访问不了真实的上游桥 |
 | Thunderbolt 3 | Booter Load 彻底失败（`0x15` / `0xffff`），所以这是算力和显存失败、不是 PCIe 的。用 Oculink |

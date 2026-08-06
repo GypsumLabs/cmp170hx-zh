@@ -51,7 +51,7 @@ nvidia-smi --query-gpu=memory.total,driver_version --format=csv
 |---|---|---|---|---|
 | `10de:20c2` | 8 GB | **64 GB**（65536 MiB） | `0x02779000` | `0x0000020B` |
 | `10de:2082` | 10 GB | **40 GB**（40960 MiB） | `0x02669000` | `0x0000028A` |
-| `10de:20b0` | 不一 | **什么** | n/a | n/a |
+| `10de:20b0` | 因卡而异 | **不解锁** | n/a | n/a |
 
 `install.sh` 能检测全部三个 ID，但驱动内门 `_kgspSec2PostblTimingEnabled()` 只接受 `0x20C2` 和 `0x2082`。`20b0` 卡会干净安装然后永不解锁；安装器警告 `This card reports 0x20b0; install will continue, but unlock may not activate.` 更多细节：[识别你的卡](identify-your-card.md)。
 

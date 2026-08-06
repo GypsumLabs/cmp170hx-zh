@@ -2,7 +2,7 @@
 
 **本页覆盖内容。** 当一台主机有不止一张 CMP 170HX 时会发生什么：为什么出货 `master` 在多卡机架上有效、尽管它是一个单卡安装器、未发布的 `multiple-cards` 分支添加了什么（按-BDF 分类、`gpu_inventory` 文件、`mixed` 档位和 `SKIP_GEOMETRY_REWRITE`）、以及只在盒子里有至少两张 GPU 时才出现的失败模式。
 
-提前给的关键结果：**解锁本身已经是按-GPU 的。** 自提交 `7fe49b6` 起、打过补丁的 `nvidia.ko` 携带两种几何布局、并在 GSP 引导时从 `pGpu->idInfo.PCIDeviceID >> 16` 选择一个，所以机器里的每张卡都以正确的大小独立解锁、不管安装器怎么想。`master` 上是单卡的只有*安装器的*记账：它取第一行匹配的 `lspci`、从一次 `nvidia-smi` 读猜测一个档位、并写一组元数据文件。`multiple-cards` 和 `Gen2` 分支用一个真实的按-设备清单取代那段记账。
+提前给的关键结果：**解锁本身已经是按-GPU 的。** 自提交 `7fe49b6` 起，打过补丁的 `nvidia.ko` 携带两种几何布局，并在 GSP 引导时从 `pGpu->idInfo.PCIDeviceID >> 16` 选择一个，所以机器里的每张卡都以正确的大小独立解锁，不管安装器怎么想。`master` 上只有*安装器的*记账是单卡的：它取第一行匹配的 `lspci`，从一次 `nvidia-smi` 读数猜测一个档位，并写一组元数据文件。`multiple-cards` 和 `Gen2` 分支用一个真实的按-设备清单取代那段记账。
 
 多卡操作在实践中确认可用：一位操作者在 Proxmox 下直通了八张 8 GB CMP 170 卡、全部解锁。对一个六卡机架的更早建议是先试 `master`，而一位多 GPU 用户后来确认 master 工作得很好。
 
@@ -14,7 +14,7 @@
 lspci -nn | grep -iE '10de:20b0|10de:20c2|10de:2082' | head -1
 ```
 
-那个 `head -1` 就是全部故事。`install.sh` 记录一个 BDF 和一个设备 ID，然后调用 `detect_card_profile()`，它读 `nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1`、再次取第一项、这次是 *nvidia-smi* 顺序而非 *lspci* 顺序。两种排序不保证一致。
+那个 `head -1` 就是全部故事。`install.sh` 记录一个 BDF 和一个设备 ID，然后调用 `detect_card_profile()`，它读 `nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1`，再次取第一项，这次是 *nvidia-smi* 顺序而非 *lspci* 顺序。两种排序不保证一致。
 
 在当前 `master` 上的后果：
 
@@ -29,7 +29,7 @@ lspci -nn | grep -iE '10de:20b0|10de:20c2|10de:2082' | head -1
 > [!WARNING]
 > **在混合-GPU 主机上始终传 `--profile`**
 >
-> 一张 RTX 3080 10 GB 与一张 8 GB CMP 170HX 并存的主机，被至少两人复现为从 3080 检测出 "10GB" 并选 10 GB 档位。另一份报告有另一个 CMP SKU（一张 50HX）被误检为 10 GB 170HX。在当前 `master` 上这只会给元数据文件贴错标签，但显式传 `--profile=8gb` 或 `--profile=10gb` 的习惯零成本、还移除整整一类令人困惑的输出。
+> 一张 RTX 3080 10 GB 与一张 8 GB CMP 170HX 并存的主机，至少两人复现过从 3080 检测出 "10GB" 并选 10 GB 档位。另一份报告有另一个 CMP SKU（一张 50HX）被误检为 10 GB 170HX。在当前 `master` 上这只会给元数据文件贴错标签，但显式传 `--profile=8gb` 或 `--profile=10gb` 的习惯零成本，还能移除整整一类令人困惑的输出。
 
 ---
 
@@ -62,11 +62,11 @@ expected_mib_for_profile() {
 }
 ```
 
-然后安装器走 `lspci -nn | grep -iE '10de:20b0|10de:20c2|10de:2082'` 的**每一**行（经 `mapfile`、不用 `head -1`）并构建五个平行数组：BDF、设备 ID、档位、预期 MiB、当前 MiB。当前 MiB 来自一次缓存的 `nvidia-smi --query-gpu=pci.bus_id,memory.total --format=csv,noheader,nounits` 查找、按总线 ID 而非索引匹配。
+然后安装器走 `lspci -nn | grep -iE '10de:20b0|10de:20c2|10de:2082'` 的**每一**行（经 `mapfile`、不用 `head -1`）并构建五个平行数组：BDF、设备 ID、档位、预期 MiB、当前 MiB。当前 MiB 来自一次缓存的 `nvidia-smi --query-gpu=pci.bus_id,memory.total --format=csv,noheader,nounits` 查找，按总线 ID 而非索引匹配。
 
 总线 ID 通过一个共享的 `normalize_bus_id()` 比较，它转小写并把一个短的 `BB:DD.F` 展开成 `0000:BB:DD.F`，所以 `lspci` 和 `nvidia-smi` 拼写比较相等。同一个函数逐字存在于 `verify.sh` 里。
 
-一张 `20b0` 卡在这里被分类为 `unsupported` 并**跳过**、带 `GPU <bdf> (10de:20b0), unlock path not gated for this ID; skipping`，这是对 master（它警告并继续、选那张卡）的一个行为差异。如果每张检测到的卡都不受支持，分支安装器以 `No unlockable CMP 170HX GPUs found (need 10de:20c2 and/or 10de:2082)` 死掉。
+一张 `20b0` 卡在这里被分类为 `unsupported` 并**跳过**，带消息 `GPU <bdf> (10de:20b0), unlock path not gated for this ID; skipping`，这与 master 的行为不同（master 会警告并继续、选中那张卡）。如果每张检测到的卡都不受支持，分支安装器以 `No unlockable CMP 170HX GPUs found (need 10de:20c2 and/or 10de:2082)` 死掉。
 
 典型的第 2 步输出：
 
@@ -113,10 +113,10 @@ else
 fi
 ```
 
-那段代码片段里有两件值得注意：
+这段代码片段里有两件值得注意的事：
 
-1. 在 `mixed` 模式里 `CFG1` / `LMR` / `FB_BYTES` 变量仍被赋成**8 GB** 值、却从未被使用。它们是混合主机如果丢掉标志*并且*重写可达时、会试图为每张卡烘焙的值；第 2 点解释为什么它不可达。
-2. `SKIP_GEOMETRY_REWRITE` 是叠加在一个已有安全网之上的双保险。它跳过的内联 Python 步骤已经以一个六标记检查开头、检查两种烘焙几何布局、并以 `runtime device-id geometry (profile metadata=<label>)` 退出、不编辑任何东西。在任何源自 `7fe49b6` 的树上，重写无论如何都是空操作。只有某人重新引入一个单-SKU 补丁时该标志才要紧。
+1. 在 `mixed` 模式里 `CFG1` / `LMR` / `FB_BYTES` 变量仍被赋成**8 GB** 值、却从未被使用。它们是混合主机丢掉标志*并且*重写可达时，会试图为每张卡烘焙的值；第 2 点解释了为什么它不可达。
+2. `SKIP_GEOMETRY_REWRITE` 是叠加在一个已有安全网之上的双保险。它跳过的内联 Python 步骤已经以一个六标记检查开头，检查两种烘焙几何布局，并以 `runtime device-id geometry (profile metadata=<label>)` 退出、不编辑任何东西。在任何源自 `7fe49b6` 的树上，重写无论如何都是空操作。只有有人重新引入单-SKU 补丁时，这个标志才要紧。
 
 `unlock_geometry` 在那个模式下以字面量字符串 `mixed` 被写、`card_profile` 也写成 `mixed`。
 
@@ -131,9 +131,9 @@ BDF              devid  profile  expected_mib
 0000:0d:00.0     2082   10gb     40960
 ```
 
-真实文件没有表头行；上面的列是为可读性加标的。如果变量为空，`build.sh` 把文件截断到零字节、而非留下一个陈旧的。
+真实文件没有表头行；上面的列是为可读性加的标签。如果变量为空，`build.sh` 会把文件截断到零字节，而不是留下一个陈旧的。
 
-像其它三个元数据文件一样，**内核模块里没有任何东西读它。** 它唯一的消费者是 `verify.sh`，它偏好它而非活 `lspci` 枚举，这样一张已掉下总线的卡被报告为 `MISSING`、而非静默从检查中消失。
+像其它三个元数据文件一样，**内核模块里没有任何东西读它。** 它唯一的消费者是 `verify.sh`，后者优先使用它而不是活的 `lspci` 枚举，这样一张已掉下总线的卡会被报告为 `MISSING`，而不是静默地从检查中消失。
 
 ### `verify.sh` 在多卡机架上
 
@@ -155,9 +155,9 @@ sudo ./verify.sh
 
 ### 1. depmod 静默挑一个 `nvidia.ko`
 
-本页最有价值的一项。一个打过补丁的和一个出厂的 `nvidia.ko` 可能都落在单一的 `updates` depmod 搜索项下，那种情况下 **depmod 任意挑一个、静默丢掉另一个**。一位测试者把一个多卡失败精确根因到这一点、只在 updates 搜索路径里保留 cmpunlocker 变体、重启、然后确认多卡操作工作。
+本页最有价值的一项。一个打过补丁的和一个出厂的 `nvidia.ko` 可能都落在单一的 `updates` depmod 搜索项下，那种情况下 **depmod 会任意挑一个、静默丢掉另一个**。一位测试者把一个多卡失败精确根因到这一点、只在 updates 搜索路径里保留 cmpunlocker 变体、重启、然后确认多卡操作工作。
 
-这是与 `build.sh` 警告的 `srcversion` 不匹配相同的失败类：运行中的模块不是打过补丁的那个，所以没有卡解锁。用它诊断：
+这与 `build.sh` 警告的 `srcversion` 不匹配属于同一失败类：运行中的模块不是打过补丁的那个，所以没有卡解锁。用它诊断：
 
 ```bash
 modprobe -n -v nvidia | awk '/insmod/ {print $2; exit}'
@@ -195,12 +195,12 @@ modinfo -F srcversion /lib/modules/$(uname -r)/updates/cmpunlocker/nvidia.ko
 几份 "多卡很慢" 的报告是链路带宽问题、不是解锁问题：
 
 - 每张卡默认都是 Gen1 x4。到 Gen2 是未发布分支上的一个软件改动；超过 x4 位宽需要焊接交流耦合电容。这两个是各自独立的成果。见[PCIe 子系统](../hardware/pcie-subsystem.md) 和 [PCIe Gen2](../unlock/pcie-gen2.md)。
-- **NVLink 熔断关闭**、这张卡上 P2P 缺失。`llama-server --split-mode row` 与层拆分命令一起被传开、却被标注 "benchmark-only on these links"（仅在这些链路上做基准），与张量并行式拆分在 Gen1 x4 下不可行一致。
-- 一条被频繁引用的经验法则（"x4 给 10-30% 加速、x8 或更好是理想"、对多 GPU LLM 服务而言）是作为经验法则提供的、**没在 170HX 上测过**。把它当中等置信度。见[LLM 推理](../operations/llm-inference.md)。
+- **NVLink 熔断关闭**、这张卡上 P2P 缺失。`llama-server --split-mode row` 与层拆分命令一起被传开、却被标注 "benchmark-only on these links"（仅在这些链路上做基准），这与张量并行式拆分在 Gen1 x4 下不可行相符。
+- 一条被频繁引用的经验法则（"x4 给 10-30% 加速、x8 或更好是理想"、对多 GPU LLM 服务而言）只是作为经验法则提供的、**没在 170HX 上测过**。把它当作中等置信度。见[LLM 推理](../operations/llm-inference.md)。
 
 ### 8. P2P 分层
 
-`aikitoria` P2P 补丁可以通过把它丢进 `driver/patches/` 作为 `0007-unlock-p2p.patch` 分层在 cmpunlocker 之上，因为 `build.sh` 按 glob 顺序应用每个 `*.patch`。它在一个纯-170HX 系统上是否有用未解决：一位测试者报告 "It doesn't seem to take effect on the 170HX... It only has an effect on them if there are other models of GPUs on the same machine"（它在 170HX 上似乎没生效……只有当机器上还有其它型号 GPU 时才对它们有效），而另一位在同一台还含两张 RTX 3090 的机架上报告 P2P 加 cmpunlocker 工作，那恰好是第一份报告说唯一能工作的混合型号情形。双方都同意 P2P 受带宽约束、在 Gen1 x4 下收益甚微。见[P2P](../frontier/p2p.md)。
+`aikitoria` P2P 补丁可以通过把它丢进 `driver/patches/` 作为 `0007-unlock-p2p.patch` 分层在 cmpunlocker 之上，因为 `build.sh` 按 glob 顺序应用每个 `*.patch`。它在一个纯-170HX 系统上是否有效仍未解决：一位测试者报告 "It doesn't seem to take effect on the 170HX... It only has an effect on them if there are other models of GPUs on the same machine"（它在 170HX 上似乎没生效……只有当机器上还有其它型号 GPU 时才对它们有效），而另一位在同一天、在一台还含两张 RTX 3090 的机架上报告 P2P 加 cmpunlocker 工作，那恰好就是第一份报告所说的、唯一能工作的混合型号情形。双方都同意 P2P 受带宽约束、在 Gen1 x4 下收益甚微。见[P2P](../frontier/p2p.md)。
 
 ---
 
@@ -221,7 +221,7 @@ modinfo -F srcversion /lib/modules/$(uname -r)/updates/cmpunlocker/nvidia.ko
    sudo ./install.sh --profile=8gb     # 或 --profile=10gb
    ```
 
-   对一个真正混合的 8 GB + 10 GB 机架，`master` 仍产生每张卡的正确几何布局；你放弃的只有准确的元数据和 `verify.sh`。如果你想要那些，用 `multiple-cards` 分支并接受它未发布。
+   对一个真正混合的 8 GB + 10 GB 机架，`master` 仍产生每张卡的正确几何布局；你只是放弃了准确的元数据和 `verify.sh`。如果你想要那些，用 `multiple-cards` 分支并接受它未发布。
 
 3. 冷启动。`sudo shutdown -h now`，然后上电。
 

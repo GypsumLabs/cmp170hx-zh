@@ -1,8 +1,8 @@
 # 验证解锁
 
-**本页覆盖内容。** 如何带着证据而非希望证明一次解锁真正落地：每个 SKU 上 `nvidia-smi` 应说什么、如何逐行读 `SEC2_DEBUG` 内核日志行、已安装的元数据文件是什么意思、分支专属 `verify.sh` 如何工作、如何确认额外显存是*真实*的而非别名折叠、以及如何确认**算力**解锁——那是与显存容量完全分离的一个结果、需要它自己的测量。
+**本页覆盖内容。** 如何带着证据而非希望证明一次解锁真正落地：每个 SKU 上 `nvidia-smi` 应说什么、如何逐行读 `SEC2_DEBUG` 内核日志行、已安装的元数据文件有什么含义、分支专属 `verify.sh` 如何工作、如何确认额外显存是*真实*的而非别名折叠、以及如何确认**算力**解锁——那是与显存容量完全分离的一个结果，需要它自己的测量。
 
-头条：`nvidia-smi` 在 8 GB 卡上报 **65536 MiB**、在 10 GB 卡上报 **40960 MiB** 证明显存几何布局写落地了。它关于算力证明不了什么。算力由对 `nvidia-smi` 不可见的两次寄存器写（SS0 `0x0082381c` = `0x88888888`、SS1 `0x00823820` = `0x00000008`）解锁，而确认它们的唯一方式是回读它们、从 `SEC2_DEBUG` 日志或做基准测试。
+**要点。** `nvidia-smi` 在 8 GB 卡上报 **65536 MiB**、在 10 GB 卡上报 **40960 MiB**，证明显存几何布局写落地了。它关于算力什么都证明不了。算力由两次对 `nvidia-smi` 不可见的寄存器写（SS0 `0x0082381c` = `0x88888888`、SS1 `0x00823820` = `0x00000008`）解锁，确认它们的唯一方式是从 `SEC2_DEBUG` 日志回读，或做基准测试。
 
 ---
 
@@ -39,8 +39,8 @@ nvidia-smi --query-gpu=name,memory.total,clocks.max.sm,pcie.link.gen.current,pci
 
 读结果：
 
-- **8 GB 卡上的 8192 MiB 意味着解锁没触发。** 那是泄露分发自己 README 里的失败分诊行、它是正确的：PLM 打开、以及其后的一切、都没发生。
-- **出厂大小和目标大小之间任何东西都不是部分解锁。** 几何布局是一个从 PCI 设备 ID 选择的固定 CFG1 + LMR 对；它要么落地、要么没有。
+- **8 GB 卡上的 8192 MiB 意味着解锁没触发。** 那是泄露分发自己 README 里的失败分诊行，它是对的：PLM 打开，以及其后的一切，都没发生。
+- **出厂大小和目标大小之间任何东西都不是部分解锁。** 几何布局是从 PCI 设备 ID 选出的一个固定 CFG1 + LMR 对；它要么落地、要么没有。
 
 > [!CAUTION]
 > **81920 MiB 不是成功**
@@ -50,13 +50,13 @@ nvidia-smi --query-gpu=name,memory.total,clocks.max.sm,pcie.link.gen.current,pci
 > [!NOTE]
 > **`clocks.max.sm = 1935 MHz` 是一个报告字段、不是可达时钟**
 >
-> `install.sh` 建议把检查 `clocks.max.sm` 作为验证的第 4 步，而解锁卡确实报告 1935 MHz。把那个数字当作**低置信度**、不是一个工作时钟：VBIOS 表最大图形时钟是 1695 MHz、实际硅片天花板在 +350 偏移下约 1604-1614 MHz。每次持续测量都停在 **1410 MHz** 标称、或 `-pl 300` 下 **1470 MHz**。见[调优](../operations/tuning.md)。
+> `install.sh` 建议把检查 `clocks.max.sm` 作为验证的第 4 步，而解锁卡确实报告 1935 MHz。把那个数字当作**低置信度**、而不是一个工作时钟：VBIOS 表里的最大图形时钟是 1695 MHz，实际硅片天花板在 +350 偏移下约 1604-1614 MHz。每次持续测量都停在 **1410 MHz** 标称、或 `-pl 300` 下 **1470 MHz**。见[调优](../operations/tuning.md)。
 
 ---
 
 ## `SEC2_DEBUG` dmesg 轨迹
 
-每次解锁动作都以 `SEC2_DEBUG:` 前缀记录。那个前缀、连同 `SEC2_DEBUG_PRI_*` 寄存器名和 `kgspSec2PostblTiming*` 函数名、出现在出厂 610.43.03 源码的任何地方都不出现；"PostBL Timing" 是一个虚构的、貌似 NVIDIA 的功能名。实际后果是一次 grep：
+每次解锁动作都以 `SEC2_DEBUG:` 前缀记录。那个前缀，连同 `SEC2_DEBUG_PRI_*` 寄存器名和 `kgspSec2PostblTiming*` 函数名，在出厂 610.43.03 源码的任何地方都不出现；"PostBL Timing" 是一个虚构的、貌似 NVIDIA 的功能名。实际后果是一次 grep：
 
 ```bash
 sudo dmesg | grep SEC2_DEBUG
@@ -112,7 +112,7 @@ cat /lib/modules/$(uname -r)/updates/cmpunlocker/driver_version    # 例如 610.
 cat /lib/modules/$(uname -r)/updates/cmpunlocker/gpu_inventory     # 仅分支，见 multi-gpu.md
 ```
 
-这些是 `build.sh` 写的单行文件。**内核模块里没有任何东西读它们。** 它们记录安装器*相信*了什么、不是驱动*做*了什么。一台 8 GB 卡在 65536 MiB 起来、`card_profile` 却是 `10gb` 的机器是一个元数据 bug、不是解锁 bug，因为几何布局在 GSP 引导时从 PCI 设备 ID 选择。打过补丁的内核引导时唯一读的文件是可选 `/lib/firmware/nvidia/ga100/gsp/dmem.bin`。
+这些是 `build.sh` 写的单行文件。**内核模块里没有任何东西读它们。** 它们记录安装器*相信*了什么，不是驱动*做*了什么。一台 8 GB 卡以 65536 MiB 启动、`card_profile` 却是 `10gb` 的机器是一个元数据 bug，不是解锁 bug，因为几何布局在 GSP 引导时从 PCI 设备 ID 选择。打过补丁的内核引导时唯一读的文件是可选 `/lib/firmware/nvidia/ga100/gsp/dmem.bin`。
 
 两个进一步有用的检查：
 
@@ -133,7 +133,7 @@ modinfo -F srcversion /lib/modules/$(uname -r)/updates/cmpunlocker/nvidia.ko
 >
 > `verify.sh` **不**存在于 `master` 上。它只在 `multiple-cards`、`Gen2`、`far` 和 `deced` 分支上。`master` 上也没有 `tools/` 目录、没有测试套件。
 
-`verify.sh` 是一个多卡安装后检查器。它需要 `nvidia-smi`、缓存 `nvidia-smi --query-gpu=pci.bus_id,memory.total --format=csv,noheader,nounits`，然后枚举 GPU、偏好已安装的 `gpu_inventory` 文件、否则回退到 `lspci -nn | grep -iE '10de:20c2|10de:2082'`。
+`verify.sh` 是一个多卡安装后检查器。它需要 `nvidia-smi`，缓存 `nvidia-smi --query-gpu=pci.bus_id,memory.total --format=csv,noheader,nounits`，然后枚举 GPU：优先使用已安装的 `gpu_inventory` 文件，否则回退到 `lspci -nn | grep -iE '10de:20c2|10de:2082'`。
 
 每张 GPU 它分类报告的大小：
 
@@ -176,7 +176,7 @@ modinfo -F srcversion /lib/modules/$(uname -r)/updates/cmpunlocker/nvidia.ko
 
 报告容量和可用容量是不同的主张。要排除的失败模式是**折叠**：地址空间回绕、让高地址别名低地址。
 
-`check_fold.py` 是权威测试。它不在仓库里：像 `cuda_dbg.py` 一样、它作为 gist 或频道附件带外分发，所以单独获取它、别指望克隆提供它。它分配全部空闲 VRAM 减 2 GiB、用一个 PTX `sm_80` `fill` 内核写每个 64 KB 页自己的索引、然后用一个 `chk` 内核读每个页回来，用 `st.global.wt.u32` 存储和 `ld.global.cv.u32` 加载来挫败缓存。它必须是稠密的，因为折叠在一个通道-**交错**偏移量处别名：`LOW[0]` 映射到 `(40 GiB + interleave)`、不是 `(40 GiB + 0)`，所以一次稀疏探测给出假阴性。
+`check_fold.py` 是权威测试。它不在仓库里：像 `cuda_dbg.py` 一样，它作为 gist 或频道附件在带外分发，所以请单独获取它，别指望克隆能提供它。它分配全部空闲 VRAM 减 2 GiB，用一个 PTX `sm_80` `fill` 内核给每个 64 KB 页写入自己的索引，然后用一个 `chk` 内核把每页读回来，用 `st.global.wt.u32` 存储和 `ld.global.cv.u32` 加载来挫败缓存。它必须是稠密的，因为折叠在一个通道-**交错**偏移量处别名：`LOW[0]` 映射到 `(40 GiB + interleave)`、不是 `(40 GiB + 0)`，所以一次稀疏探测给出假阴性。
 
 | 输出 | 退出码 | 含义 |
 |---|---|---|
@@ -199,7 +199,7 @@ modinfo -F srcversion /lib/modules/$(uname -r)/updates/cmpunlocker/nvidia.ko
 
 ## 确认算力吞吐，区别于容量
 
-算力解锁是 FEAT PLM 打开后对 SS0 和 SS1 的那对写。它们是来自主机 CPU 的 `GPU_REG_WR32` 调用、PLM 打开后不涉及利用，而且对两个 SKU 都**无条件**。
+算力解锁是 FEAT PLM 打开后对 SS0 和 SS1 的那对写。它们是来自主机 CPU 的 `GPU_REG_WR32` 调用，PLM 打开后不再涉及利用，而且对两个 SKU 都**无条件**。
 
 | 寄存器 | 地址 | 锁定 | 解锁 |
 |---|---|---|---|
@@ -228,7 +228,7 @@ modinfo -F srcversion /lib/modules/$(uname -r)/updates/cmpunlocker/nvidia.ko
 
 ### 关于 FMA 封锁的一个注意事项
 
-与 SS0/SS1 分开，这个部件上 FP32 融合乘加吞吐以编译器标志可绕开的方式被限制：`nvcc -fmad=false`、OpenCL 的 `#pragma OPENCL FP_CONTRACT OFF` 加对 `fma()`/`mad()` 的宏遮蔽、或 SYCL 的 clang `-ffp-contract=off`。一个 2023 **锁定卡** FluidX3D 案例在移除 FMA 后达到 7,681 MLUPs/s、提升 3.4 倍；另一份 2023 报告通过同一条路线把锁定卡 FP32 从 0.395 → 6.285 TFLOPS。这些是解锁前数字。SS0/SS1 写之后 FP32 FFMA 不再节流（普通构建 12.2-12.8 TFLOPS）、no-FMA/no-DP4A 补丁不必要。**基准测试接近 6.25 TFLOPS 的卡是一个失败的解锁签名、不是 FMA 收缩伪影**。见[性能](../operations/performance.md)。
+与 SS0/SS1 分开，这个部件上 FP32 融合乘加吞吐被限制，但可以用编译器标志绕开：`nvcc -fmad=false`、OpenCL 的 `#pragma OPENCL FP_CONTRACT OFF` 加对 `fma()`/`mad()` 的宏遮蔽、或 SYCL 的 clang `-ffp-contract=off`。一个 2023 **锁定卡** FluidX3D 案例在移除 FMA 后达到 7,681 MLUPs/s、提升 3.4 倍；另一份 2023 报告通过同一条路线把锁定卡 FP32 从 0.395 → 6.285 TFLOPS。这些都是解锁前的数字。SS0/SS1 写之后 FP32 FFMA 不再节流（普通构建 12.2-12.8 TFLOPS），no-FMA/no-DP4A 补丁也不再必要。**基准测试接近 6.25 TFLOPS 的卡是一个失败的解锁签名，不是 FMA 收缩伪影**。见[性能](../operations/performance.md)。
 
 ---
 

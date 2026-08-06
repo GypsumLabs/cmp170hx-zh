@@ -15,7 +15,7 @@
 | 状态 | Gen2 于 2026-07-24 软件达到，**未出货**；Gen3 和 Gen4 未达到 | 自 2026 年 4 月起被多位独立改装者复现 |
 | 会改变另一个吗？ | 不会。一张 Gen2 补丁的未改装卡是 Gen2 x4。 | 不会。一张完全改装的无补丁卡是 Gen1 x16。 |
 
-两者独立的唯一最清晰证明：一张出厂、从未焊接的 8 GB 卡运行 Gen2 代码时报告 `LnkCap: Port #0, Speed 5GT/s, Width x16`，而 `LnkSta` 读 `Speed 5GT/s, Width x4 (downgraded)`。能力寄存器说 x16；训练好的链路说 x4。软件中没有任何东西能弥合那个差距，因为 12 条通道上没有电气路径。
+证明两者独立的最清晰单条证据：一张出厂、从未焊接的 8 GB 卡运行 Gen2 代码时报告 `LnkCap: Port #0, Speed 5GT/s, Width x16`，而 `LnkSta` 读 `Speed 5GT/s, Width x4 (downgraded)`。能力寄存器说 x16；训练好的链路说 x4。软件中没有任何东西能弥合那个差距，因为 12 条通道上没有电气路径。
 
 > [!WARNING]
 > **实验性**
@@ -165,7 +165,7 @@ FWSEC-DevInit 在 SEC2 Booter 运行前编程并**锁存** `SUPPORTED_LINK_SPEED
 
 1. **没有通道熔丝被置位。** `0x00820394` 的 `OPT_PCIE_LANE_DISABLE`、`0x0082082C` 的 `CTRL_OPT_PCIE_LANE` 和 `0x00820C2C` 的 `STATUS_OPT_PCIE_LANE` 在队列中的每一张卡（包括两块 170HX 单元）上都读 `0x00000000`。x16 电气宽度在硅片中是完好的。
 2. **没有代码碰位宽。** 对 Gen2 代码里每一个与 PCIe 相关的写入的一次穷举审计，发现只写 `LINK_CTRL_2 [3:0]`、`LINK_CONFIG_0 [19:18]`、`CYA_0` 位 2、`PRIV_MISC_1` 位 11-14、`PL_LINK_RATE`、`OPT_GEN23`、XP3G 槽 0 和 3、VSEC 设备和层级位，以及配置空间的 `LNKCTL2` TLS。`LINK_CAP` 被读但只测试它的低速度半字节；`LINK_CAP[9:4]` 的 Max Link Width 字段从不被读也不被写，而 `LNKSTA` 被 `PCI_EXP_LNKSTA_CLS` 和 `PCI_EXP_LNKSTA_DLLLA` 掩码，但从不用 `PCI_EXP_LNKSTA_NLW`。对出货 master 和全部十二个未发布分支 grep "capacitor"、"AC coupling"、"solder" 或任何位宽寄存器一无所获。
-3. **一个已知良好的 x16 主机端口仍以 x4 训练。** 2026-07-26 在一台主机里的两张卡上实测：sysfs 报告两块 GPU 都是位宽 `cur 4 / max 16`，而第二块 GPU 的上游端口本身是 x16 能力的（`cur 4 / max 16`），链路仍以 x4 训练。转接卡和插槽分歧假设由 PCB 分析回答，不由软件中任何东西回答。
+3. **一个已知完好的 x16 主机端口仍以 x4 训练。** 2026-07-26 在一台主机里的两张卡上实测：sysfs 报告两块 GPU 都是位宽 `cur 4 / max 16`，而第二块 GPU 的上游端口本身是 x16 能力的（`cur 4 / max 16`），链路仍以 x4 训练。转接卡和插槽分歧假设由 PCB 分析回答，不由软件中任何东西回答。
 
 ### 部件
 
@@ -194,7 +194,7 @@ FWSEC-DevInit 在 SEC2 Booter 运行前编程并**锁存** `SUPPORTED_LINK_SPEED
 部分工作会协商降级而非失败。PCIe 位宽协商经过合法位宽 16、8、4、1 回退，所以 24 颗电容中正确贴装 12 到 23 颗的卡以 **x8** 训练。一位改装者三张卡的进展是 x4、然后 x8、然后 x16，随技术提高；另一张卡 "after smaller readjustments"（经过小调整后）走 x4、x8、x16。改装后出现 x8 结果意味着焊接点不完整或桥接，而非一个不同的硬件限制。回流并检查全部 24 个焊点。
 
 > [!CAUTION]
-> **这是在你不替换的卡上的细间距返工**
+> **这是在一块你无法更换的卡上做细间距返工**
 >
 > 密集的高速差分区域里的 0402 部件。一个桥接对不仅无法加宽链路，还会破坏一条之前能工作的通道上的信令。含铅焊锡被报告让这活 "extremely easy"（极其容易）；用针头加风枪涂锡膏让部件自对准。完整流程和照片在[物理改装](../operations/physical-mods.md)。
 

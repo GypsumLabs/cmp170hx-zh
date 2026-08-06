@@ -261,7 +261,7 @@ cat /lib/modules/$(uname -r)/updates/cmpunlocker/unlock_geometry   # 64GB or 40G
 cat /lib/modules/$(uname -r)/updates/cmpunlocker/driver_version
 ```
 
-内核模块里没有任何东西读这三个文件。它们为人而存在，也为 `verify.sh` 而存在，后者把 `20c2 -> 8gb -> 65536 MiB` 和 `2082 -> 10gb -> 40960 MiB` 对应起来。注意 `verify.sh` 并**不**随 `master` 发布：它只存在于 `multiple-cards`、`Gen2`、`far` 和 `deced` 分支上，并且它是从 `lspci` 推导那个映射的，读 `card_profile` 和 `unlock_geometry` 只是为了打印它们。
+内核模块里没有任何东西读这三个文件。它们为人而存在，也为 `verify.sh` 而存在，后者把 `20c2 -> 8gb -> 65536 MiB` 和 `2082 -> 10gb -> 40960 MiB` 对应起来。注意 `verify.sh` 并**不**随 `master` 发布：它只存在于 `multiple-cards`、`Gen2`、`far` 和 `deced` 分支上；它从 `lspci` 推导出那个映射，读 `card_profile` 和 `unlock_geometry` 只是为了打印出来。
 
 ---
 

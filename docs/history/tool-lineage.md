@@ -2,7 +2,7 @@
 
 ## 本页覆盖内容
 
-四代 CMP 170HX 工具存在、且它们在时间上重叠，所以"更新"不总是意味着"取代"。本页从 2026 年 6 月第一次手动 BAR0 poke 追溯到出货的驱动内补丁集和它上面的分支结构、并直白陈述哪些路径死了、免得有人跟上去。
+四代 CMP 170HX 工具并存，且时间上彼此重叠，所以"更新"并不总意味着"取代"。本页从 2026 年 6 月第一次手动 BAR0 poke 一路追溯到出货的驱动内补丁集及其上的分支结构，并直白说明哪些路径已死，免得有人再踩进去。
 
 **如果你只想要短答案：**
 
@@ -27,11 +27,11 @@
 
 ## 第 0 代：测量仪器
 
-这些先于解锁、为熔丝表征而建、且保持正确工具。整个项目的治理纪律从这里来：**任何写之后、用 `probe.sh` 回读寄存器、而不是相信一个工具的成功声称。**
+这些工具先于解锁出现，为熔丝表征而建，至今仍是正确的工具。整个项目的治理纪律正源于此：**任何写入之后，都要用 `probe.sh` 回读寄存器，而不是轻信某个工具声称的成功。**
 
 ### `probe.sh`（tools/mmio-probe）
 
-一个自包含的 bash 加内联 Python 工具、它只读地 mmap `/sys/bus/pci/devices/<BDF>/resource0` 并转储约 120 到 130 个具名寄存器加 24 个每-FBPA 读。它**从不对 BAR0 写**。
+一个自包含的 bash 加内联 Python 工具，它只读地 mmap `/sys/bus/pci/devices/<BDF>/resource0` 并转储约 120 到 130 个具名寄存器加 24 个每-FBPA 读。它**从不对 BAR0 写**。
 
 ```bash
 ./probe.sh [pci_id]      # 默认过滤 10de:
@@ -47,9 +47,9 @@
 | 派生地址 | fbpa00 CSTATUS_RAMAMOUNT `0x0090020C`、fbpa01 `0x0090420C`、fbpa23 `0x0095C20C`；CFG0 在偏移量 `0x200`；广播 CFG0 `0x009A0200`、CFG1 `0x009A0204` |
 | 可选 CUDA 步骤 | 用 `nvcc -arch=sm_70 -O2` 编译并运行 `sr_dump.cu`、以 `dump_sr<<<p.multiProcessorCount, 32>>>()` 启动、报告每 SM 的 `%smid`、`%warpid`、`%nsmid`、`%nwarpid`、`%lanemask_eq`、所以 **SM 数被测量、而非被报告**（170HX 上 70）。`nvcc` 缺失时带日志行跳过 |
 
-`gpu-summary.csv` 捕获 `driver_version` 和 `vbios_version`、那正是让一次探测结果能被绑到一颗具体 VBIOS 的东西。该工具建在 MODS/MATS 之上、预期可移植到其它卡、带"registers may be in diff ranges etc though"（寄存器可能在不同范围等）这个注意。
+`gpu-summary.csv` 捕获 `driver_version` 和 `vbios_version`，这正是把一次探测结果绑定到具体 VBIOS 的关键。该工具建在 MODS/MATS 之上，预期可移植到其它卡，但也带着"registers may be in diff ranges etc though"（寄存器可能在不同范围等）这个注意。
 
-读 BAR0 需要 root **加** `CAP_SYS_RAWIO`、容器化的 GPU 宿主会丢弃它；探测随后以 `cannot open .../resource0 (EPERM) even as root` 抛出。如果 `mmap` 以 EBUSY 或 EACCES 失败、NVIDIA 驱动持有 BAR：
+读 BAR0 需要 root **加** `CAP_SYS_RAWIO`，而容器化的 GPU 宿主会丢弃它；探测随后会以 `cannot open .../resource0 (EPERM) even as root` 抛出。如果 `mmap` 以 EBUSY 或 EACCES 失败，说明 NVIDIA 驱动持有 BAR：
 
 ```bash
 sudo systemctl stop nvidia-persistenced; sudo nvidia-smi -pm 0
@@ -66,7 +66,7 @@ GA100 BAR0 是一个 16 MiB PRI 孔径（`0x1000000`）；偏移量 0 处的 `PM
 
 ### VBIOS 工具
 
-`z1_dump_and_parse_vbios.sh` 通过三个 sysfs 命令（`echo 1 > .../rom`、`cat`、`echo 0 >`）无破坏地转储一个 VBIOS、带无前缀 sysfs 路径然后 `nvflash --save` 的回退。它**对闪存是只读的**：不存在写路径。没有转储方法存在时退出 2、转储为空时退出 3。
+`z1_dump_and_parse_vbios.sh` 通过三个 sysfs 命令（`echo 1 > .../rom`、`cat`、`echo 0 >`）无破坏地转储 VBIOS，并以无前缀的 sysfs 路径、再以 `nvflash --save` 作为回退。它**对闪存是只读的**：不存在写路径。没有转储方法存在时退出 2，转储为空时退出 3。
 
 `z2_parse_vbios_table.py` 通过四个魔数定位 ROM 结构：偏移量 0 处的 `NVGI`、经 `+0x18` 处 ROM 头指针的 `PCIR`、BIT 模式 `ff b8 42 49 54 00`、和绝对 `0x2000` 处的 `RFRD`。CFG1 跳线表通过一次 `0x30000` 到 `0xB0000` 的步长-1 扫描自动定位、找 16 个连续 4 字节条目、其字节+2 在 `{0x44,0x55,0x66,0x77}` 里、字节+3 在 `{0x02,0x22}` 里。
 
@@ -77,7 +77,7 @@ GA100 BAR0 是一个 16 MiB PRI 孔径（`0x1000000`）；偏移量 0 处的 `PM
 
 ### `pcielink.sh`
 
-标准 PCIe 现场报告收集器、也是该附到任何链路相关 bug 报告的右边的东西。它自动发现 `10de:20c2` / `10de:2082`（回退到任何 NVIDIA 3D 控制器）并在端点和它的父桥两者上解码：
+标准 PCIe 现场报告收集器，也是应该附到任何链路相关 bug 报告上的东西。它自动发现 `10de:20c2` / `10de:2082`（回退到任何 NVIDIA 3D 控制器），并在端点和它的父桥两者上解码：
 
 | 能力偏移量 | 字段 |
 |---|---|
@@ -90,7 +90,7 @@ GA100 BAR0 是一个 16 MiB PRI 孔径（`0x1000000`）；偏移量 0 处的 `PM
 | `CAP_EXP+30.w` | LnkCtl2 |
 | `CAP_EXP+32.w` | LnkSta2 |
 
-加 sysfs 链路速度和位宽、`nvidia-smi pcie.link.gen`、AER 计数器、和 `SEC2_DEBUG` dmesg 行数带 OPT 熔丝三元组。该工具在两台独立解锁双卡 Gen2 机架（一台 HiveOS、一台 Unraid）上打印 `SEC2_DEBUG lines=152` 配 `OPT=00000001/00000001/16680000`。
+加 sysfs 链路速度和位宽、`nvidia-smi pcie.link.gen`、AER 计数器，以及带 OPT 熔丝三元组的 `SEC2_DEBUG` dmesg 行数。该工具在两台独立解锁的双卡 Gen2 机架（一台 HiveOS、一台 Unraid）上打印 `SEC2_DEBUG lines=152`，配 `OPT=00000001/00000001/16680000`。
 
 > [!NOTE]
 > **行数不是可靠的跨构建指纹**
@@ -108,7 +108,7 @@ sudo ./sweep.sh                                          # 强制 Gen1/2/3、经
 sudo python3 probe.py write-test --confirm               # 写然后立即恢复
 ```
 
-`write-test` 碰 `0x880a8`（目标速度到 2）、`0x8c044`（到 `0x00000002`）和 `0x88088`（重训练位 5）、把每个分类为 `WROTE-OK` 或 `REJECTED(PLM?)`。掩码读哨兵是 `0xBADF5040`。套件里没有任何东西写熔丝或跨重启持久。在 GPU 空转时运行：sweep 重训练活链路。
+`write-test` 碰 `0x880a8`（目标速度到 2）、`0x8c044`（到 `0x00000002`）和 `0x88088`（重训练位 5），把每个分类为 `WROTE-OK` 或 `REJECTED(PLM?)`。掩码读哨兵是 `0xBADF5040`。套件里没有任何东西写熔丝或跨重启持久。请在 GPU 空转时运行：sweep 会重训练活链路。
 
 ### VRAM 验证器
 
@@ -136,13 +136,13 @@ echo 1 | sudo tee /sys/bus/pci/devices/<BDF>/reset
 
 ### 那个时代长什么样
 
-2026-07-12 的、任何驱动内补丁存在前的工作手动流程：
+2026-07-12 的工作手动流程，发生在任何驱动内补丁存在之前：
 
 ```text
 run the ROP script -> FLR -> kill the NVIDIA driver -> FLR again -> run the SM unlock script
 ```
 
-从 TTY 跑、在开源内核模块 580.159.04 上、ROP 载荷由 `patch_gsp.py` 拼进 `gsp_tu10x.bin`。`unlc.py` 演示了出货补丁仍用的两步模型：利用只须打开 FEAT PLM、之后 SS0 和 SS1 是普通主机写。
+从 TTY 跑，在开源内核模块 580.159.04 上，ROP 载荷由 `patch_gsp.py` 拼进 `gsp_tu10x.bin`。`unlc.py` 演示了出货补丁仍沿用的两步模型：利用只须打开 FEAT PLM，之后 SS0 和 SS1 就是普通的主机写。
 
 ### 工具以及每个怎么死的
 
@@ -162,7 +162,7 @@ run the ROP script -> FLR -> kill the NVIDIA driver -> FLR again -> run the SM u
 
 ### 两个值得理解的取代
 
-**磁盘上 GSP 固件补丁变成驱动内签名 memdesc。** 到 2026-07-17 前、相信载荷必须被拼进发货的 GSP ELF。存在三个独立 ELF 补丁器。流水线把打过补丁的 blob 复制到 `/lib/firmware/nvidia/580.159.04/gsp_tu10x.bin`、加载驱动、验证 PLM 读 `0xFFFFFFFF`、然后恢复原版。补丁 `0001` 用把 `pSignatureMemdesc` 分配在 `0xf800` 并在内存里填满它取代了全部。无 ELF 手术、无要备份或恢复的固件文件、无在磁盘上留下打过补丁 blob 的风险、而且载荷能在 Booter 发射之间重建。**残留：** `remove.sh` 仍删除五个 `gsp_tu10x.bin.cmpunlocker.*` 后缀。
+**磁盘上 GSP 固件补丁变成驱动内签名 memdesc。** 到 2026-07-17 前，人们相信载荷必须被拼进发货的 GSP ELF。存在三个独立的 ELF 补丁器。流水线把打过补丁的 blob 复制到 `/lib/firmware/nvidia/580.159.04/gsp_tu10x.bin`、加载驱动、验证 PLM 读 `0xFFFFFFFF`，然后恢复原版。补丁 `0001` 通过把 `pSignatureMemdesc` 分配在 `0xf800` 并在内存里填满它，取代了全部这些。无 ELF 手术、无需要备份或恢复的固件文件、无在磁盘上留下打过补丁 blob 的风险，而且载荷能在 Booter 发射之间重建。**残留：** `remove.sh` 仍删除五个 `gsp_tu10x.bin.cmpunlocker.*` 后缀。
 
 **用户态守护进程持久化变成打过补丁的内核模块。** 解锁现在在打过补丁的模块每次引导 GSP 时、于 `kgspBootstrap` 内运行：无守护进程、无轮询、无重新应用窗口。**残留：** `remove.sh` 仍停一个 `cmpunlocker` systemd 单元并 `pkill` 看门狗。
 
@@ -170,9 +170,9 @@ run the ROP script -> FLR -> kill the NVIDIA driver -> FLR again -> run the SM u
 
 两个第 1 代工件值得作为技术而非工具记住。
 
-原始 booter 栈从硅片一次一个词被恢复、用一个从 gadget `0x7de9` 构建的外泄 ROP：那个 gadget 把一个选定的 DMEM 字写进 SEC2 邮箱、所以每次引导漏一个 dword。DKMS 下约 **35 次引导、每次约 90 s**、每次趟约一小时。`D[0xFF74]` 之下的区域无法被泄露、因为 ROP 自己坐在那里。因为金丝雀每次引导重新随机、跑两遍转储并 diff 精确揭示哪些槽是金丝雀：一个把限制变成技术的东西。
+原始 booter 栈从硅片一次一个词地被恢复，借助一个由 gadget `0x7de9` 构建的外泄 ROP：那个 gadget 把一个选定的 DMEM 字写进 SEC2 邮箱，所以每次引导漏出一个 dword。DKMS 下约 **35 次引导、每次约 90 s**，即每趟约一小时。`D[0xFF74]` 之下的区域无法被泄露，因为 ROP 自己坐在那里。由于金丝雀每次引导都会重新随机，跑两遍转储并 diff 就能精确揭示哪些槽是金丝雀：一个把限制变成技术的东西。
 
-八个具名 ROP 配方被维护为一个参数化目录、在重接点（`0x37b7` 对比 `0x37cc`）、劫持 gadget、栈风格和粉碎大小（`0xF800`、`0xF810`、`0xF820`）上不同：`rejoin_short_37cc`、`whole_stack_37b7`（守卫 `0xFACEB13D`）、`dummy_shift_37cc`、`srw_v1_37b7`、`srw_v2_37cc`、`waa_37cc`、`waa_37b7`、`waa_3747`。研究链标准化的多写模式是 `0x4d4(r0=addr,r1=val,RA=0x10b9) -> [0x10b9 write -> 0x10aa-epi] xN -> TERM`。那个 `0x10b9` 中途进入形式属于净室和免驱动工具：出货载荷种 `0x000010aa` 代替、而字符串 `10b9` 出现在出货树里任何地方都不。见[ROP 链](../unlock/rop-chain.md)。
+八个具名 ROP 配方被维护为一个参数化目录，在重接点（`0x37b7` 对比 `0x37cc`）、劫持 gadget、栈风格和粉碎大小（`0xF800`、`0xF810`、`0xF820`）上各不相同：`rejoin_short_37cc`、`whole_stack_37b7`（守卫 `0xFACEB13D`）、`dummy_shift_37cc`、`srw_v1_37b7`、`srw_v2_37cc`、`waa_37cc`、`waa_37b7`、`waa_3747`。研究链标准化的多写模式是 `0x4d4(r0=addr,r1=val,RA=0x10b9) -> [0x10b9 write -> 0x10aa-epi] xN -> TERM`。那个 `0x10b9` 中途进入形式属于净室和免驱动工具：出货载荷种 `0x000010aa` 代替，而字符串 `10b9` 出现在出货树里任何地方都不。见[ROP 链](../unlock/rop-chain.md)。
 
 ---
 
@@ -180,7 +180,7 @@ run the ROP script -> FLR -> kill the NVIDIA driver -> FLR again -> run the SM u
 
 在 **2026-07-14T21:47:02-07:00** 和 **2026-07-18T19:11Z** 之间、公开 `cmpunlocker` 仓库不含任何种类的驱动补丁。它发货 `payload/build.py`、`payload/gsp_patch.py`、`payload/pipeline.py`、`payload/bar0.py`、`payload/driver.py`、`unlock/compute.py` 和一个 `daemon/` 看门狗。
 
-它的流水线：定位 `/lib/firmware/nvidia/*/gsp_tu10x.bin`、备份它、构建一个 `0xF800`-字节 ROP 载荷、把它拼进 `.fwsignature_ga100` ELF 节、加载出厂商模块、FLR 复位、激进卸载、再 FLR 复位、从主机经 BAR0 写 SS0 `0x0082381C = 0x88888888` 和 SS1 `0x00823820 = 0x00000008`、然后恢复原版固件。
+它的流水线：定位 `/lib/firmware/nvidia/*/gsp_tu10x.bin`、备份它、构建一个 `0xF800`-字节 ROP 载荷、把它拼进 `.fwsignature_ga100` ELF 节、加载出厂商模块、FLR 复位、激进卸载、再 FLR 复位、从主机经 BAR0 写 SS0 `0x0082381C = 0x88888888` 和 SS1 `0x00823820 = 0x00000008`，然后恢复原版固件。
 
 它的 ROP 构建器每次写发一个帧、在一个仍在使用的网格上：
 
@@ -308,7 +308,7 @@ profiles:
 
 ### `remove.sh`
 
-卸载器是 `remove.sh`、它需要 `--yes` 或 `-y`。**树里任何地方都没有 `uninstall.sh`**、不管 `docs` 分支怎么说。五步：停并禁用一个遗留 `cmpunlocker` systemd 单元并 `pkill -f /opt/cmpunlocker/daemon/watchdog.py`；`rm -rf /lib/modules/*/updates/cmpunlocker` 带逐内核 `depmod -a`；重建 initramfs；删除 `/lib/firmware/nvidia/*/gsp_tu10x.bin.cmpunlocker.{bak,patched,tmp,cleanup,pat}`；移除 `/opt/cmpunlocker`；然后停显示管理器和 `nvidia-persistenced`、强制卸载那四个模块并再次 `modprobe nvidia`。一位 HiveOS 上的测试者报告跑它后两张卡回到挖矿、那是 mod 非破坏性这个声称的依据（单一报告、中等置信度）。
+卸载器是 `remove.sh`，它需要 `--yes` 或 `-y`。**树里任何地方都没有 `uninstall.sh`**，不管 `docs` 分支怎么说。五步：停并禁用一个遗留 `cmpunlocker` systemd 单元并 `pkill -f /opt/cmpunlocker/daemon/watchdog.py`；`rm -rf /lib/modules/*/updates/cmpunlocker` 并逐内核 `depmod -a`；重建 initramfs；删除 `/lib/firmware/nvidia/*/gsp_tu10x.bin.cmpunlocker.{bak,patched,tmp,cleanup,pat}`；移除 `/opt/cmpunlocker`；然后停显示管理器和 `nvidia-persistenced`、强制卸载那四个模块并再次 `modprobe nvidia`。一位 HiveOS 上的测试者报告跑它后两张卡回到挖矿，那是"mod 非破坏性"这一声称的依据（单一报告，中等置信度）。
 
 见[安装](../procedures/install.md)、[验证](../procedures/verify.md) 和[卸载](../procedures/uninstall.md) 看操作流程。
 
@@ -321,7 +321,7 @@ profiles:
 >
 > 这是一条平行路径、不是 `cmpunlocker` 的一部分、也不是任何人该为生产使用解锁一张卡跑的东西。它要紧、因为它是仍追求"不改驱动就解锁"这个创始目标的唯一一条工作线。
 
-`refire_chain_v6.py`（27,769 字节、2026-07-24 发布）从用户态执行整个解锁、**没有 NVIDIA 驱动加载**、只用 stdlib（`os`、`sys`、`mmap`、`ctypes`、`struct`、`time`、`subprocess`）。它把 BAR0 映射为 16 MiB、把 SEC2 当作基址 `0x00840000`、复位 Falcon、把 NS 代码非安全地加载到 IMEM 0、用标签寄存器把 HS 代码安全地加载到 `IMEM[ns]`、加载 DMEM、把 MAILBOX0/1 设为 WprMeta 物理地址、启动 CPU、然后反复溢出签名 Booter 的签名读 DMA。
+`refire_chain_v6.py`（27,769 字节，2026-07-24 发布）从用户态执行整个解锁，**没有 NVIDIA 驱动加载**，只用 stdlib（`os`、`sys`、`mmap`、`ctypes`、`struct`、`time`、`subprocess`）。它把 BAR0 映射为 16 MiB、把 SEC2 当作基址 `0x00840000`、复位 Falcon、把 NS 代码非安全地加载到 IMEM 0、用标签寄存器把 HS 代码安全地加载到 `IMEM[ns]`、加载 DMEM、把 MAILBOX0/1 设为 WprMeta 物理地址、启动 CPU，然后反复溢出签名 Booter 的签名读 DMA。
 
 操作流程：
 
@@ -335,9 +335,9 @@ sudo python3 refire_chain_v6.py --all
 
 模式：`--compute`（只关 SM 和张量节流、常开、FLR-粘性）、`--memory 40`（真实稳定的档位）、`--memory 80`（80 GB 档位）、`--pcie-gen2`（只 LnkCap2 cap）、`--pcie-retrain`。环境覆盖：`CMP_BDF`、`CMP_BOOTER_IMG`、`CMP_BOOTER_SIG`。`--all` 把卡留成一次无-FLR 驱动加载的 READY。每个模式都需要 GPU 解绑和巨页设置、除了 `--pcie-retrain`、它是纯主机写。
 
-前置条件严格：root；GPU **解绑**任何 NVIDIA 驱动；一个签名的 GA100 `booter_load` HS ucode 映像（约 60,160 字节、384 字节 RSA-3072-PSS 签名烘焙在 `0x8900`）；16 个巨页；内核命令行 `intel_iommu=off` 或 `iommu=pt` 好让 DMA 物理地址是宿主物理的。它分配一个物理连续的 2 MiB 巨页、`mlock` 它、经 `/proc/self/pagemap` 解析物理地址（位 63 必须置位、否则 `page not present (need hugepages)`）、并调用一个手工组装的 clflush 加 mfence 桩（`0F AE 3F 48 83 C7 40 48 83 EE 40 7F F3 0F AE F0 C3`）因为 "sig-DMA is NONCOHERENT, must hit RAM not CPU cache"（sig-DMA 是非连贯的、必须命中 RAM 而非 CPU 缓存）。
+前置条件严格：root；GPU **解绑**任何 NVIDIA 驱动；一个签名的 GA100 `booter_load` HS ucode 映像（约 60,160 字节，384 字节 RSA-3072-PSS 签名烘焙在 `0x8900`）；16 个巨页；内核命令行 `intel_iommu=off` 或 `iommu=pt`，好让 DMA 物理地址是宿主物理的。它分配一个物理连续的 2 MiB 巨页、`mlock` 它、经 `/proc/self/pagemap` 解析物理地址（位 63 必须置位，否则 `page not present (need hugepages)`），并调用一个手工组装的 clflush 加 mfence 桩（`0F AE 3F 48 83 C7 40 48 83 EE 40 7F F3 0F AE F0 C3`），因为"sig-DMA is NONCOHERENT, must hit RAM not CPU cache"（sig-DMA 是非连贯的，必须命中 RAM 而非 CPU 缓存）。
 
-值得知道的内部细节：`stage_radix3()` 必须运行、否则 Booter 的签名前 DMA 以原因 `0x9` 失败。它分配 `0x6000` 字节并写一个三级链（`[0x0000] = phys+0x1000`、`[0x1000] = phys+0x2000`、`[0x2000] = phys+0x3000`）、然后刷新。WprMeta 模板是一个从真实 10 GB 引导捕获的 256 字节结构、只有签名指针（`0x48`）、签名大小（`0x50` = `0xF800`）、radix3 指针（`0x10`）、radix3 大小（`0x18`）、bootloader 指针（`0x20`）和 bootloader 大小（`0x28`）被覆盖。它前两个词是 WPR 描述符魔数 `0x371a60b3` 和 `0xdc3aae21`。
+值得知道的内部细节：`stage_radix3()` 必须运行，否则 Booter 的签名前 DMA 会以原因 `0x9` 失败。它分配 `0x6000` 字节并写一个三级链（`[0x0000] = phys+0x1000`、`[0x1000] = phys+0x2000`、`[0x2000] = phys+0x3000`），然后刷新。WprMeta 模板是一个从真实 10 GB 引导捕获的 256 字节结构，只有签名指针（`0x48`）、签名大小（`0x50` = `0xF800`）、radix3 指针（`0x10`）、radix3 大小（`0x18`）、bootloader 指针（`0x20`）和 bootloader 大小（`0x28`）被覆盖。它前两个词是 WPR 描述符魔数 `0x371a60b3` 和 `0xdc3aae21`。
 
 ### 版本谱系
 
@@ -375,7 +375,7 @@ sudo python3 refire_chain_v6.py --all
 
 ### 仅分支工具
 
-`verify.sh` 是一个**仅分支**的多 GPU 安装后检查器、不存在于 `master` 上。它偏好已安装的 `gpu_inventory`、否则经 `lspci -nn | grep -iE '10de:20c2|10de:2082'` 枚举。`is_unlocked_memory` 接受 `8gb` 的 `>= 60000 MiB` 和 `10gb` 的 `35000..59999 MiB`；`is_stock_memory` 接受 `7680..8704` 和 `9728..10752`。每 GPU 状态是 `OK`、`STOCK`、`MISSING` 或 `UNEXPECTED`。一条缺失的 `SEC2_DEBUG` dmesg 轨迹是一个警告、不是失败、因为环形缓冲区会轮转。
+`verify.sh` 是一个**仅分支**的多 GPU 安装后检查器，不存在于 `master` 上。它偏好已安装的 `gpu_inventory`，否则经 `lspci -nn | grep -iE '10de:20c2|10de:2082'` 枚举。`is_unlocked_memory` 接受 `8gb` 的 `>= 60000 MiB` 和 `10gb` 的 `35000..59999 MiB`；`is_stock_memory` 接受 `7680..8704` 和 `9728..10752`。每 GPU 状态是 `OK`、`STOCK`、`MISSING` 或 `UNEXPECTED`。一条缺失的 `SEC2_DEBUG` dmesg 轨迹只是警告而非失败，因为环形缓冲区会轮转。
 
 > [!NOTE]
 > **未解问题**
@@ -384,7 +384,7 @@ sudo python3 refire_chain_v6.py --all
 
 ### Gen2 谱系取代
 
-**用户态重训练脚本变成驱动内探测时重训练。** `debug-gen2` 装 `/usr/local/sbin/retrain.sh` 和 `cmpretrain.service`（`Type=oneshot`、`ExecStartPre=/bin/sleep 15`、`WantedBy=multi-user.target`）。从 `Gen2` 起、`0008-pcie-gen2-probe-retrain.patch` 在 `kernel-open/nvidia/nv.c` 里加 `nv_cmp170hx_retrain_gen2()`、门控在 `gpu->device == 0x20c2 || gpu->device == 0x2082` 上、它在探测时走 `pci_upstream_bridge(gpu)` 并重训练。安装器主动禁用 `cmpretrain.service` 和 `cmp-gen2-retrain.service` 并 `rm -f` 辅助脚本、打印 `Removed legacy PCIe retrain helpers`。一个 `multi-user.target` 之后的 15 秒 sleep oneshot 是脆弱的、而且不能在驱动声明设备前运行。
+**用户态重训练脚本变成驱动内探测时重训练。** `debug-gen2` 装 `/usr/local/sbin/retrain.sh` 和 `cmpretrain.service`（`Type=oneshot`、`ExecStartPre=/bin/sleep 15`、`WantedBy=multi-user.target`）。从 `Gen2` 起，`0008-pcie-gen2-probe-retrain.patch` 在 `kernel-open/nvidia/nv.c` 里加 `nv_cmp170hx_retrain_gen2()`，门控在 `gpu->device == 0x20c2 || gpu->device == 0x2082` 上，它在探测时走 `pci_upstream_bridge(gpu)` 并重训练。安装器主动禁用 `cmpretrain.service` 和 `cmp-gen2-retrain.service` 并 `rm -f` 辅助脚本，打印 `Removed legacy PCIe retrain helpers`。一个挂在 `multi-user.target` 之后的 15 秒 sleep oneshot 是脆弱的，而且不能在驱动声明设备前运行。
 
 Gen2 谱系安装器也写 `/etc/modprobe.d/cmp-pcie-gen2.conf` 并配置 IOMMU、把 `intel_iommu=on iommu=pt` 或 `amd_iommu=on iommu=pt` 追加到内核命令行、除非传 `--no-iommu`。
 
@@ -440,13 +440,13 @@ FP32 FMA 封锁在编译时被绕过、不由任何解锁：OpenCL 经 `#pragma 
   -> 加注释
 ```
 
-`nouveau/extract-firmware-nouveau.py` 必须为 GA100 打补丁、因为生成的 C 数组名改成了 `kgspBinArchiveBooter{LOAD}Ucode_{GPU}_BINDATA_LABEL_IMAGE_{fuse.upper()}_data` 形式。出厂商脚本经一个 `--debug-fused` 键选择 prod 或 debug ucode、默认 prod、而且它需要匹配**封闭源码**驱动包里的固件 `.bin` 文件、其版本列在 `version.mk` 里、*不是*开源分支版本号。
+`nouveau/extract-firmware-nouveau.py` 必须为 GA100 打补丁，因为生成的 C 数组名改成了 `kgspBinArchiveBooter{LOAD}Ucode_{GPU}_BINDATA_LABEL_IMAGE_{fuse.upper()}_data` 形式。出厂商脚本经一个 `--debug-fused` 键选择 prod 或 debug ucode，默认 prod，而且它需要匹配**封闭源码**驱动包里的固件 `.bin` 文件，其版本列在 `version.mk` 里，*不是*开源分支版本号。
 
-在开源驱动里、签名的 HS ucode 活在 `src/nvidia/generated/g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c`、带三个档案条目：`..._IMAGE_PROD`（用 NVIDIA 自己的 bindata 压缩器压缩、不是普通 zlib）、`..._SIG_PROD`（未压缩、一个 384 字节数组）和 `..._PATCH_LOC`（4 字节 = `0x8900`）。映像约 60,160 字节。
+在开源驱动里，签名的 HS ucode 活在 `src/nvidia/generated/g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c`，带三个档案条目：`..._IMAGE_PROD`（用 NVIDIA 自己的 bindata 压缩器压缩，不是普通 zlib）、`..._SIG_PROD`（未压缩，一个 384 字节数组）和 `..._PATCH_LOC`（4 字节 = `0x8900`）。映像约 60,160 字节。
 
-一个替代提取从已加载的出厂商驱动经 SEC2 Falcon 窗口在基址 `0x840000` 活转储 booter：写 `IMEMC (0x840180) = off | (1 << 25)` 用于自动递增读、并循环读 `IMEMD (0x840184)` 对 `off = 0 ... 0x8700`；DMEM 同理经 `DMEMC (0x8401c0)` / `DMEMD (0x8401c4)`。置信度 **中等**：流程具体、寄存器地址看起来对、但从未贴出过捕获转储、而读必须在驱动 PIO-加载 booter 后立即、在它复用 SEC2 前。
+一个替代提取从已加载的出厂商驱动经 SEC2 Falcon 窗口在基址 `0x840000` 活转储 booter：写 `IMEMC (0x840180) = off | (1 << 25)` 用于自动递增读，并循环读 `IMEMD (0x840184)` 对 `off = 0 ... 0x8700`；DMEM 同理经 `DMEMC (0x8401c0)` / `DMEMD (0x8401c4)`。置信度 **中等**：流程具体、寄存器地址看起来对，但从未贴出过捕获转储，而读必须在驱动 PIO-加载 booter 后立即进行，在它复用 SEC2 之前。
 
-生产 booter 无法被修改甚至读取：它用一把强密钥加密。利用因此经栈改变**执行流**、而非代码、无需重新签名。
+生产 booter 无法被修改甚至读取：它用一把强密钥加密。利用因此经栈改变**执行流**，而非代码，无需重新签名。
 
 > [!NOTE]
 > **未解问题**

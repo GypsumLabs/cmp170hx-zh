@@ -1,6 +1,6 @@
 # 卸载与还原
 
-**本页覆盖内容。** 如何干净移除 cmpunlocker 驱动补丁、`remove.sh` 恰好碰什么、它刻意留下什么、为什么还原在硬件层面安全、以及那条被广泛复制的、因它命名的文件不存在而只会失败的指示。
+**本页覆盖内容。** 如何干净移除 cmpunlocker 驱动补丁、`remove.sh` 恰好碰什么、它刻意留下什么、为什么还原在硬件层面安全、以及那条被广泛复制的指示——它因所命名的文件不存在而注定失败。
 
 短版：
 
@@ -8,25 +8,25 @@
 sudo ./remove.sh --yes
 ```
 
-那就是整个受支持的卸载。它删除**每个**已安装内核上的 `/lib/modules/*/updates/cmpunlocker/`、重跑 `depmod`、重建 initramfs、清理两个废弃的第一代设计的残留、并重载出厂商 NVIDIA 模块。卡在下次冷启动后回到它出厂报告的 8192 MiB 或 10240 MiB；热重启不是一次复位、也未确立能清除几何布局。
+那就是整个受支持的卸载。它删除**每个**已安装内核上的 `/lib/modules/*/updates/cmpunlocker/`、重跑 `depmod`、重建 initramfs、清理两个废弃第一代设计的残留，并重载出厂的 NVIDIA 模块。卡会在下次冷启动后回到它出厂报告的 8192 MiB 或 10240 MiB；热重启不是一次复位，也没有被确立能清除几何布局。
 
 > [!CAUTION]
 > **`uninstall.sh` 不存在**
 >
-> `docs` 分支上的 `docs/INSTALLATION.md` 第 40 行指示 `sudo ./uninstall.sh --yes`。**仓库任何地方都没有 `uninstall.sh`**、在 `master` 或 `docs` 分支本身上都没有。运行它产生一个 shell 错误、什么都不做，有些人把这读作 "the uninstaller silently failed"（卸载器静默失败）。正确命令是 `remove.sh --yes`。`docs` 分支还携带另外三个已知缺陷、不是权威：见[验证](verify.md#the-sec2_debug-dmesg-trail)。
+> `docs` 分支上的 `docs/INSTALLATION.md` 第 40 行指示 `sudo ./uninstall.sh --yes`。**仓库任何地方都没有 `uninstall.sh`**，在 `master` 或 `docs` 分支本身上都没有。运行它会产生一个 shell 错误、什么都不做，有些人把这读作 "the uninstaller silently failed"（卸载器静默失败）。正确命令是 `remove.sh --yes`。`docs` 分支还带有另外三个已知缺陷、并不是权威：见[验证](verify.md#the-sec2_debug-dmesg-trail)。
 
 ---
 
 ## 为什么还原是安全的
 
-这个解锁在硬件里没有任何持久的东西。没有 VBIOS 刷写、没有熔丝烧断、没有 EEPROM 写，而且自出货设计起、磁盘上也没有任何固件文件被修改。解锁是打过补丁的内核模块每次引导 GSP 时执行的一次易失寄存器写序列：
+这个解锁在硬件里没有任何持久的东西。没有 VBIOS 刷写、没有熔丝烧断、没有 EEPROM 写，而且自出货设计起，磁盘上也没有任何固件文件被修改。解锁是打过补丁的内核模块每次引导 GSP 时执行的一次易失寄存器写序列：
 
 | 状态 | 挺过功能级复位？ | 挺过断电循环？ |
 |---|---|---|
 | SS0 `0x0082381c`、SS1 `0x00823820`、FEAT_OVR_PLM `0x00823804` | 是（常电岛） | 否 |
 | CFG1 `0x009a0204`、每-FBPA CFG1、CSTATUS、LMR `0x00100ce0`、FB-几何 PLM、AON LMR 影子 `0x001180f0` | 否 | 否 |
 
-移除打过补丁的模块、写就停止发生。那就是还原的全部机制。一位跑 HiveOS 的测试者报告 `remove.sh` 后两张卡恢复正常挖矿，那是称 mod 的软件侧为非破坏性的依据（单一一手报告）。
+移除打过补丁的模块，写就停止发生。那就是还原的全部机制。一位跑 HiveOS 的测试者报告 `remove.sh` 后两张卡恢复正常挖矿，那是把 mod 的软件侧称为非破坏性的依据（单一的一手报告）。
 
 物理改装完全是另一回事、**不**被本页任何东西撤销。如果卡已装上 PCIe 交流耦合电容，那是焊接好的硬件。见[物理改装](../operations/physical-mods.md)。
 
@@ -34,7 +34,7 @@ sudo ./remove.sh --yes
 
 ## `remove.sh` 逐步做什么
 
-脚本没有 `--yes` 或 `-y` 拒绝运行。裸调用它打印它会做什么的摘要并退出 1。
+脚本没有 `--yes` 或 `-y` 就拒绝运行。裸调用它时，它会打印将要做什么的摘要并退出 1。
 
 ### 守卫和第 1 步：root
 
@@ -48,7 +48,7 @@ sudo ./remove.sh --yes
 
 - 对找到的每个 `/lib/modules/*/updates/cmpunlocker` 目录（所以**所有**已安装内核、不只运行中那个）：`rm -rf`，然后 `depmod -a "${kernel}"`。
 - 没匹配到时警告 `No patched kernel modules found`。
-- 对每个碰过的内核重建 initramfs、这样出厂模块被重新打包，用第一个可用的 `update-initramfs -u -k`、`dracut --force --kver` 或 `mkinitcpio -P`。这在出路上和入路上一样要紧：一个仍持有打过补丁模块的 initramfs 会继续加载它们。
+- 对每个碰过的内核重建 initramfs、这样出厂模块被重新打包，用第一个可用的 `update-initramfs -u -k`、`dracut --force --kver` 或 `mkinitcpio -P`。这一点在还原路径上同在安装路径上一样要紧：一个仍持有打过补丁模块的 initramfs 会继续加载它们。
 - 在每个 `gsp_tu10x.bin` 旁删除五个固件时代遗留：`.cmpunlocker.bak`、`.cmpunlocker.patched`、`.cmpunlocker.tmp`、`.cmpunlocker.cleanup`、`.cmpunlocker.pat`。
 - 移除 `/opt/cmpunlocker`（如果存在）、否则警告 `/opt/cmpunlocker not found (ok for module-only installs)`。
 
@@ -116,7 +116,7 @@ nvidia-smi --query-gpu=memory.total --format=csv,noheader
 sudo dmesg | grep -c SEC2_DEBUG                      # 重启后预期 0
 ```
 
-`remove.sh` 之后卡会继续报告解锁后大小、直到一次冷启动。这是正常结果、不是打过补丁的模块仍驻留的证据，因为几何寄存器挺过一次驱动卸载和重载。用 `modprobe -n -v nvidia`、`/sys/module/nvidia/srcversion` 和 `dmesg` 里 `SEC2_DEBUG` 行的缺失来判定还原、不要用 `memory.total`。如果解锁后大小在热重启后仍持续，完全断电再试一次、然后才下结论：热重启不是一次复位。如果在真正冷启动后仍持续，检查 initramfs 是否真的重建了：一个持有打过补丁的 `nvidia.ko` 的陈旧 initramfs 是常见原因、与安装侧的同一失败对称。
+`remove.sh` 之后卡会继续报告解锁后大小、直到一次冷启动。这是正常结果、不是打过补丁的模块仍驻留的证据，因为几何寄存器挺过一次驱动卸载和重载。用 `modprobe -n -v nvidia`、`/sys/module/nvidia/srcversion` 和 `dmesg` 里 `SEC2_DEBUG` 行的缺失来判定还原，而不要用 `memory.total`。如果解锁后大小在热重启后仍持续，完全断电再试一次、然后才下结论：热重启不是一次复位。如果在真正冷启动后仍持续，检查 initramfs 是否真的重建了：一个持有打过补丁的 `nvidia.ko` 的陈旧 initramfs 是常见原因，与安装侧的那次失败相对称。
 
 ---
 
@@ -124,7 +124,7 @@ sudo dmesg | grep -c SEC2_DEBUG                      # 重启后预期 0
 
 维护者的规则是移除旧安装再加新的："In fact, I would always recommend to remove the old one before adding the new one."（事实上，我总是建议在加新的之前移除旧的。）一位克隆 `Gen2` 分支、在现有安装之上安装的测试者报告它不工作、先卸载就修好了。
 
-这是指导而非硬规则。至少另两位测试者在上层安装没有问题了、非正式共识是大多数人 "just sending it on top"（就直接发上去）。那个失败是真的却不普遍、没人识别出区分因素。先移除是受支持路径：
+这是指导而非硬规则。至少另两位测试者叠加安装也没问题，非正式共识是大多数人 "just sending it on top"（直接装上去）。那个失败是真实的、却不普遍，没人识别出区分因素。先移除是受支持路径：
 
 ```bash
 cd /path/to/old-checkout && sudo ./remove.sh --yes

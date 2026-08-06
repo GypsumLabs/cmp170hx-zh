@@ -1,19 +1,19 @@
 # 保留工件
 
-**本页覆盖内容。** 一份 CMP 170HX 解锁努力中存活的**技术工件**目录：Falcon 固件反汇编、gadget 图谱、ROP 载荷生成器、只读探测脚本、寄存器转储、驱动补丁文件和长文写稿。对每个工件、本页记录它含什么、多大、何时出现、以及为何要紧。它是原始证据的一张地图、不是一个教程。对它们共同确立的东西、见[解锁如何工作](../unlock/how-it-works.md) 和[寄存器参考](../unlock/register-reference.md)。
+**本页覆盖内容。** 本页是 CMP 170HX 解锁工作中存留下来的**技术工件**目录：Falcon 固件反汇编、gadget 图谱、ROP 载荷生成器、只读探测脚本、寄存器转储、驱动补丁文件和长文写稿。对每个工件，本页记录它含有什么、多大、何时出现、为何要紧。它是原始证据的地图，而不是教程。至于这些工件共同确立了什么，见[解锁如何工作](../unlock/how-it-works.md) 和[寄存器参考](../unlock/register-reference.md)。
 
-两个数字框定整个集合。**131 个文本和代码文件**从两个 Discord 服务器被归档、连同**总共 1,121 个附件**（其余压倒性地是截图和照片）。分开地、**13 棵 git 树**的出货解锁器（`master` 加 12 个未发布分支）和少数外部仓库和 gist 被快照。下面一切都来自那些。
+两个数字框定了整个集合。从两个 Discord 服务器归档了**131 个文本和代码文件**，外加**总共 1,121 个附件**（其余绝大部分是截图和照片）。另外，还快照了**13 棵 git 树**的出货解锁器（`master` 加 12 个未发布分支），以及少数外部仓库和 gist。下面的一切都来自这些。
 
 > [!NOTE]
 > **命名与归属**
 >
-> 工件只以文件名、大小和日期被引用。本维基任何地方都不记录作者身份。几个文件被贴了不止一次、有时在不同频道、有时被轻微编辑；凡发生此情况它都会被指出、因为把一次重发当独立观察双计是一个真实错误、它在源材料里至少发生过一次。
+> 工件只以文件名、大小和日期被引用。本维基任何地方都不记录作者身份。有几个文件被发布过不止一次，有时在不同频道，有时被轻微编辑；凡发生这种情况的地方都会特别指出，因为把一次重发当作独立观察重复计数是一个真实错误，它在源材料里至少出现过一次。
 
 ---
 
 ## 1. Falcon 固件反汇编
 
-SEC2 `booter_load` 微码是整个利用的对象。它是一个 AES 加密、RSA-3072-PSS 签名的重度安全（HS）Falcon 映像、约 **60,160 字节**、带 384 字节分离签名拼接在 `PATCH_LOC = 0x8900`。调试变体用 NVIDIA 的公开 AES-128-ECB 测试密钥解密、而调试和生产映像大小相同、这正是净室反汇编一开始可行的原因。见[Falcon 与 Booter](../unlock/falcon-and-booter.md)。
+SEC2 的 `booter_load` 微码是整个利用的对象。它是一份经过 AES 加密、RSA-3072-PSS 签名的重度安全（HS）Falcon 映像，约 **60,160 字节**，384 字节的分离签名拼接在 `PATCH_LOC = 0x8900` 处。调试变体用 NVIDIA 公开的 AES-128-ECB 测试密钥解密；由于调试映像和生产映像大小相同，净室反汇编才得以开展。见[Falcon 与 Booter](../unlock/falcon-and-booter.md)。
 
 | 工件 | 大小 | 日期 | 内容 |
 |---|---:|---|---|
@@ -26,15 +26,15 @@ SEC2 `booter_load` 微码是整个利用的对象。它是一个 AES 加密、RS
 > [!WARNING]
 > **概览文档按构造未被验证**
 >
-> 概览在它的作者"完全不知道其中哪部分是幻觉"的警示下发布。它至少在一点上自相矛盾：第 2 节正确识别 CSB `0x9100` 位 31 为 `FALCON_CSBERRSTAT.VALID`、一个故障标志、而它自己的关键常量表仍叫它一个忙/轮询位。故障读法正确、因为代码在位设置时分支到一个自循环、而非在位设置时循环。项目里的所有函数名（`csb_write`、`memcpy`、`wpr_region_program` 及其余）都**从行为推断**；二进制没有符号表。对带注释清单核对、它逐字节保留原始指令行。
+> 概览发布时带有作者自己的警示：他"完全不知道其中哪部分是幻觉"。它至少在一点上自相矛盾：第 2 节正确地把 CSB `0x9100` 的位 31 识别为 `FALCON_CSBERRSTAT.VALID`——一个故障标志——而它自己的关键常量表仍把它称作忙/轮询位。故障读法才是正确的，因为代码在位被置位时分叉到自循环，而不是在位被置位期间循环。项目里所有函数名（`csb_write`、`memcpy`、`wpr_region_program` 等）都**是从行为推断出来的**；二进制没有符号表。请以带注释的清单为准，它逐字节保留了原始指令行。
 
-代码映像在 `0x86ff` 结束。上面载荷里任何地址是 DMEM 指针、不是代码。
+代码映像止于 `0x86ff`。载荷里任何高于该地址的地址都是 DMEM 指针，不是代码。
 
 ---
 
 ## 2. 从反汇编派生的 Gadget 目录
 
-这些是把一份 600 kB 清单变成你能用来构建 ROP 链的工具的工件。它们远超自身大小地要紧、因为正是它们确立出货利用的常量可从净室材料派生。见[ROP 链](../unlock/rop-chain.md) 和[净室与来源溯源](../history/clean-room-and-provenance.md)。
+这些工件把一份 600 kB 的清单变成可以据此构建 ROP 链的东西。它们的重要性远超自身大小，因为正是它们确立了：出货利用里的常量可以从净室材料推导出来。见[ROP 链](../unlock/rop-chain.md) 和[净室与来源溯源](../history/clean-room-and-provenance.md)。
 
 | 工件 | 大小 | 日期 | 内容 |
 |---|---:|---|---|
@@ -43,7 +43,7 @@ SEC2 `booter_load` 微码是整个利用的对象。它是一个 AES 加密、RS
 | `DIRECT_ENGINE_FINDINGS.md` | 4,503 B | 2026-07-15 | 对 `0x8224` 直接写 gadget 的分析：`iowrs I[$r10] $r11` 后跟 `0x9100` CSB 状态检查和 `lcall 0x1d0f` 报告路径。 |
 | `The_missing_piece_per-FBPA_hal` | 2,353 B | 2026-07-12 | 一个每-FBPA 半容量熔丝假设、命名 `FUSE_HALF_FBPA_EN 0x82049C`、`STATUS_HALF_FBPA 0x820C00`、`CTRL_OPT_FBPA 0x820818` 和 `STATUS_FBP 0x820D38`。作为一个**假设**、而非结果被保留：`STATUS_FBPA` 是否根本可写、还是纯粹是一个熔丝合并输出、被问了却从未回答。 |
 
-图谱里 `0x0cbd`（"`$r10 <- $r0`、canary(r15==r9)、via-call、`mpopaddret $r3 0x4`"）和 `0x1fbd`（"`$r11 <- $r10`、canary(r15==r9)、via-call、`mpopaddret $r2 0x4`"）的条目、精确描述了那些 gadget 在出货驱动补丁里扮演的角色、在那个补丁存在前八天。
+图谱中 `0x0cbd`（"`$r10 <- $r0`、canary(r15==r9)、via-call、`mpopaddret $r3 0x4`"）和 `0x1fbd`（"`$r11 <- $r10`、canary(r15==r9)、via-call、`mpopaddret $r2 0x4`"）两条目，精确描述了那些 gadget 在出货驱动补丁里扮演的角色——而那是在该补丁存在的八天之前。
 
 ---
 
@@ -60,13 +60,13 @@ SEC2 `booter_load` 微码是整个利用的对象。它是一个 AES 加密、RS
 | `patch_gsp.py` | 2,563 B | 2026-07-11 | 对 `gsp_tu10x.bin` 的 ELF64 手术：解析 `e_shoff 0x28`、`e_shentsize 0x3A`、`e_shnum 0x3C`、`e_shstrndx 0x3E`、定位 `.fwsignature_ga100`、就地覆写、把 `sh_size` 补丁到 `0xF800`、把 `.shstrtab` 追加到文件末尾、重写 `e_shoff`。 |
 | `scan_dmem.py` | 10,160 B | 2026-07-16 | 更安全的 ELF 变体、用 pyelftools 并把替换节在 EOF 追加、遵守 `sh_addralign`。也驱动一次完整 DMEM 扫描：以 4 步迭代 `DMEM_ADDR`、为每个值构建一个转储载荷、补丁固件、重载模块、可选 FLR。 |
 
-一条值得保留的独立更正：**`gsp_tu10x.bin` 从不是反汇编目标。** 它是 booter 验证的 GSP RISC-V ELF 载荷、不是 booter。Ghidra 从它发出约 100 MB 的 C、`riscv64-unknown-elf-objdump` 约 1.5 GB 的汇编。真实目标约 25 kB、反汇编到约 390 kB。该文件仍是正确的*投递载体*、那正是混淆持续的原因。
+还有一条值得保留的独立更正：**`gsp_tu10x.bin` 从来不是反汇编目标。** 它是 booter 要验证的 GSP RISC-V ELF 载荷，而不是 booter。Ghidra 从它生成了约 100 MB 的 C，`riscv64-unknown-elf-objdump` 生成了约 1.5 GB 的汇编。真正的目标约 25 kB，反汇编后约 390 kB。这个文件仍是正确的*投递载体*，这正是混淆一直存在的原因。
 
 ---
 
 ## 4. ROP 载荷生成器和载荷清单
 
-载荷清单是 DMEM 地址到值的纯文本表、手写并由肉眼审查。它们是集合里最易读的工件、也是理解链的最好入口点。
+载荷清单是从 DMEM 地址到值的纯文本表，手工书写、肉眼审查。它们是集合里最易读的工件，也是理解这条链的最佳入口。
 
 | 工件 | 大小 | 日期 | 内容 |
 |---|---:|---|---|
@@ -85,18 +85,18 @@ SEC2 `booter_load` 微码是整个利用的对象。它是一个 AES 加密、RS
 
 ### 免驱动 refire 链
 
-`refire_chain_v6.py`（**27,769 B**、2026-07-24）从用户空间、**不加载 NVIDIA 驱动**、只用 Python 标准库执行整个解锁。它把 BAR0 映射为 16 MiB、把 SEC2 当作基址 `0x00840000`、复位 Falcon、把 NS 代码非安全地加载到 IMEM 0、把 HS 代码安全地加载到 `IMEM[ns]`、加载 DMEM、把 MAILBOX0/1 设为 WprMeta 物理地址、启动 CPU、并反复溢出签名 Booter 的签名读 DMA。模式：`--compute`、`--memory 40`、`--memory 80`、`--pcie-gen2`、`--pcie-retrain`、`--all`。
+`refire_chain_v6.py`（**27,769 B**、2026-07-24）从用户空间执行整个解锁，**不加载 NVIDIA 驱动**，只用 Python 标准库。它把 BAR0 映射为 16 MiB，把 SEC2 当作基址 `0x00840000`，复位 Falcon，把 NS 代码非安全地加载到 IMEM 0、把 HS 代码安全地加载到 `IMEM[ns]`，加载 DMEM，把 MAILBOX0/1 设为 WprMeta 物理地址，启动 CPU，并反复溢出签名 Booter 的签名读 DMA。模式：`--compute`、`--memory 40`、`--memory 80`、`--pcie-gen2`、`--pcie-retrain`、`--all`。
 
 > [!WARNING]
 > **实验性**
 >
-> 这是一条平行、非出货路径。它不是 `cmpunlocker` 的一部分。它的前置条件严格：root、GPU 从任何 nvidia 驱动解绑、一个签名 GA100 `booter_load` HS 映像、`echo 16 | sudo tee /proc/sys/vm/nr_hugepages`、和 `intel_iommu=off` 或 `iommu=pt`、好让 DMA 物理地址是宿主物理的。它只带一个 **10 GB WprMeta 模板**、所以不能未修改地应用到一张 `0x20C2` 卡。它的 `--memory 80` 模式声称 "80 GB LMR HW-verified"、那最可能意味着寄存器接受了写、而非 80 GB 可用。见[80 GB 问题](../frontier/80gb.md)。
+> 这是一条并行的非出货路径，不属于 `cmpunlocker`。它的前置条件很严格：需要 root、GPU 从任何 nvidia 驱动解绑、一份签名的 GA100 `booter_load` HS 映像、`echo 16 | sudo tee /proc/sys/vm/nr_hugepages`，以及 `intel_iommu=off` 或 `iommu=pt`，好让 DMA 物理地址就是宿主物理地址。它只带一个 **10 GB WprMeta 模板**，所以不能未作修改就套用到一张 `0x20C2` 卡上。它的 `--memory 80` 模式声称 "80 GB LMR HW-verified"，那最可能只是寄存器接受了写入，而非 80 GB 可用。见[80 GB 问题](../frontier/80gb.md)。
 
 ---
 
 ## 5. 只读探测和表征仪器
 
-这些从没被废弃。它们是测量仪器、不是解锁器、而且它们仍是验证本页任何声称的正确方式。
+这些工具从未被淘汰。它们是测量仪器，不是解锁器，而且至今仍是验证本页任何说法的正确方式。
 
 | 工件 | 大小 | 日期 | 它做什么 |
 |---|---:|---|---|
@@ -112,13 +112,13 @@ SEC2 `booter_load` 微码是整个利用的对象。它是一个 AES 加密、RS
 >
 > 它头部第 9 行承诺一个不存在的 `/dev/mem` 回退；解析块以 `ERROR: cannot find resource0` 和 `exit 2` 结束。而该目录先于解锁、所以它不含 `0x001fa7c4`、`0x001fa7cc`、`0x001fa824`/`0x001fa828`、`0x009a0148` 或 `0x00100ce0` 的条目：出货解锁实际操纵的五个寄存器。加它们是任何人能做的唯一最有价值改动、且不需要硬件。
 
-读 BAR0 需要 root **加** `CAP_SYS_RAWIO`、容器化 GPU 宿主会丢弃它；探测随后以 `cannot open .../resource0 (EPERM) even as root` 抛出。
+读取 BAR0 需要 root **外加** `CAP_SYS_RAWIO`，而容器化的 GPU 宿主会丢弃该能力；探测随后以 `cannot open .../resource0 (EPERM) even as root` 报错。
 
 ---
 
 ## 6. 寄存器转储和捕获日志
 
-原始捕获是寄存器参考大部分承重证据。见[寄存器索引](register-index.md)。
+原始捕获是寄存器参考大部分承重证据的来源。见[寄存器索引](register-index.md)。
 
 | 工件 | 大小 | 日期 | 内容 |
 |---|---:|---|---|
@@ -180,21 +180,21 @@ SEC2 `booter_load` 微码是整个利用的对象。它是一个 AES 加密、RS
 | `GLM-5.2-benchmark-report.md` | 7,999 B | 2026-07-24 | 一份值得保留的负结果报告：467 GB 4 位量化无法加载、因为宿主的 88 GB 系统 RAM 远低于 llama.cpp 加载时计算图 pass 所需的、把 RSS 钉在约 87.6 GB 而无进展。一次宿主侧失败、不是卡限制。 |
 | `cublas_benchmark1` | 826,072 B | 2026-07-16 | 一个 x86-64 ELF 可执行文件、动态链接到 `ld-linux-x86-64.so.2`。一个**分发给他人运行的编译二进制**、不是一个结果日志。 |
 
-这些数字在上下文里意味着什么见[性能](../operations/performance.md) 和[LLM 推理](../operations/llm-inference.md)。
+这些数字在上下文中意味着什么，见[性能](../operations/performance.md) 和[LLM 推理](../operations/llm-inference.md)。
 
 ---
 
 ## 10. 什么没被保留
 
-对缺口保持明确是目录的一部分。
+把缺口说清楚也是目录的一部分。
 
-- **没有 booter 二进制。** 签名的 HS 映像和它的分离签名被工具命名（`booter_load_580_image.bin`、`booter_load_580_sig.bin`、预期在 `cmp170hx_boot_bins/verified_hs/` 下）却不在档案里。
+- **没有 booter 二进制。** 工具会按名寻找签名的 HS 映像和它的分离签名（`booter_load_580_image.bin`、`booter_load_580_sig.bin`，预期位于 `cmp170hx_boot_bins/verified_hs/` 下），但档案里没有它们。
 - **没有 8 GB WprMeta 捕获。** 免驱动链的 256 字节模板来自一次真实 10 GB 引导。捕获 8 GB 等价物是一个小、无阻塞的任务。
-- **没有调试和生产 booter 映像的哈希比较。** bindata 档案让它琐碎、而且它会确立它们是逐字节相同还是仅相同大小。
+- **没有调试与生产 booter 映像的哈希比较。** bindata 档案让这件事很容易，而且它会判定这两份映像是逐字节相同，还是仅大小相同。
 - **没有仿真器。** 学术论文描述的 Falcon 仿真器从未被发布。
 - **没有驱动修改指南。** 会解决几个来源溯源问题的两份私人文档不存在于这个源集里。
 - **`master` 上没有 `verify.sh`**、它的任何分支副本里也没有 Gen2 检查。
-- **`master` 没有 `tools/` 目录。** `probe.sh`、`pcielink.sh`、`check_fold.py`、`cuda_dbg.py`、A100 探测套件和 refire 链都被带外分发。克隆仓库不会给你任何一。
+- **`master` 没有 `tools/` 目录。** `probe.sh`、`pcielink.sh`、`check_fold.py`、`cuda_dbg.py`、A100 探测套件和 refire 链都是带外分发的。克隆仓库得不到其中任何一个。
 
 ---
 

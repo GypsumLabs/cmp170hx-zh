@@ -2,7 +2,7 @@
 
 **本页涵盖什么。** 一份带注释的参考书目，列出本维基所依赖的每个外部参考资料：`cmpunlocker` 仓库及其未发布分支、上游 NVIDIA 开源内核模块、170th Street 社区维基、独立拆解评测、TechPowerUp VBIOS 与规格数据库、学术论文、envytools 及 Falcon 工具族，以及社区 fork、gist 和 issue 线程。每个条目说明来源是什么以及**该信任到什么程度**，因为这里被广泛引用的若干来源在特定、可识别的方式上是错的。
 
-商业挂牌、市场、厂商产品页以及任何采购相关的内容不在范围内、被刻意排除。
+商业挂牌、市场、厂商产品页以及任何采购相关的内容都不在范围内，被刻意排除。
 
 ## 如何阅读信任列
 
@@ -19,20 +19,20 @@
 
 ### `github.com/amoghmunikote/cmpunlocker`（`master` 分支）
 
-**信任：Primary（主要）。** 这是出货工具、也是任何可用代码表述之事的权威。标语："A tool to unlobotomize your NVIDIA card!"（一个给你的 NVIDIA 卡做解除"脑叶切除"的工具！）。2026-07-14 公开；首个提交 `9b9fb2f Initial commit`；归档的 `master` 顶端是 `cc872cb Moved PR template location`（2026-07-23）。
+**信任：Primary（主要）。** 这是出货工具，也是任何可用代码表述之事的权威。标语："A tool to unlobotomize your NVIDIA card!"（一个解除你 NVIDIA 卡"脑叶切除"的工具！）。2026-07-14 公开；首个提交 `9b9fb2f Initial commit`；归档的 `master` 顶端是 `cc872cb Moved PR template location`（2026-07-23）。
 
 `master` 恰好包含八个顶层条目：`.github/pull_request_template.md`、`.gitignore`、`LICENSE`、`README.md`、`common/constants.yaml`、`driver/`、`install.sh`、`remove.sh`。**没有** `verify.sh`、**没有** `tools/` 目录、**没有** `probe.sh`、**没有** `requirements.txt`（2026-07-19 删除）也没有测试套件。卸载器是 `remove.sh --yes`；**`uninstall.sh` 在整棵树里都不存在**。
 
-`common/constants.yaml` 是机器可读的基准真相、与补丁 `0001` 完全一致。注意一个读 README 不会告诉你的重要行为：在当前 `master` 上、`--profile` 不再选择几何布局。补丁 `0001` 在 GSP 引导时按 `pGpu->idInfo.PCIDeviceID >> 16` 分支、`build.sh` 的内联重写找到全部六个标记并无编辑地退出、而 `--profile` 只影响横幅、`EXPECTED_MIB` 和元数据文件。2026-07-18 前的指示在这点上已过时。见[驱动补丁](../unlock/driver-patches.md) 和[安装](../procedures/install.md)。
+`common/constants.yaml` 是机器可读的基准真相，与补丁 `0001` 完全一致。有一件读 README 不会告诉你的事值得注意：在当前 `master` 上，`--profile` 不再选择几何布局。补丁 `0001` 在 GSP 引导时按 `pGpu->idInfo.PCIDeviceID >> 16` 分支；`build.sh` 的内联重写找到全部六个标记后不作编辑直接退出；而 `--profile` 只影响横幅、`EXPECTED_MIB` 和元数据文件。2026-07-18 之前的指示在这一点上已经过时。见[驱动补丁](../unlock/driver-patches.md) 和[安装](../procedures/install.md)。
 
 > [!WARNING]
 > **README 对设备门控很松散**
 >
-> 它说解锁是 `0x20C2`-门控的、而驱动内门控 `_kgspSec2PostblTimingEnabled()` 接受 `0x20C2` **和** `0x2082`。Master 根本不出货 `DEBUGGING.md`："all PLMs must show `0xffffffff`" 那行活在 `docs` 分支上、而且它是错的、因为出货表把 WPR_CFG `0x001fa7cc` 打开到 `0xfffff0ff`。
+> 它说解锁是 `0x20C2`-门控的，而驱动内门控 `_kgspSec2PostblTimingEnabled()` 接受 `0x20C2` **和** `0x2082`。Master 根本不出货 `DEBUGGING.md`："all PLMs must show `0xffffffff`" 那行活在 `docs` 分支上，而且它是错的，因为出货表把 WPR_CFG `0x001fa7cc` 打开到 `0xfffff0ff`。
 
 ### 十二个未发布分支
 
-**信任：作为代码是 Primary（主要）、作为建议是 Experimental（实验性）。** 真实代码、未合并、且在若干案例里内部不一致。恰好有 **12** 个未发布分支快照（算上 `master` 是 13 棵树）：`80`、`Gen2`、`PG199`、`clanker/driver-port`、`debug-gen2`、`deced`、`docs`、`ecc`、`far`、`housekeeping`、`memory`、`multiple-cards`。任何声称有十三或十四个*快照*的来源都在数错。注意该仓库在抓取时携带 **17 个分支引用**、所以有四个未发布引用从未被快照、也从未在本站任何地方被分析：`code-simplification`、`dual-geometry-fix`、`fix` 和 `v0.1`。
+**信任：作为代码是 Primary（主要）、作为建议是 Experimental（实验性）。** 真实代码、未合并，且在若干情况下内部不一致。未发布分支快照恰好有 **12** 个（算上 `master` 是 13 棵树）：`80`、`Gen2`、`PG199`、`clanker/driver-port`、`debug-gen2`、`deced`、`docs`、`ecc`、`far`、`housekeeping`、`memory`、`multiple-cards`。任何声称有十三个或十四个*快照*的来源都在数错。注意该仓库在抓取时携带 **17 个分支引用**，所以有四个未发布引用从未被快照、也从未在本站任何地方被分析：`code-simplification`、`dual-geometry-fix`、`fix` 和 `v0.1`。
 
 | 分支 | 顶端 | 它是什么 | 信任注意 |
 |---|---|---|---|
@@ -50,32 +50,32 @@
 >
 > **`Gen2` 安装一个 Gen1 钳位。** `debug-gen2` 和 `Gen2` 把
 > `NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"` 写进
-> `/etc/modprobe.d/cmp-pcie-gen2.conf`、在尝试启用 Gen2 的同时把链路钉在 Gen1。
-> `far` 提交 `8854d3e "Remove clamp link to Gen1"` 把它改成 `0x2`。哪个值正确
-> **真的未解决**：两者都出货、且不存在 A/B 引导测试。
+> `/etc/modprobe.d/cmp-pcie-gen2.conf`，在尝试启用 Gen2 的同时把链路钉在 Gen1。
+> `far` 提交 `8854d3e "Remove clamp link to Gen1"` 把它改成 `0x2`。到底哪个值正确
+> **真的未解决**：两者都出货，且不存在 A/B 引导测试。
 >
-> **`80` 分支不编程它元数据说的东西。** `80/common/constants.yaml` 携带
-> `lmr: "0x0000028B"` 和 `81920`、但 `build.sh` 从不读那个文件。`80/driver/build.sh`
-> 第 93 行设 `LMR="0x0000028A"`、`install.sh` 第 138 行打印 `CFG1=0x02779000 LMR=0x0000028A`、
+> **`80` 分支编程的不是它元数据所说的东西。** `80/common/constants.yaml` 携带
+> `lmr: "0x0000028B"` 和 `81920`，但 `build.sh` 从不读那个文件。`80/driver/build.sh`
+> 第 93 行设 `LMR="0x0000028A"`，`install.sh` 第 138 行打印 `CFG1=0x02779000 LMR=0x0000028A`，
 > 补丁 `0001` 第 144 行烘焙 `lmrValue = 0x0000028AU`。提交 `3c53aca "Correct LMR for 80GB"`
 > 只改了惰性元数据。每个跑过该分支的测试者都编程了 CFG1 `0x02779000`、
-> LMR `0x0000028A` 和 `fb_length 0x0000001400000000`、一个三方不一致、那是该分支恰在 40 GiB 处折叠的最佳解释。该分支没有任何构建携带过
-> 那个一致的值、尽管一个净室脚本 fire 过它。
+> LMR `0x0000028A` 和 `fb_length 0x0000001400000000`——一个三方不一致，那是该分支恰在
+> 40 GiB 处折叠的最佳解释。该分支的构建从未携带过那个一致的值，尽管一个净室脚本 fire 过它。
 > 见[80 GB 问题](../frontier/80gb.md)。
 
 ### `github.com/amoghmunikote/cmpunlocker` 分支 `docs`
 
-**信任：不要引用。** 七个提交。它是项目自己的文档分支、而且它是一份有据可查的错误来源：`docs/ARCHITECTURE.md` 声称 `SS0 = 0xffffffff` 和 `SS1 = 0xffffffff`、而出货补丁写 `0x88888888` 和 `0x00000008`；`DEBUGGING.md` 说所有 PLM 必须读 `0xffffffff`；`docs/INSTALLATION.md` 和分支 README 两者都指示 `sudo ./uninstall.sh --yes`、一个不存在的文件；它还杜撰了在代码或聊天里任何地方都找不到的缩写展开（SS 为 "Suspension State"、PLM 为 "Program Logic Modules"、PMM 为 "Permute Mask Model"、LMR 为 "LM (Local Memory) Request register"、PMA 为 "Power Management Array"）。它还断言一条驱动从不发出的 `SEC2_DEBUG: Executing unlock sequence...` 日志行。
+**信任：不要引用。** 七个提交。它是项目自己的文档分支，也是一份有据可查的错误来源：`docs/ARCHITECTURE.md` 声称 `SS0 = 0xffffffff` 和 `SS1 = 0xffffffff`，而出货补丁写的是 `0x88888888` 和 `0x00000008`；`DEBUGGING.md` 说所有 PLM 必须读 `0xffffffff`；`docs/INSTALLATION.md` 和分支 README 两者都指示 `sudo ./uninstall.sh --yes`，而这是个不存在的文件；它还杜撰了在代码或聊天里任何地方都找不到的缩写展开（SS 为 "Suspension State"、PLM 为 "Program Logic Modules"、PMM 为 "Permute Mask Model"、LMR 为 "LM (Local Memory) Request register"、PMA 为 "Power Management Array"）。它还断言一条驱动从不发出的 `SEC2_DEBUG: Executing unlock sequence...` 日志行。
 
 ### `github.com/NVIDIA/open-gpu-kernel-modules`
 
-**信任：Primary（主要）。** `build.sh` 安装时抓取的上游驱动源码（`archive/refs/tags/${VERSION}.tar.gz`）、以及带签名 booter blob 的来源。三个文件反复要紧：`src/nvidia/generated/g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c`（持有 `IMAGE_{DBG,PROD}`、`HEADER_{DBG,PROD}`、`SIG_{DBG,PROD}` 和 `PATCH_LOC = 0x8900`）、`kernel_gsp_booter_tu102.c`、和 `nouveau/extract-firmware-nouveau.txt`。出货 `master` 上受支持的版本恰好是 `610.43.03`（默认）和 `610.43.02`；其它任何东西构建都会硬失败。见[驱动版本](../procedures/driver-versions.md)。
+**信任：Primary（主要）。** 这是 `build.sh` 安装时抓取的上游驱动源码（`archive/refs/tags/${VERSION}.tar.gz`），也是带签名 booter blob 的来源。有三个文件反复用到：`src/nvidia/generated/g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c`（持有 `IMAGE_{DBG,PROD}`、`HEADER_{DBG,PROD}`、`SIG_{DBG,PROD}` 和 `PATCH_LOC = 0x8900`）、`kernel_gsp_booter_tu102.c` 和 `nouveau/extract-firmware-nouveau.txt`。出货 `master` 上受支持的版本恰好是 `610.43.03`（默认）和 `610.43.02`；其它任何东西都会导致构建硬失败。见[驱动版本](../procedures/driver-versions.md)。
 
 > [!NOTE]
 > **下载无完整性检查**
 >
-> `build.sh` 用 `curl -L --fail` 抓取 tarball 并缓存它、整棵树里没有任何校验和或
-> 签名验证。按版本记录一个预期 SHA-256 会是一行改进、而且还没做。
+> `build.sh` 用 `curl -L --fail` 抓取 tarball 并缓存它，整棵树里没有任何校验和或
+> 签名验证。按版本记录一个预期的 SHA-256 会是一行改进，而且还没做。
 
 ---
 
@@ -83,24 +83,24 @@
 
 ### 170th Street（`170th-street.gitbook.io/hx`）
 
-**信任：谨慎使用。** 这张卡最大的社区维基、也是截至 2026-07-27 项目自己提名的文档站。它的结构覆盖硬件（完整规格、拆解指南、一张泄露的 NVIDIA A100 原理图页）、改装（PCIe 电容改装、水冷）、解锁、AI 和 ML 工作负载、基准、和一张 NVLink 布件研究页。它跑一个基于 issue 的贡献流程、它的 issue 跟踪线程 #1 持有大量早期研究讨论。
+**信任：谨慎使用。** 这是这张卡最大的社区维基，也是截至 2026-07-27 项目自己提名的文档站。它的结构覆盖硬件（完整规格、拆解指南、一张泄露的 NVIDIA A100 原理图页）、改装（PCIe 电容改装、水冷）、解锁、AI 和 ML 工作负载、基准，以及一张 NVLink 布件研究页。它采用基于 issue 的贡献流程，其 issue 跟踪线程 #1 承载了大量早期研究讨论。
 
-电容改装页是该流程的参考社区写稿、并被独立测量佐证、所以它安全。问题在别处：
+电容改装页是该流程的参考社区写稿，并经独立测量佐证，所以它很安全。问题在别处：
 
 - **它在 SM 数上自相矛盾。** `hardware/full-specifications.md` 给出一个带 70 个 SM、4,480 个 CUDA 核和 280 个张量核的 Compute 表、而它自己的 "Notes on Specification Discrepancies" 一节说 "8 GB variant: 56 SMs, 4,096-bit memory bus" 和 "10 GB variant: 70 SMs, 5,120-bit memory bus"、`introduction/what-is-the-cmp-170hx.md` 也重复这个分裂。在一张活 8 GB 卡上、用 PTX 特殊寄存器转储测得的值是 **70 个 SM**。
 - **它的 PCIe 页过时了。** `hardware/full-specifications.md` 仍说 "PCIe Gen 1 x4 (firmware locked), ~1 GB/s"、它自己的时间线页仍把电容改装描述为未确认。两者都已被超越。
 - **它的 FP16 对比混了标量与张量速率**、把 170HX 的标量性能对其它卡的张量核性能比较、这在频道内被指出。
 - `cmpunlocker` 维护者被问 LnkCap 和 LnkCap2 值是否被证明是熔丝派生时、显式宣布它过时且不可信。
 
-把它当一份组织良好的二级摘要。对照[寄存器参考](../unlock/register-reference.md) 或一次测量重新验证任何寄存器、熔丝或规格声称。
+把它当作一份组织良好的二级摘要。任何寄存器、熔丝或规格声称，都要对照[寄存器参考](../unlock/register-reference.md) 或一次测量重新验证。
 
 ### 独立拆解评测（`niconiconi.neocities.org/tech-notes/nvidia-cmp-170hx-review/`）
 
-**信任：Reliable（可靠）、且是参考书目里最好的物理观察来源。** 2023-10-25 发布、比解锁工作早两年半、所以完全不受它污染。它的关键发现、被频繁引用且从未被反驳：CMP 170HX 用的电路板与 A100 40 GiB 几乎如果不是完全相同的、唯一差别是 ASIC 型号 `GA100-105F-A1`、而且板上有大量未装元件、包括被省去的 VRM 相位（被去装的 DrMOS 晶体管及其输出电感）和 **缺失的 NVLink 相关 IC**。
+**信任：Reliable（可靠），也是参考书目里最好的物理观察来源。** 发布于 2023-10-25，比解锁工作早两年半，所以完全不受其影响。它的关键发现被频繁引用、从未被反驳：CMP 170HX 使用的电路板与 A100 40 GiB 几乎（若非完全）相同，唯一差别是 ASIC 型号 `GA100-105F-A1`；而且板上有大量未装元件，包括被省去的 VRM 相位（被去装的 DrMOS 晶体管及其输出电感）和 **缺失的 NVLink 相关 IC**。
 
-最后这点比任何寄存器值都更要紧：缺失的 NVLink 接口 IC 对 NVLink 解锁是一个*物理*障碍、独立于固件里任何东西。见[NVLink](../frontier/nvlink.md)。该评测也是同一作者禁用-FMA 工作的来源、那是这张卡整个软件侧故事的起点。
+最后这点比任何寄存器值都更要紧：缺失的 NVLink 接口 IC 是 NVLink 解锁的*物理*障碍，与固件里的任何东西无关。见[NVLink](../frontier/nvlink.md)。该评测也是同一作者禁用-FMA 工作的来源，而那是这张卡整个软件侧故事的起点。
 
-评测附带的拆解照片托管在同一域名、是语料库里最高质量的 PCB 图像。
+评测附带的拆解照片托管在同一域名下，是语料库里质量最高的 PCB 图像。
 
 ---
 
@@ -108,7 +108,7 @@
 
 ### TechPowerUp VBIOS 合集
 
-**信任：对 ROM 文件是 Primary（主要）、不要信任元数据列。** `.rom` 映像是真的且可哈希；TechPowerUp 自己对这些条目的 "Memory Size" 列无法追溯到文件内任何字段、而且不可靠。
+**信任：对 ROM 文件是 Primary（主要），不要信任元数据列。** `.rom` 映像是真的且可哈希；TechPowerUp 自己对这几条目的 "Memory Size" 列无法追溯到文件内任何字段，而且不可靠。
 
 合集里存在四个 CMP 170HX 映像：
 
@@ -128,7 +128,7 @@
 > 300 W 上限但没有显存超频。**VBIOS 版本对解锁是否工作没有影响**、在
 > 两台跑 `92.00.67` 和 `92.00.6D.00.0A` 的主机上跨四张卡被确认。见[VBIOS](../hardware/vbios.md)。
 
-同合集的可用对比条目：A100 PCIe 40 GB（277449）、A100（283106）、A30（262595、它的 `92.00.66.00.0x` 几乎与 10 GB 170HX 映像相同）、和 Tesla V100 16 GB（199146）。
+同合集里可用的对比条目：A100 PCIe 40 GB（277449）、A100（283106）、A30（262595，其 `92.00.66.00.0x` 几乎与 10 GB 170HX 映像相同），以及 Tesla V100 16 GB（199146）。
 
 ### TechPowerUp GPU 规格数据库
 
@@ -142,7 +142,7 @@
 > 包括在一个代理简报里。相邻 ID 供定位：`c3821` 是 A100 PCIe 80 GB、
 > `c3822` 是 CMP 70HX、`c3823` 是 PG506-242。
 
-TechPowerUp 在晶片尺寸（826 mm²）、着色单元（4,480 = 70 x 64）、TMU/ROP/张量核（280/128/280）和 L1（每 SM 192 KB）上可靠。它在要紧的两种方式上**错了两次**：它列 **8 MB L2**、而 deviceQuery 和独立延迟尖峰微基准都测到 **32 MB**、它把电源连接器描述为 "2x 8-pin"、而板上是一个携带两条逻辑 12 V 轨的 **EPS 8-pin**。它的 PG199 6144-bit 总线挂牌也被一位一手拥有者说错。它 CMP 部件的带宽数字被频道内标记为偶尔错误。
+TechPowerUp 在晶片尺寸（826 mm²）、着色单元（4,480 = 70 x 64）、TMU/ROP/张量核（280/128/280）和 L1（每 SM 192 KB）上可靠。它恰好**错了两处**，且两处都要紧：它列 **8 MB L2**，而 deviceQuery 和独立延迟尖峰微基准都测到 **32 MB**；它把电源连接器描述为 "2x 8-pin"，而板上是携带两条逻辑 12 V 轨的单个 **EPS 8-pin**。它的 PG199 6144-bit 总线挂牌也被一位一手拥有者指为错误。它对 CMP 部件的带宽数字在频道内被标记为偶尔出错。
 
 ---
 
@@ -150,21 +150,21 @@ TechPowerUp 在晶片尺寸（826 mm²）、着色单元（4,480 = 70 x 64）、
 
 ### "A Canary in the Crypto Mine: Defeating Stack Protection in a GPU Secure Coprocessor"
 
-**信任：Primary（主要）、且是整个净室工作唯一指定的干净输入。** 2026 年 6 月、16 页、Zenodo 记录 **20916112**、镜像为 ResearchGate 出版物 **408132536**。2026-06-26 在解锁者服务器流传、2026-07-16T06:07:12Z 贴进净室服务器。
+**信任：Primary（主要），也是整个净室工作唯一指定的干净输入。** 2026 年 6 月、16 页、Zenodo 记录 **20916112**，镜像为 ResearchGate 出版物 **408132536**。2026-06-26 在解锁者服务器流传，2026-07-16T06:07:12Z 贴进净室服务器。
 
-它的摘要说 CMP 170HX 是"与旗舰 A100 相同的晶片、但在三个商业轴上是熔丝残废的：SM 算力速率（节流到 1/32）、显存容量（10 GB 而非 80 GB）、和 PCIe 链路（Gen1 而非 Gen4）"、说"三个上限都是软的"、并报告约 31 到 62x 算力、8x 容量和 2x 链路的主要增益。
+它的摘要称 CMP 170HX 是"与旗舰 A100 相同的晶片，但在三个商业轴上是熔丝残废的：SM 算力速率（节流到 1/32）、显存容量（10 GB 而非 80 GB）、PCIe 链路（Gen1 而非 Gen4）"，称"三个上限都是软的"，并报告约 31 到 62x 算力、8x 容量和 2x 链路的主要增益。
 
-为什么它承重：净室规则指定它为唯一可接受的输入文档、理由是它发布在一个科学出版物站点上、且已被寄给厂商。它的 5.5 节仿真器迹线发布 `buffer = 0x800`、`SIGSZ = 0xf800`、均匀填充 `V = 0x4a7`、`guard@0x6340` 和守卫桩值 `0xc0deca7e`、那是出货载荷大量常量的来源。它的 8.5 节、"Persistence across FLR"、是常开岛里的覆盖值把一次性利用变成持久状态的论证。
+它为何承重：净室规则把它指定为唯一可接受的输入文档，理由是它发布在科学出版物站点上，且已被寄给厂商。它的 5.5 节仿真器迹线发布了 `buffer = 0x800`、`SIGSZ = 0xf800`、均匀填充 `V = 0x4a7`、`guard@0x6340` 和守卫桩值 `0xc0deca7e`，那是出货载荷大量常量的来源。它的 8.5 节"Persistence across FLR"论证了常电岛里的覆盖值如何把一次性利用变成持久状态。
 
-两个注意。它的 "3-4 BAR0 value changes" 框架误导了每个独立实现者：难点完全在**先**打开四个 PLM、之后的 BAR0 写是琐碎的。而它的 Falcon 仿真器**从未被发布**、这关闭了复现其分析最直接的路线。一条二手报告说论文描述把卡稳定在约 35% 吞吐惩罚下、在此以低置信记录、未验证。
+两点注意。它的 "3-4 BAR0 value changes" 框架误导了每个独立实现者：难点完全在**先**打开四个 PLM，之后的 BAR0 写就琐碎了。而它的 Falcon 仿真器**从未被发布**，这关闭了复现其分析最直接的路线。还有一条二手报告称论文描述了把卡稳定在约 35% 吞吐惩罚下，此处以低置信记录、未经验证。
 
-论文作者拒绝发布前禁运、在第 10 节论证协调披露假设厂商的补救保护用户、当防御者是设备而对手是它的主人时这不成立。
+论文作者拒绝了发布前禁运，在第 10 节论证：协调披露假设厂商的补救能保护用户，但当防御者是设备、对手是它的主人时，这一假设并不成立。
 
 ### arXiv:2505.03782
 
-**信任：Reliable（可靠）、且经常与上面混淆。** "Exploration of Cryptocurrency Mining-Specific GPUs in AI Applications: A Case Study of CMP 170HX"、2025 年 4 月 30 日提交、分类 cs.AR 和 cs.DC。它报告 FP32 超过原能力 **15x**、某些精度下 LLM 推理超过 **3x**、通过在 CUDA 源码里禁用 FMA 收缩实现、在出厂固件上、用 OpenCL 基准、mixbench 和 LLAMA 基准测量。它是 Canary 论文的引用 [13]。**它不是利用论文**、而且有一段时间社区把两者混为一谈。
+**信任：Reliable（可靠），且经常与上文那篇混淆。** "Exploration of Cryptocurrency Mining-Specific GPUs in AI Applications: A Case Study of CMP 170HX"，2025 年 4 月 30 日提交，分类 cs.AR 和 cs.DC。它报告 FP32 超过原能力 **15x**、某些精度下 LLM 推理超过 **3x**，做法是在 CUDA 源码里禁用 FMA 收缩，在出厂固件上、用 OpenCL 基准、mixbench 和 LLAMA 基准测量。它是 Canary 论文的引用 [13]。**它不是利用论文**，而且有一段时间社区把两者混为一谈。
 
-围绕这张卡积累的其它 Zenodo 记录：18994970、19002983、和 18995979（一份 170HX 张量核分析、据报被 arXiv 因分类、风险和术语拒绝）。
+围绕这张卡积累的其它 Zenodo 记录：18994970、19002983 和 18995979（一份 170HX 张量核分析，据报因分类、风险和术语被 arXiv 拒绝）。
 
 ---
 
@@ -172,16 +172,16 @@ TechPowerUp 在晶片尺寸（826 mm²）、着色单元（4,480 = 70 x 64）、
 
 ### envytools / envydis（`envytools.readthedocs.io`、`github.com/envytools/envytools`）
 
-**信任：对它覆盖的是 Reliable（可靠）、对它没覆盖的保持沉默。** 带 **`fuc5`** 目标的 `envydis` 成功反汇编 GA100 booter、产生的清单被独立审查并在硅片上正确执行。这有效、尽管 envytools 表名义上把 `fuc6` 分配给 GP102 及更晚部件（`fuc0 [G98, MCP77, MCP79]`、`fuc3 [GT215+]`、`fuc4 [GF119+]`、`fuc5 [GK208+]`、`fuc6 [GP102+, selected engines only]`）。170HX SEC2 是正式 fuc5 还是 fuc6 保持开放；频道内记录的实际答案是 "I picked whatever worked"（我选了管用的那个）。
+**信任：对它覆盖的部分是 Reliable（可靠），对它没覆盖的部分保持沉默。** 带 **`fuc5`** 目标的 `envydis` 成功反汇编了 GA100 booter，产生的清单经独立审查并在硅片上正确执行。这行之有效，尽管 envytools 的表名义上把 `fuc6` 分配给 GP102 及更晚部件（`fuc0 [G98, MCP77, MCP79]`、`fuc3 [GT215+]`、`fuc4 [GF119+]`、`fuc5 [GK208+]`、`fuc6 [GP102+, selected engines only]`）。170HX SEC2 正式来说究竟是 fuc5 还是 fuc6 仍未定论；频道内记录的实际答案是 "I picked whatever worked"（我选了管用的那个）。
 
 > [!NOTE]
 > **未解问题**
 >
-> envytools 大约八年没更新、而且它**完全无法佐证安全启动材料**：它的 Falcon 加密页
-> 有标题没内容、它只文档化到 v5 的 Falcon 硬件版本、而且它没有本工作依赖的
-> 若干寄存器条目。`gitlab.freedesktop.org/nouveau/envhooks` 上的 `envyhooks`
-> 被建议为继任者、被发现缺乏等效功能。定案 fuc5 对 fuc6 需要
-> 对同一映像两种解码做一个 diff、找只有一个目标能连贯解析的指令。
+> envytools 大约八年没更新了，而且它**完全无法佐证安全启动材料**：它的 Falcon 加密页
+> 只有标题没有内容，它只文档化了到 v5 为止的 Falcon 硬件版本，而且本工作依赖的若干寄存器
+> 在它那里没有条目。`gitlab.freedesktop.org/nouveau/envhooks` 上的 `envyhooks`
+> 曾被提议为继任者，结果发现缺乏等效功能。要定案 fuc5 对 fuc6，需要对
+> 同一映像的两种解码做一个 diff，寻找只有某个目标能连贯解析的指令。
 
 这个族里还有：
 
@@ -189,13 +189,13 @@ TechPowerUp 在晶片尺寸（826 mm²）、着色单元（4,480 = 70 x 64）、
 - **`github.com/CAmadeus/falcon-tools`**（`requiem` 子树）：Falcon 安全启动工具、密钥生成、载荷和逆向工程材料。需要 Python 3.6+、PyCryptodome、envytools、make 和 m4、不直接针对相关代的任何 NVIDIA GPU。
 - **`github.com/karolherbst/nouveau_tools`**（`dbg_falcon.sh`）：一个 Falcon 调试辅助。
 - **`hexkyz.blogspot.com`**（"Je ne sais quoi: Falcons over the Horizon"、2021 年 11 月）和 **switchbrew TSEC 页**：Falcon 安全模式行为的标准外部参考、包括 `$sr10` 语义和那条在停机前抑制中断和异常的位。
-- **`github.com/ttabi/extract-firmware-nova`** 和 **`github.com/NVIDIA/nova`**（`drivers/gpu/nova-core/devinit.rs`、`vbios.rs`）：NVIDIA 内核驱动的 Rust 重写、有用因为它在普通源码里命名寄存器、而 C 驱动把它们藏在宏后面。
+- **`github.com/ttabi/extract-firmware-nova`** 和 **`github.com/NVIDIA/nova`**（`drivers/gpu/nova-core/devinit.rs`、`vbios.rs`）：NVIDIA 内核驱动的 Rust 重写，之所以有用，是因为它在普通源码里直接写出寄存器名，而 C 驱动把它们藏在宏后面。
 
 ---
 
 ## 6. 社区 gist 和参考表
 
-**信任：作为测量记录是 Primary（主要）。** 两个重要的 gist 在发布后都被删除、并被他人重新 fork、所以引用内容、不要引用某个特定 fork。
+**信任：作为测量记录是 Primary（主要）。** 两个重要的 gist 发布后都被删除、又被他人重新 fork，所以要引用内容，不要引用某个特定的 fork。
 
 | Gist ID | 内容 | 为什么要紧 |
 |---|---|---|
@@ -216,7 +216,7 @@ TechPowerUp 在晶片尺寸（826 mm²）、着色单元（4,480 = 70 x 64）、
 
 ## 7. Fork、重实现和相邻工具
 
-至少有六个公共仓库在发布后几天内 fork 或重实现了解锁。没有一个对 `master` 有权威性。
+至少有六个公共仓库在发布后的几天内 fork 或重实现了解锁。没有一个对 `master` 有权威性。
 
 | 仓库 | 它是什么 | 信任 |
 |---|---|---|
@@ -234,30 +234,30 @@ TechPowerUp 在晶片尺寸（826 mm²）、着色单元（4,480 = 70 x 64）、
 
 ### 第三方验证与测量工具
 
-被反复使用且值得知道：`ComputationalRadiationPhysics/cuda_memtest`（v1.2.3、维护者推荐的 VRAM 验证器、在第一个错误时退出、**在 80 GB 配置档上无限挂起、除非封顶在 39 GB**）、`GpuZelenograd/memtest_vulkan`、`wilicc/gpu-burn`、`ProjectPhysX/OpenCL-Benchmark`、`ReinForce-II/mmapeak`（张量吞吐）、`zzc0721/torch-performance-test-data`（GEMM）、`sasha0552/nvidia-pstated`（空转功耗管理；见它的 issue #6）、和给没有可调整 BAR 固件支持的主机的 `xCuri0/ReBarUEFI`。
+反复使用且值得了解的工具有：`ComputationalRadiationPhysics/cuda_memtest`（v1.2.3，维护者推荐的 VRAM 验证器，遇第一个错误即退出，**除非封顶在 39 GB，否则在 80 GB 配置档上无限挂起**）、`GpuZelenograd/memtest_vulkan`、`wilicc/gpu-burn`、`ProjectPhysX/OpenCL-Benchmark`、`ReinForce-II/mmapeak`（张量吞吐）、`zzc0721/torch-performance-test-data`（GEMM）、`sasha0552/nvidia-pstated`（空转功耗管理；见它的 issue #6），以及给没有可调整 BAR 固件支持的主机用的 `xCuri0/ReBarUEFI`。
 
 ---
 
 ## 8. Issue 线程与讨论轨迹
 
-**`github.com/dartraiden/NVIDIA-patcher` issue #73。** *信任：作为记录是 Reliable（可靠）、作为分析不可靠。* 这是整个努力开始的地方、2026 年 3 月、在 4 月搬到 Discord 之前。它还携带显存跳线解释（"each of the HBM2 stacks 上可寻址 RAM 的量由一个特定位置在 DMEM 区域里的 32 位字定义"）、跳线电阻讨论（R999/R1000 处的 Strap4、PCIE_CFG）、和首个公开 "40 GB confirmed working" 报告。注意 NVIDIA-patcher 项目**本身无法驱动 170HX**：它面向图形、它产出的是一个 GeForce-分类的 GPU 而非算力解锁。把它应用到 170HX 不影响 FP32 节流。
+**`github.com/dartraiden/NVIDIA-patcher` issue #73。** *信任：作为记录是 Reliable（可靠）、作为分析不可靠。* 这是整个努力的起点，发生在 2026 年 3 月，4 月才搬到 Discord。它还承载了显存跳线解释（"每个 HBM2 栈上可寻址 RAM 的量，由 DMEM 区域里一个特定位置的 32 位字定义"）、跳线电阻讨论（R999/R1000 处的 Strap4、PCIE_CFG），以及首个公开的 "40 GB confirmed working" 报告。注意 NVIDIA-patcher 项目**本身无法驱动 170HX**：它面向图形，产出的是一个 GeForce-分类的 GPU 而非算力解锁。把它应用到 170HX 上不会影响 FP32 节流。
 
-一条 2026 年 4 月的写稿从那线程被链接、在约 18 小时自动化分析后得出结论"FP throttle is hardware enforced and can't be overridden"（FP 节流是硬件强制的、无法覆盖）。它自己的页脚说它是在驱动 **535.288.01** 上执行的、那早于出货解锁器瞄准的 GSP 布局、它的结论被出货算力解锁反驳。它是一个精心文档化的错误答案的好例子。
+从那线程链接出的一条 2026 年 4 月写稿，经过约 18 小时自动化分析后得出结论"FP throttle is hardware enforced and can't be overridden"（FP 节流是硬件强制的、无法覆盖）。它自己的页脚说明这是在驱动 **535.288.01** 上执行的，那早于出货解锁器瞄准的 GSP 布局，它的结论也被出货算力解锁反驳。它是一个精心记录的错误答案的好例子。
 
 **`github.com/ggml-org/llama.cpp`**：issue #24616（在 PCIe 1.1 x4 的 90HX 上达到 240 t/s pp512 的 CMP 专属补丁集）、issue #24730（无 DSA 注意力支持、那是为什么 GLM 类模型回退到稠密注意力并在此变得不可用的原因）、PR #19378（经 `--split-mode tensor` 的后端无关张量并行）、和讨论 #15013。见[LLM 推理](../operations/llm-inference.md)。
 
 **`github.com/JustVugg/colibri`**、**`github.com/LaurieWired/tailslayer`**（刷新时序调优）、**`github.com/microsoft/Tutel`**、**`github.com/sgl-project/sglang`**、**`ikawrakow/ik_llama.cpp`**：为工作负载工作流传的相邻工具、源材料里没有一个在这张卡上被验证。
 
-**FluidX3D issue #8（2023-10-27）。** 原始 FMA-禁用发现的功劳、比它 2023-12-06 到达 NVIDIA-patcher issue #73 早两个月。对 `src/lbm.cpp` 里 `LBM_Domain::device_defines()` 的两行补丁（索引 `d99202f..28aeb25`、约第 286 行）把 `#pragma OPENCL FP_CONTRACT OFF` 加宏遮蔽应用到每个生成的 OpenCL 程序、不碰内核源码、测到去掉 FMA 后 **7,681 MLUPs/s**、在 1175 GB/s：对 2,276 MLUPs/s 出厂值的 **3.4x** 改进。分开地、NVIDIA-patcher 线程上报的同一技术把 170HX FP32 从 **0.395 → 6.285 TFLOPS、一个 15.9 倍因子**。两者都是 2023 年锁定卡结果。（6.25 TFLOPS 是一个不同的、锁定模式自定义-GEMM 读数、在语料库里记录为一个失败-解锁特征：不要把它附到这个结果上。）
+**FluidX3D issue #8（2023-10-27）。** 这是原始 FMA-禁用发现的功劳归属，比它 2023-12-06 到达 NVIDIA-patcher issue #73 早两个月。对 `src/lbm.cpp` 里 `LBM_Domain::device_defines()` 的两行补丁（索引 `d99202f..28aeb25`、约第 286 行）把 `#pragma OPENCL FP_CONTRACT OFF` 加宏遮蔽应用到每个生成的 OpenCL 程序，不碰内核源码；去掉 FMA 后在 1175 GB/s 下测到 **7,681 MLUPs/s**——较出厂值 2,276 MLUPs/s 是 **3.4x** 改进。另外，NVIDIA-patcher 线程上报的同一技术把 170HX 的 FP32 从 **0.395 → 6.285 TFLOPS，即 15.9 倍因子**。两者都是 2023 年的锁定卡结果。（6.25 TFLOPS 是另一个不同的锁定模式自定义-GEMM 读数，在语料库里被记录为失败-解锁特征：不要把它附到这个结果上。）
 
 ---
 
 ## 9. 被刻意排除的来源
 
 - **各种商业和市场链接。** 采购在本维基范围之外。
-- **分销商零件编号。** 电容改装零件的两个不同分销商 SKU 在流传、没有来源裁定哪个正确。本维基只引用厂商零件、Taiyo Yuden `MAASJ105SB7224KFCA01`（220 nF、6.3 V、X7R、0402）。见[物理改装](../operations/physical-mods.md)。
-- **泄露材料。** 2022 年 2 月到 3 月的 NVIDIA 泄露缓存只在记录里作为来源溯源问题被引用。它的内容在此不被使用、引用或链接。见[净室与来源溯源](../history/clean-room-and-provenance.md)。
-- **作为证据分享的 AI 聊天记录。** 语料库里有几十份被分享的助手对话。它们被记录为线索和文档化的幻觉、从不作为来源。
+- **分销商零件编号。** 电容改装零件流传过两个不同的分销商 SKU，没有来源裁定哪个正确。本维基只引用厂商零件，即 Taiyo Yuden `MAASJ105SB7224KFCA01`（220 nF、6.3 V、X7R、0402）。见[物理改装](../operations/physical-mods.md)。
+- **泄露材料。** 2022 年 2 月到 3 月的 NVIDIA 泄露缓存，只在记录里作为来源溯源问题被引用。它的内容在此不被使用、引用或链接。见[净室与来源溯源](../history/clean-room-and-provenance.md)。
+- **作为证据分享的 AI 聊天记录。** 语料库里有几十份被分享的助手对话。它们被记录为线索、被记录为文档化的幻觉，但从不作为来源。
 - **视频演示。** 存在几份、用几种语言。没有一份能对照寄存器或日志验证、所以没有一份被引用。
 
 ---
