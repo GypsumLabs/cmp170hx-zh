@@ -6,7 +6,7 @@
 
 ## 两种阅读方式
 
-- **[维基标签页](https://github.com/Consensus-Protocol/cmp170hx/wiki)** 用于浏览、带侧边栏。
+- **[维基标签页](https://github.com/GypsumLabs/cmp170hx-zh/wiki)** 用于浏览、带侧边栏。
   那里的页面从 `docs/` 生成、除链接风格外完全相同。
 - **本仓库里的 `docs/`** 是唯一真相源。它可审查、接受拉取请求、
   并通过 MkDocs 构建带搜索的完整主题化站点。
