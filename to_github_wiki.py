@@ -575,6 +575,11 @@ def main():
     else:
         git("pull", "--ff-only", cwd=clone_dir)
 
+    # 关键: 关闭 core.ignorecase, 否则 Windows 上 git 会把
+    # "appendix-artifacts.md" -> "Appendix-Artifacts.md" 这类仅大小写变化
+    # 的重命名当作同一文件, 导致文件重命名无法提交。
+    git("config", "core.ignorecase", "false", cwd=clone_dir)
+
     # 清理旧内容 (保留 .git 和 _Footer.md, 删除所有 .md 页面与图片目录, 重新生成)
     print(f"[3/4] 清理旧页面并生成新页面")
     for fn in os.listdir(clone_dir):
