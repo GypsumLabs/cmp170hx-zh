@@ -211,17 +211,17 @@ nvidia-smi --query-gpu=pcie.link.gen.current,pcie.link.gen.max,pcie.link.width.c
 
 通道 4 到 15 上贴装的交流耦合排、在板修订 `180-11001-DAAA-B35` 上。部件坐在扇出走线和金手指之间、每差分对两颗：
 
-![Populated AC-coupling capacitors on a 180-11001-DAAA-B35 board](https://raw.githubusercontent.com/wiki/Consensus-Protocol/cmp170hx/images/x16-cap-mod-b35-lanes.jpg)
+![Populated AC-coupling capacitors on a 180-11001-DAAA-B35 board](images/x16-cap-mod-b35-lanes.jpg)
 
 同一块板修订 `180-11001-DAAA-B15` 上的同一区域：
 
-![Populated AC-coupling capacitors on a 180-11001-DAAA-B15 board](https://raw.githubusercontent.com/wiki/Consensus-Protocol/cmp170hx/images/x16-cap-mod-b15-lanes.jpg)
+![Populated AC-coupling capacitors on a 180-11001-DAAA-B15 board](images/x16-cap-mod-b15-lanes.jpg)
 
 两张卡的更宽视图。板中央横跨的大片未贴装焊盘阵列保持为空；只贴装了边缘连接器旁的电容排。
 
-![Wider view of the B35 card showing untouched unpopulated footprints](https://raw.githubusercontent.com/wiki/Consensus-Protocol/cmp170hx/images/x16-cap-mod-b35-overview.jpg)
+![Wider view of the B35 card showing untouched unpopulated footprints](images/x16-cap-mod-b35-overview.jpg)
 
-![Wider view of the B15 card showing untouched unpopulated footprints](https://raw.githubusercontent.com/wiki/Consensus-Protocol/cmp170hx/images/x16-cap-mod-b15-overview.jpg)
+![Wider view of the B15 card showing untouched unpopulated footprints](images/x16-cap-mod-b15-overview.jpg)
 
 ### 板
 

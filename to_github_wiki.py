@@ -222,8 +222,7 @@ def convert_links(text, cur_dir, flat_index):
         flat = flat_index[rel]
         return before + flat + ".md" + anchor + query + (quote + ")" if quote else ")")
 
-    # 由于上面 conv 里对非 .md 的返回用了原始 target, 正则需要捕获完整
-    # 目标文本才能无损还原。这里改用更简单的策略: 匹配 "](...)" 整体。
+    # 匹配 "](...)" 整体 (普通链接与 ![..](..) 图片链接的目标都含 "](...)").
     LINK_RE2 = re.compile(r"\]\(([^)\s]+?)\)")
     def conv2(m):
         inner = m.group(1)
@@ -238,10 +237,13 @@ def convert_links(text, cur_dir, flat_index):
             main, _, query = main.partition("?")
             query = "?" + query
 
-        if not main.lower().endswith(".md"):
+        norm = main.replace("\\", "/")
+
+        # 仅处理相对路径 (非 URL, 非纯锚点). 外部 URL/锚点/空 原样保留.
+        if not main or main.startswith(("http://", "https://", "#", "mailto:")):
             return m.group(0)
 
-        norm = main.replace("\\", "/")
+        # 解析出从 docs 根出发的相对路径
         parts = norm.split("/")
         if norm.startswith("../"):
             up = 0
@@ -255,14 +257,19 @@ def convert_links(text, cur_dir, flat_index):
             base = cur_rel[:-up] if up <= len(cur_rel) else []
             rel = "/".join(base + rest)
         else:
+            # 同目录 (无 ./ 或 ../ 前缀)
             rel = "/".join(cur_dir.split("/") + [norm]) if cur_dir else norm
-
         rel = rel.lstrip("./")
-        if rel not in flat_index:
-            return m.group(0)
-        return f"]({flat_index[rel]}.md{anchor}{query})"
 
-    # 注意: conv2 只处理 "](...)" 而不处理 <img src>, 图片链接保持原样即可。
+        if main.lower().endswith(".md"):
+            # 页面链接: 扁平化为 wiki 页面名
+            if rel not in flat_index:
+                return m.group(0)
+            return f"]({flat_index[rel]}.md{anchor}{query})"
+        else:
+            # 图片等资源: 保留 docs 相对目录结构, 指向 wiki 仓库同名目录
+            return f"]({rel}{anchor}{query})"
+
     return LINK_RE2.sub(conv2, text)
 
 
@@ -345,6 +352,18 @@ def generate(output_dir):
     with open(os.path.join(output_dir, "_Sidebar.md"), "w", encoding="utf-8") as f:
         f.write(sidebar)
     written.append("_Sidebar.md")
+
+    # 复制图片等资源文件 (非 .md), 保持 docs 相对目录结构
+    for dirpath, _, files in os.walk(DOCS_DIR):
+        for fn in files:
+            if fn.endswith(".md"):
+                continue
+            src = os.path.join(dirpath, fn)
+            rel = os.path.relpath(src, DOCS_DIR).replace("\\", "/")
+            dst = os.path.join(output_dir, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+            written.append(rel)
 
     return written
 
@@ -435,11 +454,16 @@ def main():
     else:
         git("pull", "--ff-only", cwd=clone_dir)
 
-    # 清理旧页面 (保留 _Footer.md, 删除所有 .md 页面和 _Sidebar, 重新生成)
+    # 清理旧内容 (保留 .git 和 _Footer.md, 删除所有 .md 页面与图片目录, 重新生成)
     print(f"[3/4] 清理旧页面并生成新页面")
     for fn in os.listdir(clone_dir):
-        if fn.endswith(".md"):
-            os.remove(os.path.join(clone_dir, fn))
+        if fn in (".git", "_Footer.md", ".gitignore"):
+            continue
+        full = os.path.join(clone_dir, fn)
+        if os.path.isdir(full):
+            shutil.rmtree(full, ignore_errors=True)
+        else:
+            os.remove(full)
 
     written = generate(clone_dir)
 
