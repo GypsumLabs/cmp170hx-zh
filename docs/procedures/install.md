@@ -1,48 +1,48 @@
-# 安装解锁
+# 安装解锁器
 
-**本页覆盖内容。** 已发布的 `cmpunlocker` 驱动补丁在 CMP 170HX 上的完整、受支持安装流程：开始前必须具备什么、精确命令、`install.sh` 和 `driver/build.sh` 每步做什么、卡档位如何选择（以及何时强制它）、为什么冷重启要紧、以及正确的一次运行在屏幕和 `dmesg` 里长什么样。
+**本页内容。** 本页介绍当前发布版 `cmpunlocker` 驱动补丁在 CMP 170HX 上完整且受支持的安装流程：开始前必须满足的条件、准确的命令、`install.sh` 和 `driver/build.sh` 各步骤的作用、卡片档位的选择方式（以及需要强制指定档位的情况）、冷重启的重要性，以及一次正确的安装在屏幕输出和 `dmesg` 中应呈现的结果。
 
-短版：安装 nvidia-open **610.43.03** 或 **610.43.02**，禁用安全启动，安装内核头文件，然后在仓库克隆中运行 `sudo ./install.sh`，最后冷启动。脚本为你的驱动版本下载 NVIDIA 出厂的 `open-gpu-kernel-modules` tarball，依次应用六个补丁、构建五个内核模块，并把它们安装到 `/lib/modules/$(uname -r)/updates/cmpunlocker/`。全程不会向卡的 VBIOS 写入任何内容，也不会修改磁盘上的任何固件文件。一张 8 GB 卡（`10de:20c2`）解锁后报告 **65536 MiB**，一张 10 GB 卡（`10de:2082`）解锁后报告 **40960 MiB**。
+简要流程：安装 nvidia-open **610.43.03** 或 **610.43.02**，禁用安全启动，安装内核头文件，然后从仓库克隆目录运行 `sudo ./install.sh`，最后执行冷启动。脚本会针对你的驱动版本下载 NVIDIA 原厂的 `open-gpu-kernel-modules` tarball，应用六个补丁，构建五个内核模块，并将它们安装到 `/lib/modules/$(uname -r)/updates/cmpunlocker/`。整个过程不会向显卡的 VBIOS 写入任何内容，也不会修改磁盘上的固件文件。8 GB 卡（`10de:20c2`）解锁后会报告 **65536 MiB**，10 GB 卡（`10de:2082`）解锁后会报告 **40960 MiB**。
 
-解锁本身的原理见[解锁如何工作](../unlock/how-it-works.md)，补丁系列见[驱动补丁](../unlock/driver-patches.md)。本页只讲操作流程。
+解锁机制本身见[解锁如何工作](../unlock/how-it-works.md)，补丁系列见[驱动补丁](../unlock/driver-patches.md)。本页只介绍实际操作流程。
 
 ---
 
 ## 前置条件
 
-| 要求 | 详情 | 由谁强制 |
+| 要求 | 详情 | 强制检查位置 |
 |---|---|---|
-| 操作系统 | Linux，x86-64。此解锁**没有 Windows 路径**。 | 不检查；补丁只为 Linux GSP 引导路径存在 |
+| 操作系统 | Linux，x86-64。此解锁**没有 Windows 安装路径**。 | 不检查；补丁只适用于 Linux 的 GSP 引导路径 |
 | 权限 | root（`sudo ./install.sh`） | `install.sh` 第 1 步、`build.sh` |
-| 卡 | `10de:20c2`（8 GB）或 `10de:2082`（10 GB）。`10de:20b0` 会被检测到却**不**被解锁。 | `install.sh` 第 2 步（`lspci` grep），和驱动内设备门 |
-| 驱动 | nvidia-**open** `610.43.03`（默认）或 `610.43.02`，精确字符串匹配 | `install.sh` 第 4 步和 `driver/build.sh`，两者都对 `driver/VERSION` |
+| 显卡 | `10de:20c2`（8 GB）或 `10de:2082`（10 GB）。`10de:20b0` 会被检测到，但**不会**被解锁。 | `install.sh` 第 2 步（`lspci` grep）以及驱动内的设备门控 |
+| 驱动 | nvidia-**open** `610.43.03`（默认）或 `610.43.02`，必须精确匹配字符串 | `install.sh` 第 4 步和 `driver/build.sh`，两者都以 `driver/VERSION` 为准 |
 | 内核头文件 | `/lib/modules/$(uname -r)/build` 必须存在 | `install.sh` 第 4 步和 `build.sh` |
-| 安全启动 | 禁用；补丁模块未签名 | `install.sh` 第 4 步、经 `mokutil --sb-state` |
-| 网络 | 首次安装时可达 `github.com`、用于源码 tarball | `build.sh` 里的 `curl -L --fail` |
-| 工具链 | `python3`、`patch`、`make`、`curl`、一个可工作的内核构建环境 | `build.sh` 只检查 `python3` |
+| 安全启动 | 必须禁用；补丁模块未签名 | `install.sh` 第 4 步，通过 `mokutil --sb-state` 检查 |
+| 网络 | 首次安装时必须能访问 `github.com`，以下载源码 tarball | `build.sh` 中的 `curl -L --fail` |
+| 工具链 | `python3`、`patch`、`make`、`curl`，以及可正常工作的内核构建环境 | `build.sh` 只检查 `python3` |
 
-实际要紧的注意事项：
+实际使用时需要特别注意：
 
-- **要用 nvidia-open，不是专有驱动。** 封闭驱动有不同的引导路径，无法以同样方式打补丁。卡在出厂驱动上*运行*得很好（一位测试者开箱即在 Ubuntu 24.04 上用 `nvidia-driver-570` 配合 CUDA 12.8，Ubuntu 22.04 上的 `nvidia-driver-535-server` 也见有报告），但"能被驱动"和"能被解锁"是两回事。见[驱动版本](driver-versions.md)。
-- **安全启动检查是有条件的。** 它只在 `/sys/firmware/efi` 存在**且** `mokutil` 位于 `PATH` 时运行。在非 EFI 机器或没装 `mokutil` 的机器上，检查会被静默跳过，你最终可能仍留下一个内核拒绝加载的模块。`dmesg` 里的症状是 `nvidia: module verification failed: signature and/or required key missing - tainting kernel`。
-- **没有 PyYAML、没有 GCC 版本检查。** `build.sh` 用带标准库的普通 `python3`，不做任何编译器版本测试。网上流传的 "python3 with PyYAML / gcc 13+" 前置条件来自第三方 `unlock-cmp-170hx` 指南仓库，而不是这些脚本；一个钉住 `pyyaml>=5.1` 的残留 `requirements.txt` 也残留在六个 cmpunlocker 分支上，不过没有任何分支脚本 import `yaml`。泄露的预构建包 README 只要求 root 访问权限和内核头文件。一次在 Ubuntu 26.04 LTS、内核 7.0.0-27-generic 上报告了可工作的构建（`Gen2` 分支，多次重启存活）。
-- **在你能承受弄坏的机器上进行。** 裸机上的驱动补丁反复尝试破坏性足够大——一位开发者报告，每次 `nvidia.ko` 部署搞砸后都得重装操作系统。见[Risks](../start/risks.md)。
+- **必须使用 nvidia-open，不能使用专有驱动。** 封闭驱动采用不同的引导路径，无法按相同方式打补丁。显卡在原厂驱动下可以正常*运行*（有测试者在 Ubuntu 24.04 上开箱使用 `nvidia-driver-570` 和 CUDA 12.8，另有报告称 Ubuntu 22.04 上的 `nvidia-driver-535-server` 也可以使用），但“驱动能正常运行”和“显卡已解锁”是两回事。见[驱动版本](driver-versions.md)。
+- **安全启动检查是有条件的。** 只有在 `/sys/firmware/efi` 存在**且** `mokutil` 位于 `PATH` 中时，脚本才会执行检查。在非 EFI 机器上，或在未安装 `mokutil` 的机器上，检查会静默跳过；最终仍可能得到被内核拒绝加载的模块。`dmesg` 中的症状是 `nvidia: module verification failed: signature and/or required key missing - tainting kernel`。
+- **不需要 PyYAML，也不检查 GCC 版本。** `build.sh` 使用带标准库的普通 `python3`，不会测试编译器版本。网上流传的“需要带 PyYAML 的 python3 / gcc 13+”来自第三方 `unlock-cmp-170hx` 指南仓库，而不是这些脚本；六个 cmpunlocker 分支中还残留着一份锁定 `pyyaml>=5.1` 的 `requirements.txt`，但没有任何分支脚本导入 `yaml`。泄露的预构建包 README 只要求 root 权限和内核头文件。已有报告称，在 Ubuntu 26.04 LTS、内核 7.0.0-27-generic 上可以成功构建（使用 `Gen2` 分支，且多次重启后仍正常）。
+- **请在一台即使损坏也能接受的机器上操作。** 裸机上反复尝试驱动补丁的破坏性很高；一位开发者报告说，每次 `nvidia.ko` 部署失败后都需要重装操作系统。见[风险](../start/risks.md)。
 
 > [!CAUTION]
-> **固件打补丁时代的遗留状态**
+> **固件打补丁时代留下的状态**
 >
-> 如果这台机器跑过 `cmpunlocker` 的**固件打补丁前身**，在安装驱动补丁**之前**把 `gsp_tu10x.bin` 恢复到出厂：
+> 如果这台机器曾经运行过 `cmpunlocker` 的**固件打补丁前身**，请在安装驱动补丁**之前**将 `gsp_tu10x.bin` 恢复为原厂版本：
 >
 > ```bash
 > GSP_DIR=/lib/firmware/nvidia/610.43.03
 > sudo cp "$GSP_DIR/gsp_tu10x.bin.cmpunlocker.bak" "$GSP_DIR/gsp_tu10x.bin"
 > ```
 >
-> 打过补丁的驱动在引导时把固件的签名保存为 "stock"。如果磁盘上的固件仍被打过补丁，驱动会把利用载荷保存为出厂，随后一次干净的 GSP-RM 引导就 DMA 错误的 ROP 链。事后要找的成功行是 `SEC2_DEBUG: saved stock signature (4096 bytes)`。
+> 驱动补丁会在启动期间把固件签名保存为“stock”。如果磁盘上的固件仍是打过补丁的版本，驱动保存的就会是利用载荷；随后，干净的 GSP-RM 引导会 DMA 错误的 ROP 链。之后应检查是否出现成功日志 `SEC2_DEBUG: saved stock signature (4096 bytes)`。
 
 ---
 
-## 命令
+## 安装命令
 
 ```bash
 git clone https://github.com/amoghmunikote/cmpunlocker
@@ -50,58 +50,58 @@ cd cmpunlocker
 sudo ./install.sh
 ```
 
-自动检测错误或 `nvidia-smi` 不可用时强制档位：
+自动检测结果不正确或 `nvidia-smi` 不可用时，可以强制指定档位：
 
 ```bash
-sudo ./install.sh --profile=8gb     # 8 GB 物理卡  -> 64 GB 几何布局
-sudo ./install.sh --profile=10gb    # 10 GB 物理卡 -> 40 GB 几何布局
+sudo ./install.sh --profile=8gb     # 8 GB physical card  -> 64 GB geometry
+sudo ./install.sh --profile=10gb    # 10 GB physical card -> 40 GB geometry
 sudo ./install.sh --help
 ```
 
-只接受那三种标志形式（`--profile=8gb|8GB|10gb|10GB`、`-h`、`--help`）。任何其它参数都会以 `Unknown argument: <arg>` 退出 1。
+只接受这三类参数形式（`--profile=8gb|8GB|10gb|10GB`、`-h`、`--help`）。传入任何其他参数都会以状态码 1 退出，并输出 `Unknown argument: <arg>`。
 
-所有输出都 tee 到检出内的 `logs/install_<YYYYmmdd_HHMMSS>.log`，所以要从一个可写目录运行。
+所有输出都会通过 tee 写入检出目录中的 `logs/install_<YYYYmmdd_HHMMSS>.log`，因此必须从可写目录运行。
 
 ---
 
-## `install.sh` 逐步做什么
+## `install.sh` 的逐步行为
 
-脚本在 `set -euo pipefail` 下是六个编号步骤。
+脚本在 `set -euo pipefail` 下执行六个编号步骤。
 
-### 第 1/6 步：root
+### 第 1/6 步：检查 root 权限
 
-`[[ "${EUID}" -eq 0 ]]` 或死掉、带 `Run as root: sudo ./install.sh`。
+如果 `[[ "${EUID}" -eq 0 ]]` 不成立，脚本就会失败，并输出 `Run as root: sudo ./install.sh`。
 
-### 第 2/6 步：GPU 检测
+### 第 2/6 步：检测 GPU
 
 ```bash
 lspci -nn | grep -iE '10de:20b0|10de:20c2|10de:2082' | head -1
 ```
 
-没有匹配是致命的：`No CMP 170HX GPU found (10de:20b0 / 10de:20c2 / 10de:2082)`。注意 `head -1`：**master 是一个单卡安装器。** 它只记录第一行匹配的 BDF（总线、设备、功能地址）以及那一个设备 ID。机架多于一张卡时见[多卡](multi-gpu.md)。
+没有匹配结果会直接失败，并输出 `No CMP 170HX GPU found (10de:20b0 / 10de:20c2 / 10de:2082)`。注意这里的 `head -1`：**master 是单卡安装器**。它只记录第一条匹配结果中的 BDF（总线、设备、功能地址）和设备 ID。机架中有多张卡时，请参见[多卡](multi-gpu.md)。
 
-如果检测到的设备 ID 既不是 `20c2` 也不是 `2082`，脚本警告并**继续**：
+如果检测到的设备 ID 既不是 `20c2` 也不是 `2082`，脚本会发出警告，但**继续安装**：
 
 ```text
 ! In-driver unlock path is gated on PCI ID 0x20C2 / 0x2082.
 ! This card reports 0x20b0; install will continue, but unlock may not activate.
 ```
 
-那是准确的。驱动内门 `_kgspSec2PostblTimingEnabled()` 只接受 `0x20C2` 和 `0x2082`，所以一张 `20b0` 卡会得到完全打过补丁、却从不为其触发的模块。README 里更旧的 "unlock is `0x20C2`-gated" 措辞已经过时；自提交 `0f9aca5` "Unlock isn't gated anymore" 起，`0x2082` 就是头等目标。
+这个警告与实际行为一致。驱动内的门控函数 `_kgspSec2PostblTimingEnabled()` 只接受 `0x20C2` 和 `0x2082`，因此 `20b0` 卡会获得完整的补丁模块，但解锁路径永远不会针对它触发。README 中较早的“unlock is `0x20C2`-gated”说法已经过时；从提交 `0f9aca5`“Unlock isn't gated anymore”开始，`0x2082` 就一直是正式支持的目标。
 
-### 第 3/6 步：卡档位
+### 第 3/6 步：选择卡片档位
 
-要么用 `--profile` 覆盖、要么由 `detect_card_profile()` 决定，它读 `nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1` 并映射四个窗口：
+脚本要么使用 `--profile` 覆盖值，要么调用 `detect_card_profile()`。后者读取 `nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1`，并按以下四个范围进行映射：
 
-| 报告的 `memory.total` | 选定的档位 | 为什么有这个窗口 |
+| 报告的 `memory.total` | 选定的档位 | 设置该范围的原因 |
 |---|---|---|
-| `>= 60000` MiB | `8gb` | 在**已解锁的** 64 GB 卡上重装 |
-| `35000`-`59999` MiB | `10gb` | 在已解锁的 40 GB 卡上重装 |
-| `7680`-`8704` MiB | `8gb` | 出厂 8 GB 卡（8192 MiB） |
-| `9728`-`10752` MiB | `10gb` | 出厂 10 GB 卡（10240 MiB） |
-| 其它任何值 | 致命 | 打印 `unknown:<mib>`，然后 `Could not detect 8GB vs 10GB card. Re-run with --profile=8gb or --profile=10gb` |
+| `>= 60000` MiB | `8gb` | 在**已经解锁**为 64 GB 的卡上重新安装 |
+| `35000`-`59999` MiB | `10gb` | 在已经解锁为 40 GB 的卡上重新安装 |
+| `7680`-`8704` MiB | `8gb` | 原厂 8 GB 卡（8192 MiB） |
+| `9728`-`10752` MiB | `10gb` | 原厂 10 GB 卡（10240 MiB） |
+| 其他任何值 | 直接失败 | 输出 `unknown:<mib>`，然后输出 `Could not detect 8GB vs 10GB card. Re-run with --profile=8gb or --profile=10gb` |
 
-然后横幅打印下面之一：
+随后，横幅会输出以下两行中的一行：
 
 ```text
 ==> Unlock geometry: 64GB (CFG1=0x02779000 LMR=0x0000020B)
@@ -109,85 +109,85 @@ lspci -nn | grep -iE '10de:20b0|10de:20c2|10de:2082' | head -1
 ```
 
 > [!WARNING]
-> **自动检测在混合 GPU 主机上不安全**
+> **混合 GPU 主机不适合自动检测**
 >
-> `detect_card_profile()` 取 `nvidia-smi` 顺序里的**第一张 GPU**，它不一定是 `lspci` 找到的那张 CMP。一张 RTX 3080 10 GB 与 8 GB CMP 170HX 并存的主机上，至少两人从 3080 检测出 "10GB"。另一份报告把其它 CMP SKU（一张 50HX）误检为 10 GB 170HX。在当前 `master` 上后果只是错误的元数据，但在任何带其它 NVIDIA 卡的主机上，安全的习惯是**始终显式传 `--profile`**。如果第一张 GPU 报告的大小落在四个窗口之外（比如一张 24 GB 卡），安装会直接死掉。
+> `detect_card_profile()` 取的是 `nvidia-smi` 顺序中的**第一张 GPU**，而这张卡不一定就是 `lspci` 检测到的 CMP。一台同时安装 RTX 3080 10 GB 和 8 GB CMP 170HX 的主机，至少有两人复现了从 3080 误检测出“10GB”的情况。另有报告称，其他 CMP SKU（50HX）也会被误判为 10 GB 170HX。在当前 `master` 中，后果只是元数据错误；但在包含任何其他 NVIDIA 显卡的主机上，稳妥做法是**始终显式传入 `--profile`**。如果第一张 GPU 报告的容量不在四个范围内（例如 24 GB 卡），安装会直接失败。
 
-### 第 4/6 步：安全启动、驱动版本、头文件
+### 第 4/6 步：检查安全启动、驱动版本和头文件
 
-- 安全启动：如果 `/sys/firmware/efi` 存在且 `mokutil` 存在且 `mokutil --sb-state` 匹配 `SecureBoot enabled`，死掉、带 `Secure Boot is enabled. Disable it before installing unsigned patched modules.`
+- 安全启动：如果 `/sys/firmware/efi` 存在、`mokutil` 存在，并且 `mokutil --sb-state` 匹配 `SecureBoot enabled`，脚本会失败并输出 `Secure Boot is enabled. Disable it before installing unsigned patched modules.`
 - 驱动版本检测顺序：
   1. `/proc/driver/nvidia/version`
   2. `nvidia-smi --query-gpu=driver_version`
-  3. 一次对 `/lib/firmware/nvidia/<supported-version>/` 的目录探测
-  4. `/lib/firmware/nvidia/` 下排序最高的目录
-- 检测到的字符串必须精确匹配 `driver/VERSION` 里的一行，否则：`Installed driver is <detected>, but cmpunlocker requires one of: 610.43.03,610.43.02.`
-- `/lib/modules/$(uname -r)/build` 必须存在，否则 `Kernel headers missing for <kver>. Install linux-headers-<kver> or kernel-devel.`
+  3. 探测 `/lib/firmware/nvidia/<supported-version>/` 目录
+  4. `/lib/firmware/nvidia/` 下按排序结果最高的目录
+- 检测出的字符串必须与 `driver/VERSION` 中的一行完全匹配，否则输出：`Installed driver is <detected>, but cmpunlocker requires one of: 610.43.03,610.43.02.`
+- `/lib/modules/$(uname -r)/build` 必须存在，否则输出 `Kernel headers missing for <kver>. Install linux-headers-<kver> or kernel-devel.`
 
 ### 第 5/6 步：构建并安装
 
-`install.sh` chmod 并 exec `driver/build.sh`，环境里有 `CMPUNLOCKER_DRIVER_VERSION` 和 `CMPUNLOCKER_CARD_PROFILE`。见下一节。
+`install.sh` 会为 `driver/build.sh` 添加执行权限，然后以 exec 方式运行它，并在环境中设置 `CMPUNLOCKER_DRIVER_VERSION` 和 `CMPUNLOCKER_CARD_PROFILE`。详见下一节。
 
-### 第 6/6 步：后续步骤横幅
+### 第 6/6 步：输出后续步骤横幅
 
-打印预期的解锁后大小，然后四个编号的后续步骤：一次冷重启提醒（`sudo shutdown -h now`）和三个验证命令（`nvidia-smi`、`sudo dmesg | grep SEC2_DEBUG`、和 `nvidia-smi --query-gpu=clocks.max.sm --format=csv,noheader`），随后安装日志的路径。
+脚本会输出预计的解锁后容量，然后列出四项编号的后续步骤：提醒执行冷重启（`sudo shutdown -h now`），以及三个验证命令（`nvidia-smi`、`sudo dmesg | grep SEC2_DEBUG` 和 `nvidia-smi --query-gpu=clocks.max.sm --format=csv,noheader`）；最后输出安装日志路径。
 
 ---
 
-## `driver/build.sh` 做什么
+## `driver/build.sh` 的行为
 
-1. **重新验证** root、`driver/VERSION` 里的版本、补丁目录、内核头文件、和 `python3` 的存在。
-2. **下载** `https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${VERSION}.tar.gz`、用 `curl -L --fail` 到 `driver/.build/`（用 `CMPUNLOCKER_BUILD_DIR` 覆盖缓存位置）。缓存的 tarball 被复用。仓库里不运送任何 NVIDIA 代码。
-3. **每次干净解压**：`rm -rf "${SRC_DIR}"` 然后 untar，这样一次失败的先前构建无法污染下一次。
-4. **用 `patch -p1` 按 glob（字典序）顺序应用每个 `driver/patches/*.patch`**。已发布的系列是六个文件、总计 37,415 字节：
+1. **重新验证** root 权限、版本是否与 `driver/VERSION` 一致、补丁目录、内核头文件以及 `python3` 是否存在。
+2. **下载** `https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${VERSION}.tar.gz`。它使用 `curl -L --fail` 将文件下载到 `driver/.build/`（可通过 `CMPUNLOCKER_BUILD_DIR` 覆盖缓存位置）。如果缓存中已有 tarball，就会复用缓存。仓库中不包含任何 NVIDIA 源代码。
+3. **每次都进行干净解压**：先执行 `rm -rf "${SRC_DIR}"`，再解压 tarball，避免上一次失败的构建污染本次构建。
+4. **按字典序应用所有 `driver/patches/*.patch`**：使用 `patch -p1` 逐个应用。当前发布版补丁系列包含六个文件，总大小为 37,415 字节：
 
-   | 补丁 | 字节 | 它做什么 |
+   | 补丁 | 字节数 | 作用 |
    |---|---|---|
-   | `0001-sec2-postbl-plm-ss-cfg.patch` | 19,741 | 整个解锁：载荷、[PLM](../unlock/privilege-level-masks.md) 循环、SS0/SS1/CFG1/LMR 写、`fb_length` 重写 |
-   | `0002-booter-verify.patch` | 3,988 | 软失败四个引导断言、打印 post-BooterLoad 回读 |
-   | `0003-late-pma.patch` | 10,580 | 把 8 GiB 之上的新内存注册给物理内存分配器 |
-   | `0004-bar0-pramin-clamp.patch` | 861 | 把 BAR0/PRAMIN 窗口钳到出厂 8192 MB 偏移量 |
-   | `0005-ce-scrub-workarounds.patch` | 1,642 | 强制复制引擎清理器进入物理模式 |
-   | `0006-persistent-sw-state.patch` | 603 | 设置 `NV_FLAG_PERSISTENT_SW_STATE`、取代旧看门狗守护进程 |
+   | `0001-sec2-postbl-plm-ss-cfg.patch` | 19,741 | 完整的解锁逻辑：载荷、[PLM](../unlock/privilege-level-masks.md) 循环、SS0/SS1/CFG1/LMR 写入以及 `fb_length` 重写 |
+   | `0002-booter-verify.patch` | 3,988 | 将四个引导断言改为软失败，并输出 Booter Load 后的回读值 |
+   | `0003-late-pma.patch` | 10,580 | 将 8 GiB 以上的新显存注册到物理内存分配器 |
+   | `0004-bar0-pramin-clamp.patch` | 861 | 将 BAR0/PRAMIN 窗口限制在原厂 8192 MB 偏移量 |
+   | `0005-ce-scrub-workarounds.patch` | 1,642 | 强制复制引擎清理器使用物理模式 |
+   | `0006-persistent-sw-state.patch` | 603 | 设置 `NV_FLAG_PERSISTENT_SW_STATE`，替代旧的看门狗守护进程 |
 
-   因为循环是 `set -euo pipefail` 下的普通 glob，把名为 `0007-*.patch` 的第三方 diff 丢进那个目录就能干净地叠加，任何失败的 hunk 都会中止构建。P2P 补丁就是这样分层的（见[P2P](../frontier/p2p.md)）。
-5. **跑档位步骤。** 一个内联 Python 脚本检查打过补丁的 `kernel_gsp.c` 是否已含全部六个标记（`SEC2_POSTBL_TIMING_CMP_170HX_8GB_PCI_DEVICE_ID`、`..._10GB_PCI_DEVICE_ID`、`0x02779000U`、`0x02669000U`、`0x0000001000000000ULL`、`0x0000000A00000000ULL`）。在 `master` 上六个都存在，所以它打印 `runtime device-id geometry (profile metadata=64GB)` 并在不编辑任何东西的情况下退出。它下面的正则替换分支是给单-SKU 补丁的死遗产回退。
-6. **写三个元数据文件** 进 `/lib/modules/$(uname -r)/updates/cmpunlocker/`：`driver_version`、`card_profile`（`8gb` / `10gb`）、`unlock_geometry`（`64GB` / `40GB`）。**内核模块里没有任何东西读它们。** 它们是为人、也为 `verify.sh` 而存在的。打过补丁的内核引导时唯一读的文件是可选 `/lib/firmware/nvidia/ga100/gsp/dmem.bin`。
-7. **构建**：`rm -rf src/nvidia/_out src/nvidia-modeset/_out kernel-open/conftest`、`make clean`，然后 `make -j$(nproc) modules SYSSRC=/lib/modules/$(uname -r)/build`。报告的构建时间是**现代 CPU 上 2 到 5 分钟**。这个范围来自两份书面分布（泄露预构建包的 README 说 "~2-5 min"、一份流传的 40 GB 解锁指南说 "~5 minutes on a modern CPU"）；没人贴过计时测量。
-8. **安装五个模块**、模式 `0644`、进 `/lib/modules/$(uname -r)/updates/cmpunlocker/`：`nvidia.ko`、`nvidia-modeset.ko`、`nvidia-uvm.ko`、`nvidia-drm.ko`、`nvidia-peermem.ko`（由 `find` 找到、排除 `*/conftest/*`）。只有 `nvidia.ko` 携带解锁代码；其它四个是出厂重建、运来让模块集保持版本一致。
-9. **`depmod -a "${KVER}"`**。模块优先级是普通 depmod 排序：`updates/cmpunlocker/` > `updates/dkms/` > `kernel/drivers/`，这就是为什么不需要 `dpkg-divert`。
-10. **用第一个可用的重建 initramfs**：`update-initramfs -u -k`、`dracut --force --kver`、`mkinitcpio -P`，否则警告 `No initramfs tool found, rebuild manually before rebooting`。master 的 `build.sh` 这里没带注释，但分支副本（`memory`、`ecc`、`housekeeping`、`PG199`）逐字解释了推理：NVIDIA 常从 initramfs 加载，如果那里只打包 `updates/dkms`，即使 depmod 偏好 `updates/cmpunlocker`、出厂模块也会在引导时胜出。那是 "已安装却显存仍显示出厂大小" 的一条貌似合理路线，却是脚本的推理而非诊断出的野外失败：*initramfs*、*initrd*、*dracut* 和 *mkinitcpio* 这些词在聊天语料库里任何地方都不出现。只有在 initramfs 步骤之后 `build.sh` 才跑它的经验检查、确认补丁模块确实胜出：`modprobe -n -v nvidia | awk '/insmod/ {print $2; exit}'`，警告 `Resolved nvidia.ko is not under updates/cmpunlocker/, stock may still win`。
-11. **尝试一次热重载**：停止 `nvidia-persistenced` 和 `nvidia-fabricmanager`、对 `nvidia_drm`、`nvidia_uvm`、`nvidia_modeset`、`nvidia` `modprobe -r`，然后重载。然后它对比 `/sys/module/nvidia/srcversion` 与 `modinfo -F srcversion .../updates/cmpunlocker/nvidia.ko`，不匹配时警告 `Loaded nvidia srcversion (X) != patched (Y)` 并清除它自己的成功标志。
+   由于这个循环是在 `set -euo pipefail` 下执行的普通 glob，将名为 `0007-*.patch` 的第三方 diff 放入该目录即可自然叠加；任何 hunk 应用失败都会中止构建。P2P 补丁就是以这种方式叠加的（见[P2P](../frontier/p2p.md)）。
+5. **执行档位处理。** 内嵌的 Python 脚本会检查打过补丁的 `kernel_gsp.c` 是否已经包含全部六个标记（`SEC2_POSTBL_TIMING_CMP_170HX_8GB_PCI_DEVICE_ID`、`..._10GB_PCI_DEVICE_ID`、`0x02779000U`、`0x02669000U`、`0x0000001000000000ULL`、`0x0000000A00000000ULL`）。在 `master` 上六个标记都存在，因此脚本会输出 `runtime device-id geometry (profile metadata=64GB)`，然后不修改任何内容直接退出。下面的正则替换分支只是针对单 SKU 补丁保留的旧回退逻辑，当前不会执行。
+6. **写入三个元数据文件**到 `/lib/modules/$(uname -r)/updates/cmpunlocker/`：`driver_version`、`card_profile`（`8gb` / `10gb`）和 `unlock_geometry`（`64GB` / `40GB`）。**内核模块不会读取其中任何一个文件。** 这些文件供人和 `verify.sh` 使用。补丁内核在启动时唯一会读取的文件是可选的 `/lib/firmware/nvidia/ga100/gsp/dmem.bin`。
+7. **构建模块**：执行 `rm -rf src/nvidia/_out src/nvidia-modeset/_out kernel-open/conftest`、`make clean`，然后执行 `make -j$(nproc) modules SYSSRC=/lib/modules/$(uname -r)/build`。已有报告称，在现代 CPU 上构建需要**2 到 5 分钟**。这个范围来自两份书面资料（泄露的预构建包 README 写的是“约 2-5 分钟”，一份流传的 40 GB 解锁指南写的是“现代 CPU 上约 5 分钟”）；没有人提供过计时测量结果。
+8. **安装五个模块**：以 `0644` 权限安装到 `/lib/modules/$(uname -r)/updates/cmpunlocker/`：`nvidia.ko`、`nvidia-modeset.ko`、`nvidia-uvm.ko`、`nvidia-drm.ko`、`nvidia-peermem.ko`（由 `find` 找到，并排除 `*/conftest/*`）。只有 `nvidia.ko` 包含解锁代码；另外四个是原厂模块的重建版本，用于保持整个模块集合的版本一致。
+9. **执行 `depmod -a "${KVER}"`。** 模块优先级遵循普通的 depmod 排序：`updates/cmpunlocker/` > `updates/dkms/` > `kernel/drivers/`，因此不需要使用 `dpkg-divert`。
+10. **重建 initramfs**：按顺序尝试使用 `update-initramfs -u -k`、`dracut --force --kver`、`mkinitcpio -P` 中第一个可用的工具；如果都不可用，则警告 `No initramfs tool found, rebuild manually before rebooting`。master 的 `build.sh` 在这里没有注释，但分支副本（`memory`、`ecc`、`housekeeping`、`PG199`）逐字解释了原因：NVIDIA 经常从 initramfs 加载，如果其中只打包了 `updates/dkms`，那么即使 depmod 更偏好 `updates/cmpunlocker`，启动时仍会优先加载原厂模块。这是一条“已安装但显存仍显示原厂容量”的合理可能路径，但它只是脚本作者的推理，并非已经诊断确认的实际故障：聊天语料中任何地方都没有出现 *initramfs*、*initrd*、*dracut* 或 *mkinitcpio* 这些词。只有完成 initramfs 步骤后，`build.sh` 才会执行经验检查，确认补丁模块确实具有优先级：`modprobe -n -v nvidia | awk '/insmod/ {print $2; exit}'`；如果结果不在 `updates/cmpunlocker/` 下，则警告 `Resolved nvidia.ko is not under updates/cmpunlocker/, stock may still win`。
+11. **尝试热重载**：停止 `nvidia-persistenced` 和 `nvidia-fabricmanager`，对 `nvidia_drm`、`nvidia_uvm`、`nvidia_modeset`、`nvidia` 执行 `modprobe -r`，然后重新加载模块。接着将 `/sys/module/nvidia/srcversion` 与 `modinfo -F srcversion .../updates/cmpunlocker/nvidia.ko` 进行比较；如果不一致，则警告 `Loaded nvidia srcversion (X) != patched (Y)`，并清除脚本自己的成功标志。
 
 > [!WARNING]
-> **对下载的 tarball 没有完整性检查**
+> **下载的 tarball 没有完整性检查**
 >
-> `build.sh` 用 `curl -L --fail` 抓取 NVIDIA tag tarball 并以无校验和或签名验证的方式缓存它、树里任何地方都没有。在不可信网络上，在首次构建前自己验证缓存的 tarball。
+> `build.sh` 使用 `curl -L --fail` 获取 NVIDIA tag tarball，并在没有任何校验和或签名验证的情况下缓存它；代码树中也没有其他完整性检查。在不可信网络环境中，请在首次构建前自行验证缓存的 tarball。
 
 ---
 
 ## 冷重启
 
-热重启不够、一般情况热重载也不够。整个项目的指示、包括泄露预构建分发自己的 README，都是**冷**重启：完全断电、然后上电。
+热重启不够，一般情况下热重载也不够。整个项目（包括泄露的预构建发行包自带的 README）给出的要求都是执行**冷**重启：完全断电，然后重新通电。
 
 ```bash
 sudo shutdown -h now
-# 然后上电
+# then power on
 ```
 
-原因，按咬人多寡排序：
+原因如下，按最容易导致问题的顺序排列：
 
-1. 解锁在打过补丁的模块的 GSP 引导里运行。如果因为热重载失败或 initramfs 仍持有出厂模块、运行中的 `nvidia.ko` 仍是出厂那个，解锁从不执行。
-2. 使用中的模块（X11、一个显示管理器、一个 persistenced 守护进程、一个 CUDA 进程）阻塞 `modprobe -r`，而 `build.sh` 打印 `Could not unload nvidia modules (in use), cold reboot required`。
-3. 显存几何布局**不**挺过功能级复位或断电循环，所以一次干净的冷启动就是那个良定义状态：打过补丁的驱动从中从头重新应用一切。只有 SS0、SS1 和 `0x00823804` 处的 FEAT PLM 住在常电岛里。
+1. 解锁代码在补丁模块的 GSP 引导过程中运行。如果热重载失败，或 initramfs 中仍保留原厂模块，导致当前运行的 `nvidia.ko` 仍是原厂版本，解锁代码就永远不会执行。
+2. 正在使用的模块（X11、显示管理器、persistenced 守护进程或 CUDA 进程）会阻止 `modprobe -r`；此时 `build.sh` 会输出 `Could not unload nvidia modules (in use), cold reboot required`。
+3. 显存几何布局**无法**跨越功能级复位或断电循环保留，因此干净的冷启动才是明确的初始状态，补丁驱动会从头重新应用全部设置。只有 SS0、SS1 以及位于 `0x00823804` 的 FEAT PLM 位于常电域中。
 
-如果热重载确实成功，`build.sh` 会这么说、你可以立即验证。如果没有，脚本自己打印恢复指示。
+如果热重载成功，`build.sh` 会明确报告，此时可以立即验证。如果热重载失败，脚本会自行输出恢复步骤。
 
 ---
 
-## 正确的一次运行长什么样
+## 一次正确的运行结果
 
-下面由脚本自己的字面输出字符串拼成（不是一份单一捕获的转写），所以把可变部分当作占位符。
+下面的内容由脚本自身的字面输出字符串拼接而成，并不是一次完整捕获的终端记录，因此可变部分应视为占位符。
 
 ```text
 ╔════════════════════════════════════════╗
@@ -229,13 +229,13 @@ runtime device-id geometry (profile metadata=64GB)
 Profile: 8gb → expect ~65536 MiB after unlock
 ```
 
-启动后立即、决定性的证据在内核日志里：
+启动后，决定性的证据会出现在内核日志中：
 
 ```bash
 sudo dmesg | grep SEC2_DEBUG
 ```
 
-一张健康的 8 GB 解锁产生这些行。作为规模参考、归档的单卡 8 GB 捕获总共含 **29** 条 `SEC2_DEBUG` 行、归档的双卡 Gen2 分支引导日志含 **134** 条：
+一次健康的 8 GB 解锁会产生下面这些日志。作为数量参考，归档的单卡 8 GB 捕获总共包含 **29** 行 `SEC2_DEBUG`，归档的双卡 Gen2 分支启动日志包含 **134** 行：
 
 ```text
 SEC2_DEBUG: saved stock signature (4096 bytes)
@@ -247,57 +247,57 @@ SEC2_DEBUG: POST-BooterLoad verify PLM=... SS0=0x88888888 SS1=0x00000008 CFG1=0x
 ```
 
 > [!NOTE]
-> **不要把行数当作通过/失败测试**
+> **不要把日志行数当作通过/失败标准**
 >
-> 行数不是可靠的跨构建指纹。记录的值：归档单卡 8 GB 捕获上 **29**、归档双卡 Gen2 分支 `610.43.03` 日志上 **134**、报告工具上 34（Gen1 构建）和 80（Gen2 构建）、以及 `pcielink.sh` 在两台独立双卡 Gen2 机架上打印的 `SEC2_DEBUG lines=152`。不要把不匹配读成安装失败。上面那些寄存器回读行才是判据。
+> 不同构建之间的日志行数不是可靠的指纹。已有记录包括：归档的单卡 8 GB 捕获为 **29** 行，归档的双卡 Gen2 分支 `610.43.03` 日志为 **134** 行，报告工具中的 Gen1 构建和 Gen2 构建分别为 34 行和 80 行，以及 `pcielink.sh` 在两台独立的双卡 Gen2 机架上输出的 `SEC2_DEBUG lines=152`。不要因为行数不一致就判断安装失败；上面显示的寄存器回读行才是判断标准。
 
-三样东西经常吓到首次安装者，它们全都是正常的：
+以下三点经常会让首次安装者误以为出错，但它们都属于正常现象：
 
-- `WPR_CFG=0xfffff0ff` 是一个**通过**。四个 PLM 里只有三个目标 `0xffffffff`。
-- 每次载荷趟的逐尝试 Booter 状态 `0xffff` 都预期、无论成败。寄存器回读是唯一有效成功判据。
-- `dmem.bin` 的 `not found (0x59)` 是良性的；用内置载荷。
+- `WPR_CFG=0xfffff0ff` 表示**通过**，不是失败。四个 PLM 中只有三个目标值是 `0xffffffff`。
+- 每次载荷尝试中出现 Booter 状态 `0xffff` 都是预期行为，无论该次尝试成功还是失败。唯一有效的成功标准是寄存器回读值。
+- `dmem.bin` 显示 `not found (0x59)` 没有问题，这表示使用了内置载荷。
 
-下一步读[验证解锁](verify.md) 看完整日志解码和显存-对比-算力的区别。如果哪里不对，去[排障](troubleshooting.md)。
+接下来阅读[验证解锁](verify.md)，了解完整的日志解码，以及显存容量和算力之间的区别。如果出现问题，请查看[排障](troubleshooting.md)。
 
 ---
 
 ## 重装、升级和切换分支
 
-维护者设定的规则是，在分支之间切换时**先卸载、再安装**："In fact, I would always recommend to remove the old one before adding the new one."（事实上，我总是建议在加新的之前移除旧的。）一位克隆 `Gen2` 分支、在现有安装之上安装的测试者报告它不工作，先卸载就修好了。至少另两位测试者直接之上安装没有问题，非正式共识是大多数人 "just sending it on top"（直接装上去）。那个失败是真实的、却不普遍，而且没人识别出差异因素。先卸载是*受支持*的路径：
+维护者明确建议，在不同分支之间切换时**先卸载，再安装**：“In fact, I would always recommend to remove the old one before adding the new one.” 一位克隆 `Gen2` 分支并在已有安装上直接安装的测试者报告说安装没有生效，先卸载后便恢复正常。至少另外两位测试者直接覆盖安装没有遇到问题，非正式共识是多数人都“just sending it on top”。这个失败案例确实存在，但并不普遍，也没人找出造成差异的具体因素。先卸载再安装是*受支持*的路径：
 
 ```bash
-sudo ./remove.sh --yes     # 在 OLD 检出里
-sudo ./install.sh          # 在 NEW 检出里
+sudo ./remove.sh --yes     # in the OLD checkout
+sudo ./install.sh          # in the NEW checkout
 ```
 
 见[卸载](uninstall.md)。
 
 ---
 
-## 环境特定注意事项
+## 特定环境注意事项
 
 > [!WARNING]
 > **实验性：虚拟化**
 >
-> 显存和算力解锁在 **Proxmox GPU 直通** 下工作：一位操作者直通了八张 8 GB CMP 170 卡，全部解锁。记录了两个约束：
+> 显存和算力解锁可以在 **Proxmox GPU 直通**环境下工作：一位操作者直通了八张 8 GB CMP 170 卡，全部成功解锁。目前记录有两个限制：
 >
-> - 用 **SeaBIOS，不要用 UEFI/OVMF**。UEFI 会产生看起来恰好像利用根本不工作的 RM init 和适配器失败。这曾被一手根因定位，并立即得到一位此前一直无法复现结果的第二人佐证。
-> - PCIe Gen2 链路速度改动截至 2026-07-24 在 VM 里**不**工作，被维护者承认为一个开放调试项。见[PCIe Gen2](../unlock/pcie-gen2.md)。
+> - 使用 **SeaBIOS，不要使用 UEFI/OVMF**。UEFI 会产生看起来与利用代码完全没有生效相同的 RM init 和适配器失败。这一原因最初由实际排查确认，随后立即得到另一位此前一直无法复现结果的用户佐证。
+> - 截至 2026-07-24，PCIe Gen2 链路速度修改在虚拟机中**无法工作**；维护者已确认这是一个尚待调试的问题。见[PCIe Gen2](../unlock/pcie-gen2.md)。
 
 > [!NOTE]
-> **未解问题：缺失的显示设备会搅乱 GSP 吗？**
+> **未解问题：缺少显示设备是否会影响 GSP？**
 >
-> 一位操作者观察到 GSP 在没 iGPU 也没 BMC 显示设备的系统上似乎比有显示设备的系统更不高兴。没人用确认、反驳或错误字符串回应。在 BIOS 里禁用 BMC 显示设备、捕获 `dmesg` 的一次机器上 A/B 能定论它。
+> 一位操作者观察到，与存在显示设备的系统相比，同时没有 iGPU 和 BMC 显示设备的系统似乎更容易让 GSP 出问题。没有人回复确认、反驳或提供错误字符串。在一台机器上于 BIOS 中禁用 BMC 显示设备，并分别捕获 `dmesg` 进行 A/B 对比，才能解决这个问题。
 
-对这份补丁 Windows 是一条死路：解锁是针对 Linux 开源内核模块实现的，而 GSP 引导路径是 Linux 专属的。Windows 机器可以用 GRID 或数据中心驱动加一个注入的硬件 ID *驱动* 一张 170HX，但那只会给你一张能工作的卡、而不是一张解锁卡。
+对于这套补丁，Windows 是一条失败路线：解锁是基于 Linux 开源内核模块实现的，而 GSP 引导路径也是 Linux 专属的。Windows 机器可以通过 GRID 或数据中心驱动配合注入硬件 ID 来*驱动* 170HX，但那只能得到一张可正常工作的卡，而不是一张已解锁的卡。
 
 ---
 
 ## 相关页面
 
-- [快速上手](../start/quick-start.md) 看浓缩版
-- [识别你的卡](../start/identify-your-card.md) 先确认你持有哪个 SKU
+- [快速上手](../start/quick-start.md)查看精简版流程
+- [识别你的卡](../start/identify-your-card.md)先确认手中的 SKU
 - [验证](verify.md)、[排障](troubleshooting.md)、[恢复](recovery.md)
-- [多卡](multi-gpu.md) 如果机架多于一张卡
-- [驱动版本](driver-versions.md) 看 610-only 约束和未发布移植
-- [驱动补丁](../unlock/driver-patches.md) 看每个补丁实际改什么
+- 如果机架中有多张卡，请查看[多卡](multi-gpu.md)
+- [驱动版本](driver-versions.md)介绍仅支持 610 版本的限制和未发布的移植版本
+- [驱动补丁](../unlock/driver-patches.md)说明每个补丁实际修改的内容
