@@ -1,57 +1,57 @@
 # SEC2 Falcon 与 Booter Load 微码
 
-**本页覆盖内容。** 整个 CMP 170HX 解锁运行其上的安全协处理器：SEC2 Falcon 是什么、"Booter Load" 微码做什么、重度安全模式如何进入和离开、booter 映像在两个地址空间内的内部布局、GSP 签名缓冲区位于何处，以及打过补丁的驱动究竟如何调用 booter。利用本身见[ROP 链](rop-chain.md)；它打开的掩码见[权限级别掩码](privilege-level-masks.md)。
+**本页覆盖内容。** 本页介绍 CMP 170HX 解锁所依赖的安全协处理器：SEC2 Falcon 的作用、"Booter Load" 微码执行的工作、重度安全模式的进入与退出、booter 映像在两套地址空间中的布局、GSP 签名缓冲区的位置，以及打过补丁的驱动如何准确调用 booter。利用链本身见[ROP 链](rop-chain.md)，它打开的掩码见[权限级别掩码](privilege-level-masks.md)。
 
-**两句话的关键结果。** NVIDIA 自签名、AES 加密的 `booter_load` 微码被正常加载和认证，随后在认证*已经*成功之后，被一个由主机驱动控制的签名缓冲区破坏。全程没有伪造签名、没有提取密钥、也从不执行任何攻击者提供的指令：booter 摇身变成解锁的执行引擎，同时逐字节保持为 NVIDIA 发货的微码。
+**两句话的关键结果。** NVIDIA 自己签名并用 AES 加密的 `booter_load` 微码会先按正常流程加载并通过认证，认证*已经*成功后，才被主机驱动控制的签名缓冲区破坏。整个过程既没有伪造签名，也没有提取密钥，更没有执行攻击者提供的指令；booter 在逐字节仍是 NVIDIA 发布版本的前提下，成为解锁的执行引擎。
 
 ---
 
 ## 1. 为什么会有 Booter
 
-GA100 晶片携带两个在这里相关的截然不同的处理器。
+GA100 晶片上有两个与本主题直接相关、但性质完全不同的处理器。
 
-| 处理器 | 位置 | 核心 | 密码 | 角色 |
+| 处理器 | 位置 | 核心 | 密码功能 | 角色 |
 |---|---|---|---|---|
-| SEC2 Falcon | BAR0 `0x00840000` | Falcon v4/v5，16 位哈佛 | AES + RSA + SCP 机密 | 安全协处理器。能解密和验证它自己的代码映像。 |
-| GSP | BAR0 `0x00110000` / `0x00111000` | NVIDIA RISC-V（NVRISCV） | 无 | 运行 GSP-RM，资源管理器固件。 |
+| SEC2 Falcon | BAR0 `0x00840000` | Falcon v4/v5，16 位哈佛 | AES + RSA + SCP 机密 | 安全协处理器，负责解密并验证自身代码映像。 |
+| GSP | BAR0 `0x00110000` / `0x00111000` | NVIDIA RISC-V（NVRISCV） | 无 | 运行资源管理器固件 GSP-RM。 |
 
-因为 GSP RISC-V 核心没有任何密码功能，它无法验证自己的映像，所以验证被委托给一个叫 *booter* 的 SEC2 Falcon 微码。存在两个 booter——`booter_load` 和 `booter_unload`；本页讲 `booter_load`。
+GSP RISC-V 核心没有密码功能，因而不能自行验证映像。验证工作被交给 SEC2 Falcon 上名为 *booter* 的微码。系统中有两个 booter：`booter_load` 和 `booter_unload`；本页只讨论 `booter_load`。
 
-booter **不是**[VBIOS](../hardware/vbios.md) 的一部分。它作为 `nvidia.ko` 里一个编译进 BINDATA 数组随驱动包发货，并且按版本区分，正如它验证的加密 GSP 固件一样。在驱动 610 里，GA100 数组是：
+booter **不是**[VBIOS](../hardware/vbios.md) 的组成部分。它和所验证的加密 GSP 固件一样，按版本随驱动发布，并作为编译进 `nvidia.ko` 的 BINDATA 数组提供。驱动 610 中的 GA100 数组如下：
 
 ```text
 kgspBinArchiveBooterLoadUcode_GA100_BINDATA_LABEL_IMAGE_DBG_data[]
-  在 src/nvidia/generated/g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c
+  位于 src/nvidia/generated/g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c
   DATA SIZE (bytes): 60160
   COMPRESSED SIZE (bytes): 34145
 ```
 
-因此运行利用不需要单独的 booter 文件——驱动已经带着它。
+因此运行该利用不需要另行准备 booter 文件，驱动包本身已经包含它。
 
-解锁攻击的引导链，端到端是：上电时从 SPI 闪存加载 VBIOS、一颗晶片上 Falcon 验证 VBIOS、芯片进入安全模式、驱动提供 `gsp_tu10x.bin` 而其签名被 Falcon 检查、随后驱动用 GSP 客户端读取显存容量并暴露设备。解锁攻击第四步，即在 booter 要 DMA 的 GSP 签名缓冲区里植入一个载荷。
+完整的引导链是：上电后从 SPI 闪存加载 VBIOS；晶片上的 Falcon 验证 VBIOS；晶片进入安全模式；驱动提供 `gsp_tu10x.bin`，由 Falcon 验证其签名；最后驱动通过 GSP 客户端读取显存容量并让设备对外可用。解锁针对的是第四步，即把载荷放入 booter 将要 DMA 的 GSP 签名缓冲区。
 
 ---
 
 ## 2. Falcon 安全模型
 
-自 Maxwell 以来 Falcon 有三种执行模式。
+自 Maxwell 起，Falcon 提供三种执行模式。
 
 | 模式 | 如何进入 | 它能做什么 |
 |---|---|---|
-| 非安全（NS） | 加载任何代码，设 BOOTVEC、STARTCPU | 唯一不需要 NVIDIA 签名微码就能到达的模式。被限制于许多寄存器和 DMA。 |
-| 轻度安全（LS） | 只能从重度安全上下文（GM20x 及以后） | 介于 NS 和 HS 之间。 |
-| 重度安全（HS） | 当 PC 落在一个标为安全的代码块上、MAC 比较成功后由硬件授予 | Falcon 变成黑盒：内部状态无法从外部读写。在 LEVEL2/L3 运行，能重写权限级别掩码并编程受保护区域。 |
+| 非安全（NS） | 加载任意代码，设置 BOOTVEC 和 STARTCPU | 唯一无需 NVIDIA 签名微码即可进入的模式，但许多寄存器和 DMA 对它受限。 |
+| 轻度安全（LS） | 只能从重度安全上下文进入（GM20x 及以后） | 权限介于 NS 与 HS 之间。 |
+| 重度安全（HS） | PC 落入标记为安全的代码块且 MAC 比较成功后由硬件授予 | Falcon 变成黑盒，外部不能读写其内部状态；它以 LEVEL2/L3 运行，可以重写权限级别掩码并编程受保护区域。 |
 
-项目的 "L0 到 L3" 权限级别词汇指的就是同一个模型。这些级别如何按寄存器被强制执行，见[权限级别掩码](privilege-level-masks.md)。
+项目中所谓的 "L0 到 L3" 权限级别就是这套模型。各级别如何在寄存器级别被强制执行，见[权限级别掩码](privilege-level-masks.md)。
 
-`booter_load` 永远不能在 NS 模式执行。它的主体是 AES 加密的，只能在 HS 模式的 Falcon 内被解密。Falcon 通过运行 0x100 字节明文 NS 前导、然后发出那条解密代码、验证它并切换到 HS 的特殊指令来进入 HS。这个后果是架构层面的，也是整个解锁被塑造成现在这个样子的原因：
+`booter_load` 永远不能在 NS 模式下执行。它的主体经过 AES 加密，只能由处于 HS 模式的 Falcon 解密。Falcon 先运行 0x100 字节的明文 NS 前导，再发出特殊指令解密并验证主体，随后切换到 HS。这个架构事实直接决定了解锁的形态：
 
 > [!NOTE]
-> **塑造一切的那条规则**
+> **决定整个方案的规则**
 >
-> 解锁里每次 HS 特权寄存器写都必须从被劫持的真实 booter 内部发出。自制微码做不到，因为自制微码无法被弄到在 HS 运行。
+> 解锁过程中的每一次 HS 特权寄存器写入，都必须由被劫持的真实 booter 内部发出。自制微码无法做到这一点，因为它不可能被安排在 HS 模式运行。
 
-HS 进入例程（按为 Tegra TSEC 逆向、在 GA100 SEC2 上结构相同的推断）计算 `microcode_start = (*SEC & 0xFF) << 8` 和 `microcode_size = ((*SEC >> 24) & 0xFF) << 8`，把微码的 Davies-Meyer MAC 算进 `$c5`，然后运行：
+HS 进入例程据 Tegra TSEC 的逆向结果推断，在 GA100 SEC2 上具有相同结构。它计算 `microcode_start = (*SEC & 0xFF) << 8` 和 `microcode_size = ((*SEC >> 24) & 0xFF) << 8`，将微码的 Davies-Meyer MAC 计算到 `$c5`，然后执行：
 
 ```asm
 csecret $c3, 0x1
@@ -62,23 +62,23 @@ cenc     $c4, $c5
 csigcmp  $c4, $c6
 ```
 
-零的开始值或大小值会触发 `OP_SECURE_FAULT`。要认证必须满足四个条件：微码页必须映射在一个预先选择的虚拟地址、标为机密、该信息载入 `SEC` 寄存器，且密码寄存器 6 里有一个有效 MAC。
+开始地址或大小为零都会触发 `OP_SECURE_FAULT`。认证必须同时满足四项条件：微码页映射到预先选定的虚拟地址；页面被标记为机密；这些信息已载入 `SEC` 寄存器；密码寄存器 6 中存在有效 MAC。
 
 > [!WARNING]
-> **两种不同的验证方案，不要混为一谈**
+> **不要混淆两套不同的验证方案**
 >
-> 不可变引导 ROM 对 HS booter 映像的检查，在语料库里被描述为一次 RSA-3K 检查，而一个 384 字节签名块确实随映像在 `PATCH_LOC = 0x8900` 发货。另一条路径是，booter *自己*对它加载的 GSP 映像的验证，被追溯到 `_acrVerifySignature_TU10X` → `_acrCalculateDmhash_TU10X` → `_acrDeriveLsVerifKeyAndEncryptDmHash_TU10X` → `_acrMemcmp`，那是 Davies-Meyer 哈希加一次从一个 `csecret` 派生的 AES 密钥派生，该路径上没有 RSA。booter 确实含一个单独在别处使用的 PKA/modexp 块（`rsa_pubkey_load 0x4768`、`pka_modexp_run 0x54ab`）。对这条调和的置信度为中等：档案里没人用恰好这些术语陈述过它。
+> 不可变引导 ROM 对 HS booter 映像的检查，在资料中被描述为 RSA-3K 检查；映像确实在 `PATCH_LOC = 0x8900` 附带一个 384 字节签名块。另一条路径是 booter *自身*验证它加载的 GSP 映像。这条路径可追溯为 `_acrVerifySignature_TU10X` → `_acrCalculateDmhash_TU10X` → `_acrDeriveLsVerifKeyAndEncryptDmHash_TU10X` → `_acrMemcmp`，其本质是 Davies-Meyer 哈希加上由 `csecret` 派生的 AES 密钥派生，不使用 RSA。booter 另有一段独立的 PKA/modexp 代码（`rsa_pubkey_load 0x4768`、`pka_modexp_run 0x54ab`）供其他流程使用。这个调和结论的置信度为中等，因为资料中没有人用完全相同的术语明确表述过它。
 
-两种方案都没有被解锁破坏。
+解锁没有破坏其中任何一套方案。
 
 ---
 
 ## 3. 哈佛架构：两个绝不能混用的地址空间
 
 > [!CAUTION]
-> **IMEM 地址和 DMEM 地址看起来一样，却不能互换**
+> **IMEM 与 DMEM 地址外观相同，但绝不能互换**
 >
-> SEC2 Falcon 是一颗**哈佛架构**核心，有独立的 16 位指令内存（IMEM）和 16 位数据内存（DMEM）空间。作为 IMEM 地址的 `0x6340` 是毫无意义的代码；作为 DMEM 地址的 `0x6340` 是栈金丝雀守卫全局。几份流传的文档把两者混进单一 "memory map"，是错的。本维基上每个地址都被标注为 IMEM、DMEM、CSB（Falcon I/O）或 BAR0。
+> SEC2 Falcon 是**哈佛架构**核心，拥有彼此独立的 16 位指令内存（IMEM）和 16 位数据内存（DMEM）。把 `0x6340` 当作 IMEM 地址时，它只是无意义的代码；把它当作 DMEM 地址时，它却是栈金丝雀守卫全局变量。流传的一些文档把两套空间混成一个 "memory map"，这是错误的。本维基中的每个地址都会明确标注为 IMEM、DMEM、CSB（Falcon I/O）或 BAR0。
 
 | 属性 | IMEM | DMEM |
 |---|---|---|
@@ -87,7 +87,7 @@ csigcmp  $c4, $c6
 | 块对齐 | 256 字节（`FLCN_BLK_ALIGNMENT`） | 256 字节 |
 | 利用碰什么 | 无 | `0x0800`-`0xFFFF` |
 
-因为 GSP 签名缓冲区活在 DMEM 里，签名 DMA 只能粉碎 DMEM、永远无法写入 IMEM。这一单一事实正是利用是"对已签名映像的纯返回定向编程"而非代码注入的原因。它也意味着 DMEM 的 16 位空间本身无法寻址一个 32 位 BAR0 寄存器，所以载荷需要一个驱动 Falcon BAR0 master 的 gadget。
+GSP 签名缓冲区位于 DMEM，因此签名 DMA 只能破坏 DMEM，绝不可能写入 IMEM。仅凭这一点就能确定该利用属于在已签名映像上进行的纯 ROP，而不是代码注入。同时，DMEM 的 16 位地址空间本身无法寻址 32 位 BAR0 寄存器，所以载荷必须借助能够驱动 Falcon BAR0 master 的 gadget。
 
 全篇还会出现另外两个空间：
 
@@ -98,7 +98,7 @@ csigcmp  $c4, $c6
 
 ## 4. 从主机看到的 SEC2：BAR0 寄存器图
 
-SEC2 位于 `NV_PSEC_BASE = 0x00840000`，是一颗 Falcon 核心而非 RISC-V（`HWCFG2` 位 10 读 0）。完整偏移量，由一台 GPU `10de:20c2` 上一个能工作的无驱动 C 加载器验证：
+SEC2 的基址是 `NV_PSEC_BASE = 0x00840000`，它是 Falcon 核心而不是 RISC-V；读取 `HWCFG2` 的位 10 得到 0。下面的完整偏移表已由运行在 `10de:20c2` GPU 上的无驱动 C 加载器验证：
 
 | 寄存器 | 偏移量 | 绝对地址 | 备注 |
 |---|---|---|---|
@@ -131,14 +131,14 @@ SEC2 位于 `NV_PSEC_BASE = 0x00840000`，是一颗 Falcon 核心而非 RISC-V�
 | `FBIF_TRANSCFG(n)` | `+0x600 + 4n` | `0x00840600`+ | TARGET 位 [1:0]：0 LOCAL_FB，1 COHERENT_SYSMEM，2 NONCOHERENT_SYSMEM；MEM_TYPE 位 2 = PHYSICAL |
 | `FBIF_CTL` | `+0x624` | `0x00840624` | 位 7 = ALLOW_PHYS_NO_CTX |
 | `FALCON_ENGINE` | `+0x3c0` | `0x008403c0` | 位0：1 = 复位，0 = 运行 |
-| `RESET_PRIV_LEVEL_MASK` | `+0x3c4` | `0x008403c4` | 复位 PLM。见第 9 节。 |
+| `RESET_PRIV_LEVEL_MASK` | `+0x3c4` | `0x008403c4` | 复位 PLM。见第 10 节。 |
 | `PRIVSTATE_PLM` | `+0x3d0` | `0x008403d0` | 仅具名，从未写测试过 |
 | `SCP_CTL_P2PRX` | `+0x530` | `0x00840530` | 位3 SFK_LOADED |
 | `KFUSE_LOAD_CTL` | `+0x11ec` | `0x008411ec` | 读它触发 SFK 加载 |
 
-GSP 侧，作对比：`NV_FALCON2_GSP_BASE = 0x00111000`、`RISCV_STATUS 0x00111240`、`RISCV_CPUCTL 0x00111268`、GSP `MAILBOX0 0x00110040`、GSP FBIF 基址 `0x00110600`。
+作为对照，GSP 一侧使用 `NV_FALCON2_GSP_BASE = 0x00111000`、`RISCV_STATUS 0x00111240`、`RISCV_CPUCTL 0x00111268`、GSP `MAILBOX0 0x00110040`，以及 GSP FBIF 基址 `0x00110600`。
 
-`EXCI` 解码为 `expc = ((exci >> 28) << 20) | (exci & 0xFFFFF)`、`excause = (exci >> 20) & 0x1F`，原因 `0x08` ILL_INS、`0x09` INV_INS、`0x0a` MISS_INS、`0x0b` DHIT_INS（IMEM 块存在但未经 BROM 认证）、`0x0d` SP_OVERFLOW、`0x0f` BRKPT_INS、`0x10` DMEM_MISS、`0x11` DMEM_DHIT、`0x12` DMEM_PAFAULT、`0x13` DMEM_PERM、`0x15` BROM_CALL、`0x16` KMEM_VIOLATION、`0x17` BMEM_PERM。
+`EXCI` 的解码方式是 `expc = ((exci >> 28) << 20) | (exci & 0xFFFFF)`，以及 `excause = (exci >> 20) & 0x1F`。原因码包括 `0x08` ILL_INS、`0x09` INV_INS、`0x0a` MISS_INS、`0x0b` DHIT_INS（IMEM 块存在但未通过 BROM 认证）、`0x0d` SP_OVERFLOW、`0x0f` BRKPT_INS、`0x10` DMEM_MISS、`0x11` DMEM_DHIT、`0x12` DMEM_PAFAULT、`0x13` DMEM_PERM、`0x15` BROM_CALL、`0x16` KMEM_VIOLATION 和 `0x17` BMEM_PERM。
 
 ---
 
@@ -153,7 +153,7 @@ GSP 侧，作对比：`NV_FALCON2_GSP_BASE = 0x00111000`、`RISCV_STATUS 0x00111
 | 数据（`osData`） | 算术上是 `0x8700` 起；`0x8600` 也被引用 | 第 11 节的 `hsSigDmemAddr = patchLoc - dataOffset` 推导需要 `0x8700`（`0x8900 - 0x8700` = DMEM `0x200`），34,304 字节的安全代码测量也一样（`0x0100`-`0x8700` 是 34,304 字节；`0x0100`-`0x8600` 只有 34,048）。两条证据线指同一方向，所以 `0x8600` 是较弱的读数。对齐解密偏移量前对你自己的映像验证。 |
 | 签名 | `0x8900`（`PATCH_LOC`） | 384 字节 |
 
-未压缩代码大小是 `0x8700` = 34,560 字节。分析的调试签名构建的实测段大小为：34,304 字节安全代码、25,600 字节数据、256 字节非安全代码。原始提取的 GA100 文件被零填充到 60,100 字节；编译进的 BINDATA 块是 60,160 字节。
+未压缩代码大小为 `0x8700`，即 34,560 字节。所分析调试签名构建的实测分段是：34,304 字节 HS 代码、25,600 字节数据和 256 字节 NS 代码。原始提取的 GA100 文件会用零填充到 60,100 字节，而编译进驱动的 BINDATA 块大小为 60,160 字节。
 
 加密区域恰好从 `0x100` 开始（16 的倍数），那里第一条解密指令是：
 
@@ -163,12 +163,12 @@ GSP 侧，作对比：`NV_FALCON2_GSP_BASE = 0x00111000`、`RISCV_STATUS 0x00111
 
 ### 5.2 密码破解
 
-让明文反汇编无需任何泄露源码即可实现的发现：
+这一发现使得无需任何泄露源码也能进行明文反汇编：
 
 > [!NOTE]
-> **调试和量产 booter 映像包含完全相同的明文代码**
+> **调试版和量产版 booter 映像的明文代码完全相同**
 >
-> 只有 AES 密钥不同。调试映像是用一把非机密的编号测试密钥加密的，所以量产 HS 代码可以通过解密调试映像被读取。底层密码学发现在 2026 年 5 月；它于 2026-07-01 被应用到 GA100。
+> 两者只有 AES 密钥不同。调试映像使用非机密的编号测试密钥加密，因此解密调试映像即可读出量产 HS 代码。底层密码学发现于 2026 年 5 月，并于 2026-07-01 应用于 GA100。
 
 实用标记：
 
@@ -178,17 +178,17 @@ GSP 侧，作对比：`NV_FALCON2_GSP_BASE = 0x00111000`、`RISCV_STATUS 0x00111
 | 那个密钥下尾部零填充的 AES-128-ECB 密文 | `717D1494 EACA317F F1061952 58B38377` |
 | 反汇编器 | `envytools` / `envydis` |
 
-如果上面那个 16 字节常量恰好出现在文件自己的零区域之前，说明调试块被正确提取且对齐正确；如果它用测试密钥工具解密回零，则解密无误。量产块显示不同的尾部模式。一个错过会花掉数小时的工作流细节：4 字节轮密钥必须按与人类可读形式**相反**的顺序喂给 AES/Rijndael 工具，因为密钥编号位于最后一轮密钥而非第一轮（置信度：中等；单条可操作指令，但它描述的工作流显然产生了正确输出）。
+如果上面的 16 字节常量紧挨着文件自身的零区域出现，说明调试块提取正确且偏移对齐；用测试密钥工具解密后重新得到零，也能证明解密成功。量产块的尾部模式不同。一个容易漏掉、却会浪费数小时的细节是：喂给 AES/Rijndael 工具的 4 字节轮密钥，顺序必须与人类可读形式**相反**，因为密钥编号位于最后一轮密钥而不是第一轮。置信度为中等：这是一条单独的操作性结论，但所描述的流程确实产生了正确输出。
 
 ### 5.3 提取
 
-提取是通过打补丁 NVIDIA 自己的 `extract-firmware-nouveau.py`、让它只产出 GA100 量产和调试 booter 完成的，解析 `kgspBinArchiveBooter{Load,Unload}Ucode_GA100_BINDATA_LABEL_IMAGE_{PROD,DBG}_data` 和匹配的 `..._SIG_{PROD,DBG}_data`。**GA100 的签名大小是每个签名 384 字节**，而 TU10x 只用 16，所以调用是 `booter('ga100','load',384,'prod')` 及其三个兄弟。所有非 GA100 芯片（tu102、tu116、ga102、ad102、gh100、gb100、gb202）都被从 `main()` 里注释掉。
+提取过程是给 NVIDIA 自己的 `extract-firmware-nouveau.py` 打补丁，使其只输出 GA100 的量产版和调试版 booter。脚本解析 `kgspBinArchiveBooter{Load,Unload}Ucode_GA100_BINDATA_LABEL_IMAGE_{PROD,DBG}_data` 及匹配的 `..._SIG_{PROD,DBG}_data`。**GA100 每个签名的大小是 384 字节**，而 TU10x 只使用 16 字节，因此调用形式为 `booter('ga100','load',384,'prod')` 及其另外三个组合。所有非 GA100 芯片（tu102、tu116、ga102、ad102、gh100、gb100、gb202）都从 `main()` 中注释掉了。
 
-第二个变体 `extract-firmware-nouveau-ga100-raw.py` 剥离所有容器结构（带 `0x10de` 魔数和 6 个 dword 的 `nvfw_bin_hdr`、带 9 个 dword 的 `nvfw_hs_header_v2`、签名块、`patch_loc` / `patch_sig` / `fuse_ver` / `engine_id` / `ucode_id` / `num_sigs` 和描述符），只把原始固件写到 `booter_{load,unload}_{prod,dbg}-<ver>_raw.bin`。这个原始布局喂给 envydis 和 objdump，是之后所有工具链的输入。
+第二个变体 `extract-firmware-nouveau-ga100-raw.py` 会去掉全部容器结构，包括带 `0x10de` 魔数和 6 个 dword 的 `nvfw_bin_hdr`、带 9 个 dword 的 `nvfw_hs_header_v2`、签名块、`patch_loc` / `patch_sig` / `fuse_ver` / `engine_id` / `ucode_id` / `num_sigs` 以及描述符，只将原始固件写入 `booter_{load,unload}_{prod,dbg}-<ver>_raw.bin`。这个原始布局随后交给 envydis 和 objdump，也是后续所有工具链的输入。
 
-第二条提取路径可以从一个已加载的出厂驱动出发：用设了位 25 自动递增的 `IMEMC 0x840180` 和用于偏移量 `0`..`0x8700` 的 `IMEMD 0x840184` 读 SEC2 IMEM，用 `DMEMC 0x8401c0` / `DMEMD 0x8401c4` 读 DMEM，然后拼接 IMEM(NS+HS) + DMEM。
+还有一条路径从已加载的出厂驱动获取映像：设置位 25 以启用自动递增，通过 `IMEMC 0x840180` 和 `IMEMD 0x840184` 读取偏移 `0`..`0x8700` 的 SEC2 IMEM，再通过 `DMEMC 0x8401c0` / `DMEMD 0x8401c4` 读取 DMEM，最后拼接 IMEM(NS+HS) 与 DMEM。
 
-Booter 几何布局也可以**不用反汇编器**恢复，只需扫描原始映像的前 `0x100` 字节：`imm_before(ns, ff9f04)` 给出 NS 末尾、`imm_before(ns, fd9e04bb9002b69410)` 给出 DMEM 偏移量，其中 `imm_before` 要求标记前四个位置处的字节是 `0x89`（`mov $r9 imm24` 操作码），然后组装小端 24 位立即数。若任一标记缺失、或 `dmem <= base`，解析器会抛 "not an ACR booter image"。加载随后把 `img[0:ns]` 非安全地写到 IMEM 0、把 `img[ns:dmem]` 带置位的 SECURE 位 `1 << 28` 写到 `IMEM[ns]`、把 `img[dmem:]` 写到 DMEM 0。
+无需反汇编器也能恢复 Booter 的几何布局：扫描原始映像前 `0x100` 字节即可。`imm_before(ns, ff9f04)` 得到 NS 末尾，`imm_before(ns, fd9e04bb9002b69410)` 得到 DMEM 偏移；`imm_before` 要求标记前四个位置的字节为 `0x89`（`mov $r9 imm24` 操作码），然后组装小端序 24 位立即数。如果任一标记不存在，或 `dmem <= base`，解析器会抛出 "not an ACR booter image"。加载时，`img[0:ns]` 以非安全方式写入 IMEM 0，`img[ns:dmem]` 写入 `IMEM[ns]` 并设置 SECURE 位 `1 << 28`，`img[dmem:]` 则写入 DMEM 0。
 
 ### 5.4 版本可移植性
 
@@ -197,18 +197,18 @@ Booter 几何布局也可以**不用反汇编器**恢复，只需扫描原始映
 | 515 时代 | 不同的构建；金丝雀全局在 `0x2B20` 或 `0x2D20` | 否 |
 | 580 到 610 | **逐位相同**（跨 580.173.02、580.159.04、580.159.03、610.43.02、595.84 验证） | 是 |
 
-因此本维基上每个 ROP gadget 地址在整个 580-610 范围内都成立、无需重新推导。515 booter 是本项目之前被公开反汇编的那个，它不携带这个漏洞。
+因此，本维基列出的每个 ROP gadget 地址在 580-610 的整个范围内都有效，不需要重新推导。515 booter 是本项目之前公开反汇编的版本，并不包含这个漏洞。
 
-已发表论文的跨版本语料跨越分支 450、460、470、510（两个点发布）、515、525、535、560、570 和 580。510 SEC2 booter 的签名路径只用常量或钳制的 DMA 长度、没有按元数据大小的复制；580 booter 表现出无界复制；525 映像无法恢复，因为 booter 打包方式变了。
+已发表论文使用的跨版本资料覆盖 450、460、470、510（两个点版本）、515、525、535、560、570 和 580 分支。510 SEC2 booter 的签名路径只使用常量或经过限制的 DMA 长度，没有按元数据大小复制；580 booter 则出现无界复制；525 映像因 booter 的打包方式发生变化而无法恢复。
 
 > [!NOTE]
-> **未解问题：第一个受影响的分支**
+> **未解问题：最早受影响的驱动分支**
 >
-> 溢出在 **510 中缺失**、在 **580 中存在**，分支 515 到 570 **无法确定**。要定论，需恢复并分析 515、535、560 和 570 的 GA100 booter，检查是否存在按元数据大小的复制。
+> **510 中没有**溢出，**580 中存在**溢出，而 515 到 570 分支目前**无法确定**。要得到结论，必须恢复并分析 515、535、560 和 570 的 GA100 booter，检查其中是否存在按元数据大小执行的复制。
 
 ### 5.5 谱系命名
 
-GA100 使用 **Turing 代**固件：GSP 块是 `gsp_tu10x.bin`、SEC2 booter 是 Turing 谱系的 `booter_load`。这在 NVIDIA 自己的树 `nouveau/extract-firmware-nouveau.txt` 里有所陈述，并被失败路径上 TU102 后缀的 RM 符号佐证（`kgspBootstrap_TU102`、`s_executeBooterUcode_TU102`）。一次频道内更正后的正确命名：
+GA100 使用 **Turing 代**固件：GSP 块名为 `gsp_tu10x.bin`，SEC2 booter 是 Turing 谱系的 `booter_load`。NVIDIA 自己的树 `nouveau/extract-firmware-nouveau.txt` 明确说明了这一点；失败路径上的 TU102 后缀 RM 符号（`kgspBootstrap_TU102`、`s_executeBooterUcode_TU102`）也提供了佐证。经过频道内更正后，命名关系如下：
 
 | 前缀 | 覆盖 |
 |---|---|
@@ -216,56 +216,56 @@ GA100 使用 **Turing 代**固件：GSP 块是 `gsp_tu10x.bin`、SEC2 booter 是
 | `ga100` | 仅 A100 和 CMP 170HX |
 | `ga10x` | 其它 Ampere（GA102、RTX 3090、CMP 90HX） |
 
-因为 170HX 加载 Turing `booter_load`，它继承了 Turing booter 的 DMA/签名溢出。加载 Ampere booter 的卡是否从那条路径继承它，有争议且未解决；见[未解问题](../frontier/open-questions.md)。
+由于 170HX 加载的是 Turing `booter_load`，它继承了 Turing booter 的 DMA/签名溢出。加载 Ampere booter 的显卡是否也会从该路径继承这一问题，仍有争议且尚未解决；见[未解问题](../frontier/open-questions.md)。
 
 ---
 
 ## 6. Booter 内部：IMEM 函数图
 
-这张表里所有地址都是解密调试签名映像 `booter_load_ga100_dbg_seccode.fuc5.asm` 的 **IMEM**（代码）地址。带注释的清单 `booter_load_ga100_dbg_seccode.annotated.fuc5_v2.asm` 包含 10,934 行未修改代码，带按函数横幅。
+下表中的所有地址，都是解密后的调试签名映像 `booter_load_ga100_dbg_seccode.fuc5.asm` 的 **IMEM**（代码）地址。带注释清单 `booter_load_ga100_dbg_seccode.annotated.fuc5_v2.asm` 共包含 10,934 行未修改代码，并以函数横幅分隔。
 
 | IMEM | 符号 | 角色 |
 |---|---|---|
 | `0x0100` | `_start` | 入口点。十阶段 HS 序言。 |
-| `0x04a7` | （自循环） | `3e a7 04 00 B lbra 0x4a7`。载荷填充 dword 的旋转停靠。 |
+| `0x04a7` | （自循环） | `3e a7 04 00 B lbra 0x4a7`。载荷填充 dword 用来停在这里自旋。 |
 | `0x04d0` | `_start` 出口 | |
-| `0x04d4` | `dma_copy_block` | 真正的 DMA-到-DMEM 循环（`xdld`）。**溢出的帧。** |
-| `0x0602` | `dma_dispatch_descriptors` | 提交最多四个子描述符，打标 `r14 = 0xa0..0xa3` |
+| `0x04d4` | `dma_copy_block` | 执行实际 DMA 到 DMEM 的循环（`xdld`）。**发生溢出的栈帧。** |
+| `0x0602` | `dma_dispatch_descriptors` | 最多提交四个子描述符，并将其标记为 `r14 = 0xa0..0xa3` |
 | `0x0c7c` | `regblock_read_guarded` | |
 | `0x0cbd` | elevator | `0x0c7c` 里的 `mov $r10 $r0` |
 | `0x0ccb` | `regtable_rw_indexed` | 对寄存器描述符表的索引访问；以 `mpopaddret $r5 0x8` 结束 |
-| `0x0d66` | ACR 互斥锁获取 | 若 id 字节读 0 或 `0xff` 则错误 `0x1a`，坏类型 `0x1c` |
+| `0x0d66` | ACR 互斥锁获取 | id 字节读到 0 或 `0xff` 时返回错误 `0x1a`，类型错误时返回 `0x1c` |
 | `0x0e85` | `memcpy` | |
 | `0x0aa1` | `tgt_falcon_bringup` | 拉起目标 Falcon；错误 `0x1c`、`0x11` |
 | `0x1034` | `watchdog_set` | 用 `0x1312d00`（20,000,000）播种 `I[0x1c300]` |
-| `0x1064` | `mailbox_wait_ready` | 轮询 `I[0x1c000]` 位 [14:12]：0 完成，1 旋转，否则错误 `0x15` |
-| `0x10aa` | `reg_write_indirect` / `_acrlibBar0RegWrite_TU10X` | **任意 BAR0 写原语。** 约 70 个调用点。 |
+| `0x1064` | `mailbox_wait_ready` | 轮询 `I[0x1c000]` 的位 [14:12]：0 表示完成，1 表示继续自旋，其余值返回错误 `0x15` |
+| `0x10aa` | `reg_write_indirect` / `_acrlibBar0RegWrite_TU10X` | **任意 BAR0 写原语。** 约有 70 个调用点。 |
 | `0x10b9` | （中途进入） | 跳过 `r10`/`r11` 到 `r0`/`r1` 的编组 |
 | `0x10ff` | `mpopaddret $r3 0x4` | `0x10aa` 的尾声；让写自我链接 |
 | `0x1196` | `reg_read_indirect` | |
-| `0x14cf` | `tlb_scan_invalidate` | 刷新映像自身的过时映射，范围 `[0, 0x8700)` |
+| `0x14cf` | `tlb_scan_invalidate` | 使映像自身的陈旧映射失效，范围为 `[0, 0x8700)` |
 | `0x154a` | `wpr_desc_validate` | +0 处魔数 `0x371a60b3`、+4 处 `0xdc3aae21`；错误 `0x89`-`0x90` |
-| `0x19a2` | `va_to_pa_walk` | 三级软件页遍历；错误 `0x2` |
+| `0x19a2` | `va_to_pa_walk` | 软件实现的三级页表遍历；错误 `0x2` |
 | `0x1b44` | `set_1180f8_bit24` | 把 `0x01000000` OR 进 `0x001180f8` |
 | `0x1ba3` | `check_1180f8_2724` | 要求 `0x001180f8[27:24] == 0`，否则错误 `0x88` |
-| `0x1c0e` | `set_1180f8_top_nibble`（finalize） | 清除 [31:28] 并 OR `(r0 << 28)`；尾声 `0x1c72` |
+| `0x1c0e` | `set_1180f8_top_nibble`（finalize） | 清除 [31:28] 后 OR 入 `(r0 << 28)`；尾声位于 `0x1c72` |
 | `0x1c75` | `check_1180f8_nibbles` | 要求 [31:28] == 0 **且** [23:20] == 0，否则错误 `0x29` |
 | `0x1d0f` | `report_status` | 把 `$r0` 写进 MAILBOX0 |
-| `0x1d3b` | `f100_field_save_restore` | 经 DMEM `0x1900` 对寄存器 `0xf100` 位 [4:6] 的 RMW |
+| `0x1d3b` | `f100_field_save_restore` | 通过 DMEM `0x1900` 对寄存器 `0xf100` 的位 [4:6] 执行 RMW |
 | `0x1e09` | `scp_key_derive` | 带硬件机密 `0x37` 或 `0x36` 的 `csecret $c7` |
 | `0x1f92` | `read_820344_820348` | |
 | `0x1fb9` / `0x1fbd` / `0x1fca` | elevators | 见[ROP 链](rop-chain.md) |
 | `0x21f4` | `image_dma_loader` | 调用点 `0x2725` |
 | `0x2120` | `chunked_dma_copy` | 对寄存器 `0x4b00` 的 `0x100` 字节块 |
-| `0x22ba` | `booter_load_wpr_main` | 错误 `0x5`、`0x89`、`0x8a`、`0x96`、`0x98`、`0x9c`、`0xa4` |
-| `0x27fa` | `0x22ba` 内的重接点 | 写 `D[0x6f8]`/`D[0x6fc]`/`D[0x648]`；**不**碰任何 WPR2 寄存器 |
+| `0x22ba` | `booter_load_wpr_main` | 可能返回错误 `0x5`、`0x89`、`0x8a`、`0x96`、`0x98`、`0x9c`、`0xa4` |
+| `0x27fa` | `0x22ba` 内的重接点 | 写入 `D[0x6f8]`/`D[0x6fc]`/`D[0x648]`；**不会**触及 WPR2 寄存器 |
 | `0x28ac` | `wpr_region_check` | 错误 `0x5` |
 | `0x291e` | `wpr_region_program` | 实际写 `0x001fa824`/`0x001fa828`；拒绝空区域 |
-| `0x2e80` | `image_auth_decrypt` | 流式 `0x100` 字节块，密钥句柄 `0x17d78414` |
+| `0x2e80` | `image_auth_decrypt` | 以 `0x100` 字节为块流式处理，密钥句柄为 `0x17d78414` |
 | `0x3747` | `image_copy_verify` | 正常返回 `0x2740` |
 | `0x37b3` | 签名 DMA 调用点 | `lcall 0x4d4` |
 | `0x37b7` | DMA 后结果检查 | `ld $r9 D[$r1+0x50]` |
-| `0x399a` | `ls_sig_verify` | 要求 `r10 == 0x700`；错误 `0x98` |
+| `0x399a` | `ls_sig_verify` | 要求 `r10 == 0x700`，否则返回错误 `0x98` |
 | `0x3c8f` | `firmware_load_main` | DMEM `0x5f00` 处魔数 `'FREE'` / `'HEAP'` |
 | `0x4768` | `rsa_pubkey_load` | 模数零填充到 `0x200`，`e = 0x10001` |
 | `0x54ab` | `pka_modexp_run` | 错误 `0x63`-`0x6d`（`0x6c` 超时） |
@@ -278,24 +278,24 @@ GA100 使用 **Turing 代**固件：GSP 块是 `gsp_tu10x.bin`、SEC2 booter 是
 | `0x79cc` | `memcfg_program` | |
 | `0x7a64` | `memcfg_apply_poll` | 超时 100000，错误 `0xa6` |
 | `0x7c65` | `memcfg_timing_program` | 超时 125000，错误 `0xa7`，基常量 `0x32a` |
-| `0x7dd9` | `__stack_chk_fail` / `panic()` | 把 `0x47` 写进 MAILBOX0，在 `0x7def` 旋转 |
-| `0x7de9` | （panic 主体） | 打印 `$r15` 里的任何东西。每个调试 ROP 的基础。 |
+| `0x7dd9` | `__stack_chk_fail` / `panic()` | 向 MAILBOX0 写入 `0x47`，随后在 `0x7def` 自旋 |
+| `0x7de9` | （panic 主体） | 输出 `$r15` 中的值，是所有调试 ROP 的基础。 |
 | `0x7df3` | `memcmp_ct` | 恒定时间比较 |
 | `0x7e76` | `secure_teardown` | 永不返回 |
-| `0x7eef` | 密码自清零扫描 | 在 `secure_teardown` 内 |
-| `0x7f2f` | `secure_teardown` 里的退出 gadget | 已发布的载荷的终止符 |
+| `0x7eef` | 密码自清零扫描 | 位于 `secure_teardown` 内部 |
+| `0x7f2f` | `secure_teardown` 里的退出 gadget | 发布版载荷使用的终止符 |
 | `0x7f82` | **`main`** | |
 | `0x8137` | `booter_load_wrap` | |
-| `0x815a` | `booter_load_wrap` 的金丝雀检查尾 / 栈吞噬器 | 见下面的注 |
+| `0x815a` | `booter_load_wrap` 的金丝雀检查尾 / 栈吞噬器 | 见下方说明 |
 | `0x8224` | `csb_write` | 存储是 `0x8232` 处的 `iowrs I[$r10] $r11` |
 | `0x8262` | 裸 `ret` | 有用的对齐 gadget |
 | `0x8264` | `csb_read` | |
-| `0x8307` | `fbif_set_bit800` | 在掩码 `0x0ffff8ff` 下把位 `0x800` 设进 `0x001fa814`/`0x001fa818` |
+| `0x8307` | `fbif_set_bit800` | 在掩码 `0x0ffff8ff` 下，将位 `0x800` 写入 `0x001fa814`/`0x001fa818` |
 
 > [!NOTE]
-> **已解决：`0x815a` 在 `booter_load_wrap` 内**
+> **已解决：`0x815a` 位于 `booter_load_wrap` 内部**
 >
-> 一份目录叫它 "the main canary-check tail"；另一份把它注释为 "a stack-eater in `booter_load_wrap` that checks the canary and does nothing"（`booter_load_wrap` 里一个检查金丝雀却什么都不做的栈吞噬器）。带注释的 v2 清单定论了它。`main` 从 `0x7f82` 跑到 `0x8134`，那里它自己的金丝雀检查以 `mpopaddret $r0 0x10` 结束。`booter_load_wrap` 从 `0x8137` 跑到 `0x8173`，以 `mpopaddret $r0 0x4` 结束，下一个函数横幅是 `0x8176` 处的 `nibble_rmw`。因此 `0x815a` 位于 `booter_load_wrap` 内，由 `0x8150` 处跳过 `boot_mode_dispatch (0x683f)` 调用的 `bra b32 $r10 0x0 e 0x815a` 到达。它是那个包装器的金丝雀检查尾；`main` 自己的尾是 `0x811d` 处单独一块。第二份目录是对的。
+> 一份目录称它为 "the main canary-check tail"；另一份注释为 "a stack-eater in `booter_load_wrap` that checks the canary and does nothing"（`booter_load_wrap` 中检查金丝雀但不执行其他工作的栈吞噬器）。带注释的 v2 清单解决了这一歧义：`main` 从 `0x7f82` 运行到 `0x8134`，自身的金丝雀检查在这里以 `mpopaddret $r0 0x10` 结束；`booter_load_wrap` 从 `0x8137` 运行到 `0x8173`，以 `mpopaddret $r0 0x4` 结束，下一个函数横幅则在 `0x8176` 的 `nibble_rmw`。因此 `0x815a` 明确位于 `booter_load_wrap` 内，由 `0x8150` 处跳过 `boot_mode_dispatch (0x683f)` 调用的 `bra b32 $r10 0x0 e 0x815a` 到达。它是包装器的金丝雀检查尾；`main` 自己的尾是 `0x811d` 的独立代码块。第二份目录才是正确的。
 
 ---
 
@@ -303,22 +303,22 @@ GA100 使用 **Turing 代**固件：GSP 块是 `gsp_tu10x.bin`、SEC2 booter 是
 
 ### 7.1 `_start`（IMEM `0x0100`）：十阶段 HS 序言
 
-1. 在 `0x0107` 清理 SCP 状态（`csigclr` / `csecret` / `cxor`）。每个 `csecret $cN 0x0` 都紧接一个 `cxor $cN $cN`，所以寄存器组在被配置的那一刻就被清零。
-2. 在 `0x014b` 清除每个通用寄存器 `$r0`..`$r15`。
-3. 在 `0x016b` 停用 Falcon，轮询 `I[0x9100]` 位 31。
-4. 在 `0x02b3` 清除中断使能标志 `ie0` / `ie1` / `ie2` 和定时器/异常标志（`mov $r9 0x10` / `0x11` / `0x12` / `0x18`，各被 `bclr $flags $r9` 跟随）。
-5. **阶段 5** 设置陷阱向量 `$tv = 0xeb` 并清除 `$cauth` 安全-故障使能位：`mov $r9 0xeb; mov $tv $r9; mov $r9 $cauth; mov $r15 -0x80001; and $r9 $r15; mov $cauth $r9`。
-6. **阶段 6** 按序触碰 CSB `0x4e00`（掩码 `0xff000000`，然后 OR `0x80003000`）、`0x10100`（OR `0x101`，旋转到位 `0x100` 清除，以 `0x400` 次迭代为界）、`0x14000`（设 `0x7fff`）、`0x14100`（保留低 16 位，OR `0x03ff0000`）、`0x14b00`（OR `0xff00`），然后又 `0x10100`（OR `0x1000`）。
-7. 经 `crnd` 在 `0x0433` 处做 SCP 自配置。
-8. 在 `0x0463` 验证 SCP 并扫描 DMEM `0x6330`..`0x6340`。
-9. **阶段 9** 清除 `0x10100` 位 `0x1000`（AND `-0x1001`），并把栈金丝雀安装在 DMEM `0x6340`，取自扫描 DMEM `0x6330`..`0x6340` 时找到的第一个非零字。
-10. 在 `0x04cc` 处 `lcall 0x7f82` 进入 `main()`；在 `0x04d0` 处退出。
+1. 在 `0x0107` 擦除 SCP 状态（`csigclr` / `csecret` / `cxor`）。每条 `csecret $cN 0x0` 后面都紧跟 `cxor $cN $cN`，因此寄存器组一完成配置就会被清零。
+2. 在 `0x014b` 清空全部通用寄存器 `$r0`..`$r15`。
+3. 在 `0x016b` 让 Falcon 进入静默状态，并轮询 `I[0x9100]` 的位 31。
+4. 在 `0x02b3` 清除中断使能标志 `ie0` / `ie1` / `ie2` 以及定时器/异常标志；具体做法是依次将 `0x10` / `0x11` / `0x12` / `0x18` 放入 `$r9`，每次后执行 `bclr $flags $r9`。
+5. **阶段 5** 设置陷阱向量 `$tv = 0xeb`，并清除 `$cauth` 的安全故障使能位：`mov $r9 0xeb; mov $tv $r9; mov $r9 $cauth; mov $r15 -0x80001; and $r9 $r15; mov $cauth $r9`。
+6. **阶段 6** 按顺序访问 CSB `0x4e00`（先应用掩码 `0xff000000`，再 OR `0x80003000`）、`0x10100`（OR `0x101`，等待位 `0x100` 清零，最多循环 `0x400` 次）、`0x14000`（写入 `0x7fff`）、`0x14100`（保留低 16 位并 OR `0x03ff0000`）和 `0x14b00`（OR `0xff00`），最后再次访问 `0x10100`（OR `0x1000`）。
+7. 在 `0x0433` 通过 `crnd` 完成 SCP 自配置。
+8. 在 `0x0463` 验证 SCP，并扫描 DMEM `0x6330`..`0x6340`。
+9. **阶段 9** 清除 `0x10100` 的位 `0x1000`（与 `-0x1001` 做 AND），再把栈金丝雀安装到 DMEM `0x6340`。金丝雀取自扫描 DMEM `0x6330`..`0x6340` 时找到的第一个非零字。
+10. 在 `0x04cc` 执行 `lcall 0x7f82` 进入 `main()`，并在 `0x04d0` 退出。
 
 ### 7.2 `main`（IMEM `0x7f82`）
 
-`main` 按序编排：`f100_field_save_restore (0x1d3b)`；权限级别掩码和孔径编程；`tgt_falcon_bringup (0xaa1)`；`chipid_gate (0x6a71)`；描述符验证；`regtable_reverse_lookup (0xd66)`；`tlb_scan_invalidate (0x14cf)`；`booter_load_wrap (0x8137)`（它调用 `booter_load_wpr_main (0x22ba)`）；finalize 提交 `(0x1c0e)`；`report_status (0x1d0f)`；成功后 `secure_teardown (0x7e76)`。
+`main` 按以下顺序组织流程：`f100_field_save_restore (0x1d3b)`；权限级别掩码和孔径编程；`tgt_falcon_bringup (0xaa1)`；`chipid_gate (0x6a71)`；描述符验证；`regtable_reverse_lookup (0xd66)`；`tlb_scan_invalidate (0x14cf)`；调用 `booter_load_wpr_main (0x22ba)` 的 `booter_load_wrap (0x8137)`；finalize 提交 `(0x1c0e)`；`report_status (0x1d0f)`；成功后执行 `secure_teardown (0x7e76)`。
 
-在 MAIN.2、紧接 `watchdog_set` 之后，Booter Load 在 **CSB** 空间写入四个固定的权限级别掩码和孔径值：
+在 MAIN.2 中，紧随 `watchdog_set` 之后，Booter Load 会在 **CSB** 空间写入四个固定的权限级别掩码和孔径值：
 
 ```asm
 I[0x12000] = 0x11111101
@@ -327,11 +327,11 @@ I[0x12600] = 0x11111111
 I[0x12100] = 0x00011100
 ```
 
-每个值都被内联的 fail-closed 断言跟随，所以其中任何一个的 CSB 错误都会把 Falcon 楔死在无限自分支里。
+每次写入后都有内联的 fail-closed 断言。四次写入中的任何一次发生 CSB 错误，都会让 Falcon 进入无限自分支并永久卡死。
 
-`chipid_gate` 读寄存器 `0xa00` 位 [28:20]，只接受芯片 ID `0x170` 和 `0x171`。跳线 `0x170` 无条件通过；跳线 `0x171` 额外要求寄存器 `0x10200` 的位 20 置位，否则错误 `0x4b`。CMP 170HX 上 BAR0 `0x00000000` 处的 `PMC_BOOT_0` 读 `0x170000a1`，所以实现 ID `0x170` 通过。见[GA100 硅片](../hardware/ga100-silicon.md)。
+`chipid_gate` 读取寄存器 `0xa00` 的位 [28:20]，只接受芯片 ID `0x170` 和 `0x171`。跳线值为 `0x170` 时无条件通过；值为 `0x171` 时，还必须设置寄存器 `0x10200` 的位 20，否则返回错误 `0x4b`。CMP 170HX 在 BAR0 `0x00000000` 处读取 `PMC_BOOT_0` 得到 `0x170000a1`，因此实现 ID `0x170` 能够通过。见[GA100 硅片](../hardware/ga100-silicon.md)。
 
-`main` 的尾，精确地：
+`main` 的尾部准确如下：
 
 ```asm
 0x80fe:  r9 = sp+8 = 0xFFEC          ; DMEM
@@ -346,48 +346,48 @@ I[0x12100] = 0x00011100
 0x8119:  lcall 0x7e76                ; secure_teardown
 ```
 
-**DMEM `0xFFEC` 是喂给退出状态、并决定是否运行 teardown 的槽。** 这由一次硬件 A/B 定论，反驳了一个竞争的 `0xFFE4` 假设，并与已发表的 ROP v3 注释 "FFEC 00000000 <- Return value to main() to indicate success ($r0)" 匹配。把 `D[0xFFEC]` 设为 `0xDEADBEEF`，会让 `0x001180f8` 从 `0x11000000` 移到 `0xf1000000`，恰好符合 `(r0 << 28)` 模型的预测。
+**DMEM `0xFFEC` 是退出状态的输入槽，也决定是否执行 teardown。** 一次硬件 A/B 实验排除了另一种 `0xFFE4` 假设，并与已发表的 ROP v3 注释 "FFEC 00000000 <- Return value to main() to indicate success ($r0)" 相符。将 `D[0xFFEC]` 设为 `0xDEADBEEF` 后，`0x001180f8` 从 `0x11000000` 变为 `0xf1000000`，正好符合 `(r0 << 28)` 模型的预测。
 
 ### 7.3 booter 实际为 GPU 做什么
 
-两件超出 GSP 移交的事要紧：
+除了 GSP 移交之外，booter 还承担两项重要工作：
 
-- **显存时钟和时序编程。** `memcfg_program (0x79cc)` 读 BAR0 `0x20414`、`0x136658`、`0x136e58` 和 `0x136458`，打包提取的位字段并写 `0x11824c` 和 `0x118250`。`memcfg_apply_poll (0x7a64)` 只在 `0x11824c` 位 0 置位时运行，然后以超时 100000（错误 `0xa6`）轮询 `0x136600`、`0x136e00` 和 `0x136400`。`memcfg_timing_program (0x7c65)` 从派生自 `0x137178` 和 `0x136604` 的基常量 `0x32a` 计算缩放的时序和带宽值，超时 125000（错误 `0xa7`）。`const_out_write (0x797a)` 提供固定常量 `0x68`、`0x555`、`0x5be`、`0x5a0`。
-- **目标 Falcon 拉起。** `tgt_falcon_init_reset (0x9da)` 写 `0x3f0c = 0xa0100`、用 `0xfeed0000` OR 索引的八个字填充 `0x3f40` 处的寄存器组、然后用 `0x3f00 = 3` 和 `0x104 = 1` 结束。`mailbox_write_d000 (0xb28)` 为位 `0x1c0000` 轮询 `0xd000`、把数据写到 `0xd200`、命令写到 `0xd100`。`tgt_falcon_handshake (0xbc9)` 验证一个 `0xbadf0000` 哨兵和一个 `0x3f20`..`0x3f40` 范围，错误 `0x38`。
+- **显存时钟与时序编程。** `memcfg_program (0x79cc)` 读取 BAR0 `0x20414`、`0x136658`、`0x136e58` 和 `0x136458`，打包提取出的位字段，再写入 `0x11824c` 和 `0x118250`。只有 `0x11824c` 的位 0 已设置时，`memcfg_apply_poll (0x7a64)` 才会运行；它以 100000 为超时上限轮询 `0x136600`、`0x136e00` 和 `0x136400`，失败返回 `0xa6`。`memcfg_timing_program (0x7c65)` 使用由 `0x137178` 和 `0x136604` 推导出的基常量 `0x32a`，计算缩放后的时序和带宽值，超时上限为 125000，错误为 `0xa7`。`const_out_write (0x797a)` 则提供固定常量 `0x68`、`0x555`、`0x5be` 和 `0x5a0`。
+- **拉起目标 Falcon。** `tgt_falcon_init_reset (0x9da)` 写入 `0x3f0c = 0xa0100`，再把 `0xfeed0000` 与索引 OR 后得到的八个字填入 `0x3f40` 处的寄存器组，最后写 `0x3f00 = 3` 和 `0x104 = 1`。`mailbox_write_d000 (0xb28)` 轮询 `0xd000` 的位 `0x1c0000`，将数据写到 `0xd200`、命令写到 `0xd100`。`tgt_falcon_handshake (0xbc9)` 验证 `0xbadf0000` 哨兵和 `0x3f20`..`0x3f40` 范围，失败时返回 `0x38`。
 
-`booter_load_wpr_main` 的 finalize 尾拉响 GSP RISC-V 移交：在 `0x286a` booter 经 `0x1b44` 设置 `SECURE_SCRATCH_14`（`0x001180f8`）的位 24，然后 `0x2874` 调用 `reg_init (0x68ed)`，它写 GSP `FBIF_CTL 0x00110624 = 0x90`（ALLOW_PHYS_NO_CTX 位 7 加位 4）、`0x00110684 = 1` 和 `0x0011126c = 1`。任何意味着移交给 GSP-RM 的链都必须让它运行或复现那三次写。`0x110684` 和 `0x11126c` 的字段名是推断的，未经头文件确认。
+`booter_load_wpr_main` 的 finalize 尾部会启动交给 GSP RISC-V 的移交：在 `0x286a`，booter 通过 `0x1b44` 设置 `SECURE_SCRATCH_14`（`0x001180f8`）的位 24；随后 `0x2874` 调用 `reg_init (0x68ed)`，写入 GSP `FBIF_CTL 0x00110624 = 0x90`（ALLOW_PHYS_NO_CTX 位 7 加位 4）、`0x00110684 = 1` 和 `0x0011126c = 1`。任何要把控制权交给 GSP-RM 的链，都必须让这三次写入实际发生或自行重现。`0x110684` 和 `0x11126c` 的字段名仍是推断，尚未用头文件确认。
 
 ---
 
 ## 8. DMEM 图
 
-这里所有地址都是 **DMEM**。`0x100` 之下什么都不分配，这正是 "staged in low DMEM 的 mega-ROP" 被排除的原因。
+本节所有地址均属于 **DMEM**。`0x100` 以下完全没有分配内容，因此可以排除“在低位 DMEM 中 staged 的 mega-ROP”这一方案。
 
 | DMEM | 内容 | 备注 |
 |---|---|---|
 | `0x0000`-`0x00FF` | 未分配 | |
-| `0x0200` | booter 自己的 HS 签名 | 加载前被打进映像（`hsSigDmemAddr = patchLoc - dataOffset`，`0x8900 - 0x8700`）。**不是**溢出的那个缓冲区。 |
+| `0x0200` | booter 自身的 HS 签名 | 加载前写入映像（`hsSigDmemAddr = patchLoc - dataOffset`，`0x8900 - 0x8700`）。**不是**发生溢出的缓冲区。 |
 | `0x0530` | DMA/引擎配置描述符结构 | |
-| `0x0600`-`0x06FF` | `WprMeta`，一个 256 字节结构 | +0 处魔数 `0x371a60b3`、+4 处 `0xdc3aae21`。在 DMA 目标下方，所以溢出从不碰它。 |
+| `0x0600`-`0x06FF` | `WprMeta`，256 字节结构 | +0 处为魔数 `0x371a60b3`，+4 处为 `0xdc3aae21`。它位于 DMA 目标下方，因此溢出不会触及。 |
 | `0x0700` | 映像描述符 | `ls_sig_verify` 要求 `r10 == 0x700` |
-| **`0x0800`** | **GSP-RM LS 签名缓冲区** | **DMA 目的地。利用。** |
+| **`0x0800`** | **GSP-RM LS 签名缓冲区** | **DMA 目标，也是利用入口。** |
 | `0x103c` 起 | 密码会话描述符 | 字段 `0x1004`、`0x107c`、`0x1080`、`0x1100` |
-| `0x1900` | `f100` 字段保存槽 | 已发布的载荷把 `0x00000007` 种在这 |
+| `0x1900` | `f100` 字段保存槽 | 发布版载荷会在这里写入 `0x00000007` |
 | `0x1904` / `0x190c` / `0x1914` | `va_to_pa_walk` 的 PTE 缓存 | |
 | `0x1a00` / `0x2a00` / `0x3a00` | 页缓冲 | |
-| `0x2383` | 寄存器描述符表 | 被 `0xF800` 载荷粉碎；错误 `0x35` 的来源 |
+| `0x2383` | 寄存器描述符表 | 会被 `0xF800` 载荷破坏，也是错误 `0x35` 的来源 |
 | `0x5f00` | 固件请求头 | `'FREE'` / `'HEAP'` 魔数 |
 | `0x6330`-`0x633F` | 阶段 9 扫描的临时区 | |
-| **`0x6340`** | **栈金丝雀守卫全局** | 25408 十进制 |
+| **`0x6340`** | **栈金丝雀守卫全局变量** | 十进制值 25408 |
 | `0x8700` | booter 代码/数据的末尾 | |
 | `0x8e08` | 寄存器描述符表 | 也被粉碎 |
-| 约 `0xFF3C`-`0xFFFF` | 活调用栈 | 从顶部向下增长 |
+| 约 `0xFF3C`-`0xFFFF` | 当前调用栈 | 从地址空间顶部向下增长 |
 
 ### 栈金丝雀
 
-每次启动都会从硬件 RNG 生成一个新的随机值，保存在 DMEM `0x6340` 的全局里。每个受保护函数把它复制到栈帧边界、在退出时重读并比较；一旦不匹配就调用 `0x7dd9` 处的 `panic()`。规范序言是 `mov $rX 0x6340; ld b32 $r9 D[$rX]`；尾声是 `cmp b32 $r15 $r9; bra e <ok>; lcall 0x7dd9`。
+每次启动都会由硬件 RNG 生成新随机值，并存入 DMEM `0x6340` 的全局变量。每个受保护函数都会把它复制到栈帧边界，退出时重新读取并比较；不匹配就调用 `0x7dd9` 的 `panic()`。标准序言是 `mov $rX 0x6340; ld b32 $r9 D[$rX]`，尾声是 `cmp b32 $r15 $r9; bra e <ok>; lcall 0x7dd9`。
 
-因为该值每次启动都会从硬件 RNG 重新生成，所以无法离线猜测，但也无需猜测。守卫全局活在可写数据内存里，恰好被它要检测的那个溢出可达，因此载荷用同一个选定值覆写全局**和**每个重建的金丝雀槽，于是每个尾声比较都通过。这就是已发表论文的 Thesis 1：Falcon 栈金丝雀在 *引用字完整性* 上失败，而非在熵上。在这个映像里，工具链把守卫放在只读数据段的尾部，而在扁平 MPU 映射的映像里，那落在可写数据跨度内。没有 RELRO 等效、没有守卫页、也没有 MPU 只读映射。
+由于该值每次启动都会由硬件 RNG 重新生成，离线猜测并不可行，但利用也不需要猜测。守卫全局位于可写数据内存中，而检测它的溢出恰好可以到达那里；载荷只需用同一个选定值覆盖全局变量**以及**所有重建的金丝雀槽，所有尾声比较就都会通过。这正是论文的 Thesis 1：Falcon 栈金丝雀失败的不是熵，而是*引用字完整性*。在该映像中，工具链把守卫放在只读数据段末尾；但在扁平 MPU 映射下，它落入了可写数据范围。这里没有 RELRO 等效机制、没有守卫页，也没有 MPU 只读映射。
 
 ---
 
@@ -395,7 +395,7 @@ I[0x12100] = 0x00011100
 
 ### 9.1 BAR0 master
 
-Falcon 只能通过 Falcon CSB 空间里一个间接、互斥门控的邮箱到达外部 BAR0 寄存器，没有内存映射的 "direct" 路径。
+Falcon 只能通过 Falcon CSB 空间中一个间接且由互斥锁门控的邮箱访问外部 BAR0 寄存器，不存在内存映射的 "direct" 路径。
 
 | CSB 端口 | 角色 |
 |---|---|
@@ -404,11 +404,11 @@ Falcon 只能通过 Falcon CSB 空间里一个间接、互斥门控的邮箱到�
 | `I[0x1c000]` | 命令：**`0x800000f2` = 写，`0x800000f1` = 读** |
 | `I[0x1c300]` | 看门狗，被 `watchdog_set (0x1034)` 用 `0x1312d00`（20,000,000）播种 |
 
-booter 也用这条路径做自己的事：`0x29b8 -> 0x10aa` 写 WPR2 寄存器，而 finalize 例程对 `0x001180f8` 的写字面上是 `1c4b: r10=0x1180f8 ; lcall 0x10aa`。对应的读出现在 `1c35: r10=0x1180f8 ; lcall 0x1196`。
+booter 自己也通过这条路径工作：`0x29b8 -> 0x10aa` 用于写 WPR2 寄存器，finalize 例程对 `0x001180f8` 的写入在指令层面就是 `1c4b: r10=0x1180f8 ; lcall 0x10aa`；对应的读取则是 `1c35: r10=0x1180f8 ; lcall 0x1196`。
 
 ### 9.2 Fail-closed CSB 访问
 
-**booter 里每次 CSB 访问都是 fail-closed 的。** 每次访问后，代码都会采样 CSB 错误状态 `I[0x9100]` 位 31，即 `FALCON_CSBERRSTAT.VALID`——一个**故障标志**，表示上一次 CSB 访问出错了，**不是**忙或完成轮询。原始内联序言出错时分支到自身、把 Falcon 永远楔死；两个辅助函数则改为报告状态 `0x15` 并退出。
+**booter 中的每次 CSB 访问都是 fail-closed。** 每次访问后，代码都会读取 CSB 错误状态 `I[0x9100]` 的位 31，也就是 `FALCON_CSBERRSTAT.VALID`。它是表示“上一次 CSB 访问出错”的**故障标志**，**不是**忙状态或完成状态轮询。原始内联序言在出错时跳转回自身，让 Falcon 永久卡死；两个辅助函数则报告状态 `0x15` 后退出。
 
 ```asm
 mov  rX 0x9100
@@ -418,51 +418,51 @@ bra
 self-lbra
 ```
 
-那个惯用语内联出现约 25 次，另加两个辅助函数。`csb_read (0x8264)` 还会用 `0xffff0000` 掩码返回的数据，并测试 PRI 毒哨兵 `0xbadf0000`，带一个白名单（`0x208c` 处的 `reg_whitelist_40f00`，覆盖 `[0x40f00, 0x41f00)` 步长 `0x100`）和一条对寄存器 `0x1c200`、`0xc00`、`0xb00` 和 `0xd500` 的重试路径。
+这种惯用的内联序列出现约 25 次，此外还出现在两个辅助函数中。`csb_read (0x8264)` 还会用 `0xffff0000` 掩码处理返回值，检查 PRI 毒哨兵 `0xbadf0000`，使用白名单（`0x208c` 处的 `reg_whitelist_40f00`，覆盖 `[0x40f00, 0x41f00)`，步长 `0x100`），并为寄存器 `0x1c200`、`0xc00`、`0xb00` 和 `0xd500` 提供重试路径。
 
 ### 9.3 MAILBOX0 语义
 
-Falcon I/O `0x1000` 是 Falcon 自己的 MAILBOX0，主机可见于 BAR0 `0x00840040`，MAILBOX1 在 `0x00840044`（`CSB 0x1000 / 64 = falcon 0x40`）。从主机在 PL0 直接读 BAR0 `0x1000` 返回 `0xbadf5040`，解决了一个长期混淆。
+Falcon I/O `0x1000` 是 Falcon 自己的 MAILBOX0；主机通过 BAR0 `0x00840040` 看到它，MAILBOX1 位于 `0x00840044`（`CSB 0x1000 / 64 = falcon 0x40`）。主机在 PL0 直接读取 BAR0 `0x1000` 会得到 `0xbadf5040`，这解释了一个长期存在的地址混淆。
 
-MAILBOX0 是利用期间唯一可观察的通道，统一规则是：
+利用期间唯一可观察的通道是 MAILBOX0，核心规则如下：
 
 > [!NOTE]
-> **任何经 `report_status` 的返回路径上，MAILBOX0 等于 `$r0`**
+> **凡是经过 `report_status` 返回的路径，MAILBOX0 都等于 `$r0`**
 >
-> MAILBOX0 读 `0x31` 只意味着 `report_status` 从未执行。booter 自己在 ucode 偏移量 `0x7a` 处印下 `0x31`（`mov $r15 0x31 / mov $r9 0x1000 / iowrs I[$r9] $r15`），作为它第一个活性标记，覆写驱动种下的 WprMeta 物理地址参数。
+> 读到 MAILBOX0 为 `0x31`，只能说明 `report_status` 尚未执行。booter 会在 ucode 偏移 `0x7a` 处先写入 `0x31`（`mov $r15 0x31 / mov $r9 0x1000 / iowrs I[$r9] $r15`），把它作为第一个存活标记；这一写入会覆盖驱动预先放入的 WprMeta 物理地址参数。
 
-实测：返回地址 `0x8117`（原始退出，跳过 `report_status`）给出 MB0 `0x31`；`0x810d` 当 `r0 = 0` 时给出 MB0 `0x0`、当 `0xcafe` 被种下时给出 `0xcafe`；`0x8d4` 给出 `0x0b`。
+实测结果是：返回到 `0x8117`（原始退出，跳过 `report_status`）时 MB0 为 `0x31`；从 `0x810d` 返回时，`r0 = 0` 得到 MB0 `0x0`，预先写入 `0xcafe` 则得到 `0xcafe`；`0x8d4` 返回 `0x0b`。
 
-实用分类：`0x47` = 栈金丝雀检查失败、Falcon 在 `panic()` 自循环里；`0x31` = `report_status` 从未运行；`0x96` = 金丝雀完好地正常引导。
+实际排查时可按如下方式分类：`0x47` 表示栈金丝雀检查失败，Falcon 正在 `panic()` 自循环中；`0x31` 表示 `report_status` 没有运行；`0x96` 表示金丝雀完整且引导正常。
 
 ### 9.4 状态码
 
 | 码 | 来源 | 含义 |
 |---|---|---|
-| `0x01` | `antirollback_version 0x59c4` | 存储的版本超过候选 |
+| `0x01` | `antirollback_version 0x59c4` | 已存储版本高于候选版本 |
 | `0x05` | `wpr_region_check 0x28ac` / `wpr_region_program 0x291e` | WPR 上限 < 基址，或空区域 |
 | `0x11` | `pka_ready_check 0x580f` / `pka_status_check 0x5473` | |
-| `0x15` | `csb_read` / `csb_write` / `mailbox_wait_ready` / `reg_read_indirect` | CSB/PRI 访问故障 |
-| `0x1c` | 通用 | 坏参数 |
+| `0x15` | `csb_read` / `csb_write` / `mailbox_wait_ready` / `reg_read_indirect` | CSB/PRI 访问出错 |
+| `0x1c` | 通用 | 参数无效 |
 | `0x23` / `0x4e` | `verify_reg_bitlen` | |
 | `0x29` | `check_1180f8_nibbles 0x1c75`（从 `0x80a5` 调用） | `0x001180f8` [31:28] 或 [23:20] 非零 |
 | `0x2d` | `firmware_load_main` | |
-| `0x31` | PC `0x7a` | 入口活性标记；`report_status` 未到达 |
+| `0x31` | PC `0x7a` | 入口存活标记；尚未到达 `report_status` |
 | `0x32` | `check_reg_4f00` | |
 | `0x35` | `regtable_rw_indexed` | `0x2383`/`0x8E08` 处的 DMEM 描述符表读零 |
 | `0x38` | `tgt_falcon_handshake 0xbc9` | |
-| `0x47` | `__stack_chk_fail 0x7dd9` | 金丝雀不匹配，然后挂起 |
+| `0x47` | `__stack_chk_fail 0x7dd9` | 金丝雀不匹配，随后挂起 |
 | `0x4b` | `chipid_gate 0x6a71` | 跳线 `0x171` 而无 `0x10200` 位 20 |
-| `0x54` | 未知 | 只在 PG199 板上观察到。见下。 |
-| `0x59` | 驱动侧 | `dmem.bin` 缺失。良性。 |
+| `0x54` | 未知 | 目前只在 PG199 板上观察到。见下文。 |
+| `0x59` | 驱动侧 | 找不到 `dmem.bin`，属于无害情况。 |
 | `0x5c` | `antirollback_version` | 孔径检查 |
 | `0x62` | PKA 路径 | |
 | `0x63`-`0x6d` | `pka_modexp_run 0x54ab` | `0x6c` = 超时 |
 | `0x6e` | `check_10200_820434` | |
 | `0x74` | `check_reg_118128` | |
 | `0x88` | `check_1180f8_2724 0x1ba3` | `0x001180f8[27:24]` 非零 |
-| `0x89`-`0x90` | `wpr_desc_validate 0x154a` | `0x8e`/`0x8f` 是 `0x1ffff` 对齐和 `0xfff` 字段检查 |
-| `0x96` | 正常 | 金丝雀完好地引导 |
+| `0x89`-`0x90` | `wpr_desc_validate 0x154a` | `0x8e`/`0x8f` 对应 `0x1ffff` 对齐检查和 `0xfff` 字段检查 |
+| `0x96` | 正常 | 金丝雀完整，引导成功 |
 | `0x98` | `ls_sig_verify 0x399a` / `booter_load_wpr_main` | |
 | `0x9c` / `0xa4` | `booter_load_wpr_main` | |
 | `0x9e` | `range_validate_windows` | |
@@ -470,50 +470,50 @@ MAILBOX0 是利用期间唯一可观察的通道，统一规则是：
 | `0xa5` | `firmware_load_main` | |
 | `0xa6` / `0xa7` | memcfg 路径 | |
 
-主机侧，作对比：`NV_ERR_TIMEOUT = 0x00000065`、`NV_ERR_MEMORY_ERROR = 0x72`、`NV_ERR_GENERIC = 0xffff`。观察到的复合 `RmInitAdapter` 失败包括 `0x62:0x40:2028`、`0x62:0x55` 和 `0x62:0x65:2674`。
+作为对照，主机侧错误码是 `NV_ERR_TIMEOUT = 0x00000065`、`NV_ERR_MEMORY_ERROR = 0x72` 和 `NV_ERR_GENERIC = 0xffff`。实际观察到的复合 `RmInitAdapter` 失败包括 `0x62:0x40:2028`、`0x62:0x55` 以及 `0x62:0x65:2674`。
 
 > [!NOTE]
-> **未解问题：Booter 状态 `0x54`**
+> **未解问题：Booter 状态码 `0x54`**
 >
-> 把一份修改过的 cmpunlocker 应用在一块 PG199 板上失败于 `s_executeBooterUcode_TU102: Booter failed 0x54`，尽管 CFG1 和 LMR 写入落地、PLM 打开了。每个其它状态码都通过定位它在反汇编里的写站点被钉死；同一个方法应该对 `0x54` 有效，而反汇编在手。
+> 在一块 PG199 板上使用修改版 cmpunlocker 时，流程失败于 `s_executeBooterUcode_TU102: Booter failed 0x54`，但 CFG1 和 LMR 写入已经生效，PLM 也已打开。其他每个状态码都能通过在反汇编中定位其写入位置来确定；同样的方法应该也能解出 `0x54`，而且所需反汇编已经具备。
 
 ---
 
 ## 10. 离开重度安全模式，以及复位 PLM
 
-IMEM `0x7e76` 处的 `secure_teardown` 是设计的退出。它重新启用 `0x10100` DMA 孔径（OR `0x101`，旋转到位 `0x100` 清除，以 `0x400` 次迭代为界）、设 `$cauth |= 0x80000`（位 19，在停机前抑制中断和异常），然后对 `$c0`..`$c7` 各发出 `csecret $cN 0x0` 接 `cxor $cN $cN`，用 `r14 = 0` 从 0 到 `0x10000` 循环 `st b32 D[$r9] $r14; add $r9 0x4`，清除 `r0`..`r15`，并执行原始 `exit` 操作码（`f8 02`）。它永不返回。那个 `exit` 正是让 Falcon 掉出 HS 模式、从而允许加载新代码的关键。
+IMEM `0x7e76` 的 `secure_teardown` 是设计好的退出路径。它重新启用 `0x10100` DMA 孔径（OR `0x101`，等待位 `0x100` 清零，最多循环 `0x400` 次），设置 `$cauth |= 0x80000`（位 19，在停机前屏蔽中断和异常），随后对 `$c0`..`$c7` 逐一执行 `csecret $cN 0x0` 和 `cxor $cN $cN`。接着以 `r14 = 0` 从 0 循环到 `0x10000`，执行 `st b32 D[$r9] $r14; add $r9 0x4`，清空 `r0`..`r15`，最后执行原始 `exit` 操作码（`f8 02`）。它不会返回；正是这个 `exit` 让 Falcon 离开 HS 模式，从而可以加载新代码。
 
-从 `main` 到达它需要 `0x8113` 处的 `r0 == 0` 分支到 `0x8119`。若 `r0` 非零，则走 `0x8117 exit`，根本没有 teardown。
+从 `main` 进入该路径，必须在 `0x8113` 处满足 `r0 == 0` 并分支到 `0x8119`。如果 `r0` 非零，就会走 `0x8117 exit`，完全跳过 teardown。
 
-**错误路径总是按此顺序调用 `report_status (0x1d0f)` 然后 `secure_teardown (0x7e76)`**：这对调用出现在 `0x873`/`0x877`、`0x88a`/`0x88e` 和 `0x8a7`/`0x8ab`。成功路径两者都不调用，为 GSP 移交保留密码与环境完好。因此一个流传的 "mailbox XOR teardown" 框架是错的：错误路径两者都做。
+**错误路径始终先调用 `report_status (0x1d0f)`，再调用 `secure_teardown (0x7e76)`**：这两次调用分别成对出现在 `0x873`/`0x877`、`0x88a`/`0x88e` 和 `0x8a7`/`0x8ab`。成功路径反而不会调用其中任何一个，以便为 GSP 移交保留完整的密码状态和运行环境。因此流传的 "mailbox XOR teardown" 说法不对，错误路径会执行两者。
 
 ### 复位 PLM，`0x008403C4`
 
-SEC2 复位源 PLM 门控 `+0x3c0` 处的 SEC2 `FALCON_ENGINE` 复位控制。它发射后的值决定 SEC2 能否再次被复位。
+SEC2 的复位源 PLM 控制着 `+0x3c0` 处 SEC2 `FALCON_ENGINE` 的复位控制。复位动作完成后留下的值，决定 SEC2 是否还能再次复位。
 
 | 值 | 含义 |
 |---|---|
-| `0xff` | 完全打开。干净的闲置、SBR 后、SEC2 未使用。一次主机 PL0 `kflcnReset` 会接受。 |
-| `0xdf` | 出厂驱动在其 GSP 引导 teardown 后留下的正常工作状态。仍允许复位。 |
-| `0xcf` | 在驱动的 GSP 预备重新锁上 PLM（位 4 清除）后观察到。 |
-| `0x8f` | HS-退出污染。低半字节 `0xf` = 所有级别可读；高半字节 `0x8` = 写锁定到安全源，所以 PL0 复位写被弹回。 |
+| `0xff` | 完全开放。对应干净闲置、SBR 之后或 SEC2 尚未使用的状态；主机 PL0 的 `kflcnReset` 可以执行。 |
+| `0xdf` | 出厂驱动完成 GSP 引导 teardown 后留下的正常工作状态，仍允许复位。 |
+| `0xcf` | 驱动准备重新锁定 PLM（清除位 4）后观察到的状态。 |
+| `0x8f` | HS 退出污染状态。低半字节 `0xf` 表示所有级别可读，高半字节 `0x8` 表示写入锁定到安全源，因此 PL0 的复位写入会被拒绝。 |
 
-规则：`reset_allowed = resetPLM in {0xff, 0xdf}`。`0xdf = 0x8f | 0x50`。
+规则是：`reset_allowed = resetPLM in {0xff, 0xdf}`，并且 `0xdf = 0x8f | 0x50`。
 
-关键是，`0x8f` 是在 **HS 到 NS 退出转变时由硬件锁存**的，不由任何 booter 指令写入：静态分析在 booter 里发现零条对 `0x8403C4` 的指令引用。离开 HS 会让硬件把每个 HS 门控的 PLM 重新保护到安全默认值。实测：在 `0x8117` 处取原始退出会留下 resetPLM `0xff`；让 `secure_teardown` 运行则会重新锁存到 `0x8f`。
+重要的是，`0x8f` 是在 **HS 转 NS 的退出转换期间由硬件锁存**的，并不是任何 booter 指令写入的结果：静态分析在 booter 中找不到对 `0x8403C4` 的指令引用。离开 HS 后，硬件会把所有由 HS 门控的 PLM 重新保护为安全默认值。实测表明，在 `0x8117` 执行原始退出会留下 resetPLM `0xff`；让 `secure_teardown` 跑完则会将其重新锁存为 `0x8f`。
 
 > [!NOTE]
-> **未解问题：`resetPLM = 0x8f` 会阻止加载新 SEC2 ucode 吗？**
+> **未解问题：`resetPLM = 0x8f` 是否会阻止加载新的 SEC2 ucode？**
 >
-> 一份报告说 SEC2 在 `0x8f` 时可重载（Hello World 触发、MAILBOX0 从 `0x0` 变 `0x31`）；另一份说加载新 ucode 需要 SFTRESET、而复位 PLM 门控它，并报告 `NS load mismatch (HS-locked, needs --flr)`。一个可能的调和——NS 重载有效、HS 签名重载无效——被提出但从未定论。一次受控实验能回答它：在一个已知 `0x8f` 下，背靠背加载一个 NS ucode 和一个 HS 签名 ucode，并记录每个的 `CPUCTL` 和加载器错误字符串。
+> 一份报告称 SEC2 在 `0x8f` 状态下仍可重新加载（Hello World 能运行，MAILBOX0 从 `0x0` 变为 `0x31`）；另一份报告则称加载新 ucode 需要 SFTRESET，但 SFTRESET 又受复位 PLM 门控，并出现 `NS load mismatch (HS-locked, needs --flr)`。一种可能的解释是 NS 重载有效，而 HS 签名重载无效，但至今没有定论。可以进行受控实验验证：在已知 `0x8f` 状态下连续加载一个 NS ucode 和一个 HS 签名 ucode，分别记录 `CPUCTL` 和加载器错误字符串。
 
-已发布的驱动完全绕开这套纪律：它**从不读或写 `0x008403C4`**。对已发布的仓库 grep `0x008403c4`、`0x001180f8`、`0x001fa81c` 或 `0x001fa820` 会得到零引用。驱动内路径改走驱动自己的 `kflcnReset`/FWSEC 序列来重发 Booter Load，补丁 `0002` 通过记录 `SEC2_DEBUG: kflcnReset for FWSEC: 0x%x` 和 `SEC2_DEBUG: kflcnResetIntoRiscv: 0x%x` 确认这一点。
+发布版驱动完全绕过了这套纪律：它**从不读取或写入 `0x008403C4`**。对发布仓库 grep `0x008403c4`、`0x001180f8`、`0x001fa81c` 或 `0x001fa820`，得到的引用数为零。驱动内部路径改用自己的 `kflcnReset`/FWSEC 序列重新发射 Booter Load；补丁 `0002` 通过记录 `SEC2_DEBUG: kflcnReset for FWSEC: 0x%x` 和 `SEC2_DEBUG: kflcnResetIntoRiscv: 0x%x` 证实了这一点。
 
 ---
 
 ## 11. 签名缓冲区
 
-这是整个解锁围绕的核心对象。
+这是整个解锁机制围绕的核心对象。
 
 | 属性 | 出厂 | 解锁下 |
 |---|---|---|
@@ -523,22 +523,22 @@ SEC2 复位源 PLM 门控 `+0x3c0` 处的 SEC2 `FALCON_ENGINE` 复位控制。�
 | DMEM 触及范围 | `0x17FF` | `0xFFFF`，恰好 DMEM 顶部 |
 | 长度来源 | `WprMeta.sizeOfSignature` | `WprMeta.sizeOfSignature` |
 
-booter 逐字从 `WprMeta.sizeOfSignature` 取复制长度、不做任何边界检查，而驱动同时控制缓冲区内容和那个字段。放大是一个 15.5 倍因子。出厂签名的 DMA 只到达 DMEM `0x17FF`，这正是正常引导能保持 `0x2383` 和 `0x8E08` 处寄存器描述符表完整的原因。
+booter 直接从 `WprMeta.sizeOfSignature` 读取复制长度，完全不做边界检查；而缓冲区内容和这个字段都由驱动控制。长度因此被放大了 15.5 倍。出厂签名的 DMA 只到达 DMEM `0x17FF`，所以正常引导能够保留 `0x2383` 和 `0x8E08` 处的寄存器描述符表。
 
-DMA 目标 `0x800` 由 IMEM `0x37ad` 处的 `mov $r10 0x800` 设置，随后 `0x37b3` 处 `lcall 0x4d4`。接下来发生什么见[ROP 链](rop-chain.md)。
+DMA 目标 `0x800` 由 IMEM `0x37ad` 的 `mov $r10 0x800` 设置，随后在 `0x37b3` 调用 `lcall 0x4d4`。后续执行过程见[ROP 链](rop-chain.md)。
 
 > [!NOTE]
-> **不是矛盾**
+> **两处地址并不矛盾**
 >
-> `kernel_gsp_booter.c:329` 计算 `pUcode->hsSigDmemAddr = patchLoc - pUcode->dataOffset`，带 `patchLoc = 0x8900` 和 `dataOffset = 0x8700` 时，会把一个签名放在 DMEM `0x200`。那是 **booter 自己的 HS 签名**，加载前被打进 booter 映像。DMEM `0x800` 是 booter 从 sysmem DMA 的 **GSP-RM LS 签名**落下的地方，那才是溢出的。两个不同的缓冲区。置信度：中等，因为这条调和与每个观察一致，但没人明确陈述过它。
+> `kernel_gsp_booter.c:329` 计算 `pUcode->hsSigDmemAddr = patchLoc - pUcode->dataOffset`；代入 `patchLoc = 0x8900` 和 `dataOffset = 0x8700` 后，签名位于 DMEM `0x200`。这是 **booter 自身的 HS 签名**，在加载前被写入 booter 映像。DMEM `0x800` 则是 booter 从 sysmem DMA 下来的 **GSP-RM LS 签名**所在位置，真正发生溢出的是这个缓冲区。两者是不同的缓冲区。置信度为中等：该解释与所有观察一致，但没有资料明确如此表述。
 
-还有一个属性对解锁的持久化故事要紧：**出厂 AES-MAC 签名在几何改动后仍有效**，因为它覆盖的是静态 GSP 固件映像，而非运行时 WPR 元数据或硬件几何布局；WPR 元数据由驱动在运行时计算。一条相反方向的早期说法已被其作者明确撤回。
+还有一个性质关系到解锁能否持久工作：**显存几何布局改变后，出厂 AES-MAC 签名仍然有效**。这是因为签名覆盖的是静态 GSP 固件映像，而不是运行时 WPR 元数据或硬件几何布局；WPR 元数据由驱动在运行时计算。此前有过相反的说法，但作者已经明确撤回。
 
 ---
 
 ## 12. 已发布的驱动如何调用 Booter Load
 
-本节一切直接读自已发布的 `master` 上的 `driver/patches/0001-sec2-postbl-plm-ss-cfg.patch` 和 `0002-booter-verify.patch`。完整补丁集见[驱动补丁](driver-patches.md)。
+本节内容全部直接取自发布版 `master` 中的 `driver/patches/0001-sec2-postbl-plm-ss-cfg.patch` 和 `0002-booter-verify.patch`。完整补丁集见[驱动补丁](driver-patches.md)。
 
 ### 12.1 门
 
@@ -547,14 +547,14 @@ DMA 目标 `0x800` 由 IMEM `0x37ad` 处的 `mov $r10 0x800` 设置，随后 `0x
 #define SEC2_POSTBL_TIMING_CMP_170HX_10GB_PCI_DEVICE_ID  0x2082
 ```
 
-`_kgspSec2PostblTimingEnabled()` 把 `pGpu->idInfo.PCIDeviceID >> 16` 与恰好这两个值比较。一张 `install.sh` 也会 grep 到的 `10de:20b0` 卡会安装却不解锁。目标驱动版本是 `610.43.03`（默认）和 `610.43.02`；构建在其它任何版本上硬性失败。
+`_kgspSec2PostblTimingEnabled()` 会将 `pGpu->idInfo.PCIDeviceID >> 16` 与这两个值精确比较。`install.sh` 也会 grep 到 `10de:20b0`，但该卡只能完成安装，不会解锁。目标驱动版本是 `610.43.03`（默认）和 `610.43.02`；使用其他版本构建会直接失败。
 
 ### 12.2 按顺序的序列
 
-1. **`_kgspCreateSignatureMemdesc`** 把签名 memdesc 分配在 `0x0000f800` 而非 `NV_ALIGN_UP(pGspFw->signatureSize, 256)`。改作他用之前，出厂签名字节被复制进 `pKernelGsp->pStockSignatureData` / `stockSignatureSize`——即加到 `g_kernel_gsp_nvoc.h` 里 `KernelGsp` 的两个新字段。记录 `SEC2_DEBUG: saved stock signature (%llu bytes)`，在卡上报告 4096。
-2. **可选外部载荷。** `os_open_and_read_file()` 尝试把 `SEC2_POSTBL_TIMING_DMEM_PATH = "/lib/firmware/nvidia/ga100/gsp/dmem.bin"` 读进新缓冲区。成功则记录 `SEC2_DEBUG: loaded %llu bytes from %s`；缺失则记录 `SEC2_DEBUG: %s not found (0x%x), using built-in payload`（带 `0x59`），并回退到预置了 `writeAddr = 0x009a0148`、`writeValue = 0xffffffff` 的内置载荷。无论哪种情况都调用 `memdescFlushCpuCaches()`。
-3. **保存 WPR2。** 读一次 `0x001fa824`（低）和 `0x001fa828`（高），记录 `SEC2_DEBUG: saved WPR2 lo=0x%08x hi=0x%08x`。
-4. **PLM 循环。** 对四个表条目的每个，最多尝试两次：
+1. **`_kgspCreateSignatureMemdesc`** 将签名 memdesc 分配为 `0x0000f800`，而不是 `NV_ALIGN_UP(pGspFw->signatureSize, 256)`。在复用这块内存之前，先把出厂签名字节复制到 `pKernelGsp->pStockSignatureData` / `stockSignatureSize`，这两个字段是添加到 `g_kernel_gsp_nvoc.h` 中 `KernelGsp` 的新字段。日志 `SEC2_DEBUG: saved stock signature (%llu bytes)` 会记录保存结果，实卡上报告为 4096。
+2. **可选外部载荷。** `os_open_and_read_file()` 会尝试把 `SEC2_POSTBL_TIMING_DMEM_PATH = "/lib/firmware/nvidia/ga100/gsp/dmem.bin"` 读入新缓冲区。读取成功时记录 `SEC2_DEBUG: loaded %llu bytes from %s`；文件不存在时记录带 `0x59` 的 `SEC2_DEBUG: %s not found (0x%x), using built-in payload`，并回退到内置载荷，该载荷预先设置 `writeAddr = 0x009a0148`、`writeValue = 0xffffffff`。无论哪条路径都会调用 `memdescFlushCpuCaches()`。
+3. **保存 WPR2。** 分别读取一次 `0x001fa824`（低位）和 `0x001fa828`（高位），并记录 `SEC2_DEBUG: saved WPR2 lo=0x%08x hi=0x%08x`。
+4. **PLM 循环。** 对表中的四个条目逐一处理，每个条目最多尝试两次：
 
     ```c
     for (plmIdx = 0; plmIdx < 4; plmIdx++)
@@ -571,20 +571,20 @@ DMA 目标 `0x800` 由 IMEM `0x37ad` 处的 `mov $r10 0x800` 设置，随后 `0x
         }
     ```
 
-    失败记录 `SEC2_DEBUG: FAILED to open <name> after 2 attempts`。表和它的精确值见[权限级别掩码](privilege-level-masks.md)。
+    失败时记录 `SEC2_DEBUG: FAILED to open <name> after 2 attempts`。表项及其精确值见[权限级别掩码](privilege-level-masks.md)。
 
-5. **循环后再恢复一次 WPR2。**
-6. **四条 PL0 处的普通主机写**，不再需要利用：`0x0082381c = 0x88888888`（SS0）、`0x00823820 = 0x00000008`（SS1）、`0x009a0204 = cfg1Value`、`0x00100ce0 = lmrValue`。然后 `SEC2_DEBUG: POST-WRITE SS0=… SS1=… CFG1=… LMR=…`。见[算力节流](compute-throttle.md) 和[显存几何布局](memory-geometry.md)。
-7. **`kgspSec2PostblTimingRebuildStockSignature()`** 释放并销毁 `0xf800` memdesc，用 `MEMDESC_FLAGS_ALLOC_IN_UNPROTECTED_MEMORY` 在 `NV_ALIGN_UP(stockSignatureSize, 256)` 分配替换，把 `pStockSignatureData` 复制回去，并把 `pWprMeta->sysmemAddrOfSignature` / `sizeOfSignature` 重新指向。失败以 `SEC2_DEBUG: rebuild stock signature failed: 0x%x` 中止引导。
-8. **`kgspPopulateWprMeta_HAL` 运行第二次**，让 WPR 元数据反映加宽的 FB。卡上 dmesg 显示 `WPR meta updated fbSize=0x0000001000000000 …` 紧接 `normal BooterLoad status=0x0`。
+5. **循环结束后再次恢复 WPR2。**
+6. **在 PL0 执行四次普通主机写入**，不再需要利用：`0x0082381c = 0x88888888`（SS0）、`0x00823820 = 0x00000008`（SS1）、`0x009a0204 = cfg1Value` 和 `0x00100ce0 = lmrValue`。随后记录 `SEC2_DEBUG: POST-WRITE SS0=… SS1=… CFG1=… LMR=…`。见[算力节流](compute-throttle.md)和[显存几何布局](memory-geometry.md)。
+7. **`kgspSec2PostblTimingRebuildStockSignature()`** 释放并销毁 `0xf800` memdesc，使用 `MEMDESC_FLAGS_ALLOC_IN_UNPROTECTED_MEMORY` 在 `NV_ALIGN_UP(stockSignatureSize, 256)` 处分配替代 memdesc，将 `pStockSignatureData` 复制回去，并重新设置 `pWprMeta->sysmemAddrOfSignature` / `sizeOfSignature`。失败时以 `SEC2_DEBUG: rebuild stock signature failed: 0x%x` 中止引导。
+8. **第二次运行 `kgspPopulateWprMeta_HAL`**，使 WPR 元数据反映扩大的 FB。实卡 dmesg 会显示 `WPR meta updated fbSize=0x0000001000000000 …`，紧接着出现 `normal BooterLoad status=0x0`。
 
-这就是为什么 GSP-RM 能在*同一*次驱动加载里正常引导：利用和真实引导在一次加载内顺序发生，不需要冷启动等效的移交。
+这解释了 GSP-RM 为什么能在*同一次*驱动加载中正常启动：利用过程和真实引导在同一次加载中按顺序完成，不需要等价于冷启动的额外交接。
 
 ### 12.3 重新填充辅助函数
 
 `kgspSec2PostblTimingRefillPayload(pGpu, pKernelGsp, writeAddr, writeValue)` 用 `memdescMapInternal(..., TRANSFER_FLAGS_NONE)` 映射 memdesc，为那一个 `(writeAddr, writeValue)` 对重写整个 `0xf800` 字节载荷，取消映射，对签名 memdesc 调用 `memdescFlushCpuCaches()`，重新发布 `pWprMeta->sysmemAddrOfSignature = memdescGetPhysAddr(...)` 和 `pWprMeta->sizeOfSignature = memdescGetSize(...)`，然后对 `pWprMetaDescriptor` 刷新 CPU 缓存。memdesc 为 NULL 时返回 `NV_ERR_INVALID_STATE`，映射失败时返回 `NV_ERR_INSUFFICIENT_RESOURCES`。把签名长度 `0xf800` 交给 booter **就是**溢出。
 
-缓存刷新不是可选的。签名 DMA 是非连贯的，没有显式刷新，Falcon 就会读到陈旧的 RAM。
+缓存刷新不是可选步骤。签名 DMA 是非一致性的；不显式刷新时，Falcon 可能读取到过期的 RAM 内容。
 
 ### 12.4 补丁做的两个通融
 
@@ -614,24 +614,24 @@ DMA 目标 `0x800` 由 IMEM `0x37ad` 处的 `mov $r10 0x800` 设置，随后 `0x
 | 每个 PLM 首次尝试就打开 | 4 次利用发射 + 1 次正常引导 = **5** |
 | 每个 PLM 都需要两次尝试 | 8 次利用发射 + 1 次正常引导 = **9** |
 
-每次发射恰好执行**一次**任意 BAR0 写。
+每次发射都会恰好执行**一次**任意 BAR0 写入。
 
 ### 12.6 读日志
 
 > [!WARNING]
-> **寄存器回读是唯一有效的成功标准**
+> **只有寄存器回读能够证明成功**
 >
-> 每次载荷执行都记录 `s_executeBooterUcode_TU102: Booter failed with non-zero error code: 0x31` 和 `kgspExecuteBooterLoad_TU102: failed to execute Booter Load: 0xffff`，**而寄存器写入仍然落地**。在 `s_executeBooterUcode_TU102` 里，seccode 错误在每次运行后留在 MAILBOX0，`mailbox0 != 0` 就返回 `NV_ERR_GENERIC`（`0xffff`）。已发布的循环的成功测试是精确的回读相等，那正是正确的测试。项目 README 也说同样的事：早期 PLM 轮次期间的 `0x31` / `0xffff` 等 Booter 状态码，只要最终引导成功就往往无害。
+> 每次载荷执行都会记录 `s_executeBooterUcode_TU102: Booter failed with non-zero error code: 0x31` 和 `kgspExecuteBooterLoad_TU102: failed to execute Booter Load: 0xffff`，**但寄存器写入仍会生效**。在 `s_executeBooterUcode_TU102` 中，seccode 错误每次运行后都会留在 MAILBOX0；只要 `mailbox0 != 0`，函数就返回 `NV_ERR_GENERIC`（`0xffff`）。发布版循环用精确的寄存器回读相等作为成功条件，这才是正确判断。项目 README 也说明，早期 PLM 轮次出现的 `0x31` / `0xffff` 等 Booter 状态码，只要最终引导成功，通常并不表示失败。
 
 见[验证](../procedures/verify.md) 和[排障](../procedures/troubleshooting.md)。
 
 ## 13. 无驱动调用，作对比
 
-一族独立 Python 和 C 工具（`refire_chain_v2.py` 到 `v9.py`、`load_gsp_sec2_falcon.c`、`load_custom_bin.py`）在没有任何 NVIDIA 驱动的情况下发射 booter。它们**不在**已发布的仓库里，而本领域大部分表面矛盾在把两个代码库分开后都会消解。这些工具要紧，因为寄存器纪律大多是在那里学到的。见[工具谱系](../history/tool-lineage.md)。
+有一组独立的 Python 和 C 工具（从 `refire_chain_v2.py` 到 `v9.py`，以及 `load_gsp_sec2_falcon.c`、`load_custom_bin.py`）可以在没有 NVIDIA 驱动的情况下发射 booter。它们**不属于**发布仓库；把这两套代码库分开后，本领域看似的大多数矛盾都会消失。这些工具仍然重要，因为大部分寄存器操作纪律都是从中摸索出来的。见[工具谱系](../history/tool-lineage.md)。
 
-在 SEC2 上运行非安全代码是琐碎的、除公开文档外什么都不需要：把二进制 DMA 进 IMEM、设 `BOOTVEC`、发 `STARTCPU`、然后如果代码用 `exit` 就轮询 `CPUCTL` 位 4（HALTED）。完整无驱动引导序列是：引擎复位、等待 DMA 清理、`ALLOW_PHYS_NO_CTX`、物理 DMA 孔径、DMA IMEM + DMEM、设 `BOOTVEC`、设邮箱、`STARTCPU`、轮询 HALTED。
+在 SEC2 上运行 NS 代码很直接，除了公开文档不需要其他条件：将二进制 DMA 到 IMEM，设置 `BOOTVEC`，发出 `STARTCPU`；如果代码会执行 `exit`，再轮询 `CPUCTL` 的位 4（HALTED）。完整的无驱动引导顺序是：复位引擎，等待 DMA 清理，设置 `ALLOW_PHYS_NO_CTX` 和物理 DMA 孔径，DMA 写入 IMEM + DMEM，设置 `BOOTVEC`，设置邮箱，发出 `STARTCPU`，最后轮询 HALTED。
 
-复位序列，如实现且工作的：
+实际实现且能够工作的复位序列如下：
 
 ```text
 if SCTL (SEC2+0x240) 有 HSMODE（位 1）置位：
@@ -642,58 +642,58 @@ pulse ENGINE (SEC2+0x3c0)：1 然后 0
 把 AUTH_EN（1 << 14）OR 进 SCTL
 ```
 
-默认超时 10.0 s；失败路径报告 "scrub timeout"。Booter 加载随后用 IMEMC/IMEMD 带自动递增和每 256 字节 IMEM 标签，对 HS 区域置位 SECURE 位 `1 << 28`。孔径被强制为物理模式：在 `0x00840600`/`0x604`/`0x608` 写 `FBIF_TRANSCFG[0..2] = 4, 5, 6`，然后在 `0x00840624` 处 `FBIF_CTL |= 0x80`，最后 `start_wait`，此时 MAILBOX0/1 已被设为 WprMeta 物理地址的低、高半。
+默认超时为 10.0 s，失败路径报告 "scrub timeout"。随后加载 Booter：使用带自动递增的 IMEMC/IMEMD，并为每个 256 字节 IMEM 块设置标签，在 HS 区域设置 SECURE 位 `1 << 28`。孔径会被强制为物理模式：在 `0x00840600`/`0x604`/`0x608` 写入 `FBIF_TRANSCFG[0..2] = 4, 5, 6`，再在 `0x00840624` 执行 `FBIF_CTL |= 0x80`，最后调用 `start_wait`；此时 MAILBOX0/1 已设置为 WprMeta 物理地址的低、高半部。
 
-一个独立 C 程序在硬件上执行完整九步无驱动引导，并从 `FALCON_MAILBOX0` 读到一个停机返回值 `0xb`：加载路径在没有 NVIDIA 驱动的情况下工作，尽管 Falcon 以非零状态停机。
+一个独立 C 程序曾在真实硬件上执行完整的九步无驱动引导，并从 `FALCON_MAILBOX0` 读到停机返回值 `0xb`。这证明即使没有 NVIDIA 驱动，加载路径也能工作，尽管 Falcon 最终以非零状态停机。
 
-无驱动路径发现的两个进一步要求，已发布的驱动都通过其它手段满足：
+无驱动路径还发现了两个额外要求，发布版驱动分别通过其他手段满足：
 
-- **缓存刷新。** 一个 17 字节 JIT 组装的 x86-64 桩（`0F AE 3F 48 83 C7 40 48 83 EE 40 7F F3 0F AE F0 C3`，即 `clflush [rdi]` / `add rdi,64` / `sub rsi,64` / `jg` / `mfence` / `ret`）被映射为 `PROT_EXEC`，并在载荷、radix3 和 WprMeta 缓冲上运行，向上取整到 64 字节缓存行。`refire_chain_v6.py` 用 `MAP_HUGETLB`（`0x40000`）分配 2 MiB 巨页、mlock 它们，并检查存在位后按 `(entry & ((1<<55)-1)) * 4096` 从 `/proc/self/pagemap` 解析物理地址。
-- **一个最小 radix3 页表。** `stage_radix3()` 分配 `0x6000` 字节并写三个 64 位描述符（PDE2 在 `0x0000` 到 `phys+0x1000`、PDE1 在 `0x1000` 到 `phys+0x2000`、PDE0 在 `0x2000` 到 `phys+0x3000`），让数据页和 bootloader 主体保持清零，然后刷新。没有它，booter 的签名前 DMA 以原因 `0x9` 失败。WprMeta 模板是 256 字节，从一次真实 10 GB 引导捕获，只覆盖了 radix3 指针（`+0x10`）、radix3 大小（`+0x18`）、bootloader 指针（`+0x20`）、bootloader 大小（`+0x28`）、签名指针（`+0x48`）和签名大小（`+0x50`，设成 `0xF800`）。
+- **缓存刷新。** 一个 17 字节、JIT 组装的 x86-64 桩（`0F AE 3F 48 83 C7 40 48 83 EE 40 7F F3 0F AE F0 C3`，即 `clflush [rdi]` / `add rdi,64` / `sub rsi,64` / `jg` / `mfence` / `ret`）被映射为 `PROT_EXEC`，并对载荷、radix3 和 WprMeta 缓冲区执行，范围向上取整到 64 字节缓存行。`refire_chain_v6.py` 使用 `MAP_HUGETLB`（`0x40000`）分配 2 MiB 巨页并锁定，再检查存在位，根据 `(entry & ((1<<55)-1)) * 4096` 从 `/proc/self/pagemap` 解析物理地址。
+- **最小 radix3 页表。** `stage_radix3()` 分配 `0x6000` 字节并写入三个 64 位描述符：PDE2 从 `0x0000` 指向 `phys+0x1000`，PDE1 从 `0x1000` 指向 `phys+0x2000`，PDE0 从 `0x2000` 指向 `phys+0x3000`；数据页和 bootloader 主体保持清零，随后执行刷新。没有它，booter 在签名前执行的 DMA 会以原因 `0x9` 失败。WprMeta 模板大小为 256 字节，取自一次真实的 10 GB 引导捕获，只覆盖 radix3 指针（`+0x10`）、radix3 大小（`+0x18`）、bootloader 指针（`+0x20`）、bootloader 大小（`+0x28`）、签名指针（`+0x48`）和签名大小（`+0x50`，设为 `0xF800`）。
 
-注意两条路径在邮箱语义上也不同：独立加载器用 5 s 超时轮询 HALTED 然后读 `0x840040` 期望 `0x31` / `0x96` / `0x47`，而驱动内路径无论结果都报告 `0xffff`。
+还要注意，两条路径的邮箱语义不同：独立加载器以 5 s 超时轮询 HALTED，然后读取 `0x840040`，预期得到 `0x31` / `0x96` / `0x47`；驱动内部路径则无论实际结果如何都报告 `0xffff`。
 
 ---
 
 ## 14. 本页的开放问题
 
 > [!NOTE]
-> **无驱动发射能移交给出厂驱动吗？**
+> **无驱动发射能否交给出厂驱动继续处理？**
 >
-> 出厂驱动通过经典的两次加载 "mutex horns" 拒绝发射后的 SEC2 状态：`0x31`（互斥锁持有）、`0x62`（WPR2 up）和 `0x29`（一个 `0x001180f8` 错误，因为 `mutexfree` 终止符留下 `0xf0000000`、`0xf` 顶半字节触发检查）。这在几何一致时甚至在 10 GB 上也会失败，证明被发射扰动的是 SEC2 / `0x001180f8` 的移交状态，不是几何布局、也不是写次数。提出过两个修复：让终止符把 `0x001180f8` 顶半字节留零，或从打过补丁的驱动内部分阶段做几何布局。**已发布的解锁器选了第二个。**
+> 出厂驱动通过经典的两次加载 "mutex horns" 拒绝发射之后的 SEC2 状态：`0x31`（互斥锁仍持有）、`0x62`（WPR2 已启动）和 `0x29`（`0x001180f8` 错误，因为 `mutexfree` 终止符留下 `0xf0000000`，顶半字节 `0xf` 触发检查）。即使几何布局一致，在 10 GB 卡上也会失败，这说明发射改变的是 SEC2 / `0x001180f8` 的移交状态，而不是几何布局或写入次数。曾提出两种修复：让终止符保留 `0x001180f8` 的顶半字节为零，或者从打过补丁的驱动内部逐阶段完成几何布局。**发布版解锁器选择了后者。**
 
 > [!NOTE]
-> **不带 FLR 跨过 RmInitDone 墙**
+> **不经过 FLR 越过 RmInitDone 这堵墙**
 >
-> `whole_stack_rejoin` 终止符在利用后不带 FLR 重启 SEC2、让 booter 完成、GSP-RM RISC-V 核心启动，但 init 从不完成。这是同一个 `0x65` 引导墙。`0x001180f8` 是 `NV_PGC6_BSI_SECURE_SCRATCH_14`，位 26 是 `BOOT_STAGE_3_HANDOFF`（INIT = 0，DONE = 1），只有 HS 里的 SEC2 能设它。预写 DONE 没用：读路径被 PLM 下毒，所以 `0x001180f8` 回读 `0xdead5ec1`；而一次下毒读的上位 26 已经读成 1，产生一个假 DONE，之后反而杀死 GSP-RM。两个候选根修复是：保留 booter 成功路径，让 SEC2 启动它自己的 RTOS 并自设 DONE；或恢复 AON `SECURE_SCRATCH` PLM/priv 状态——而那今天只能靠一次功率域复位达成。
+> `whole_stack_rejoin` 终止符会在利用后不经 FLR 重启 SEC2，让 booter 完成并启动 GSP-RM RISC-V 核心，但 init 永远不会完成。这就是同一堵 `0x65` 引导墙。`0x001180f8` 是 `NV_PGC6_BSI_SECURE_SCRATCH_14`，其位 26 为 `BOOT_STAGE_3_HANDOFF`（INIT = 0，DONE = 1），只有 HS 中的 SEC2 能设置它。预先写入 DONE 没有帮助：读取路径受 PLM 影响，`0x001180f8` 回读为 `0xdead5ec1`；而带毒值的读取会让位 26 看起来已经为 1，制造假 DONE，最终反而导致 GSP-RM 失败。候选根本修复有两个：保留 booter 的成功路径，让 SEC2 启动自身 RTOS 并自行设置 DONE；或者恢复 AON `SECURE_SCRATCH` 的 PLM/priv 状态，而目前只有功率域复位能做到后者。
 
 > [!NOTE]
-> **移植到其它 CMP 卡**
+> **移植到其他 CMP 卡**
 >
-> CMP 50HX 是 TU102、用一套完全不同的显存访问控制寄存器。CMP 90HX 是带 10 GB GDDR6X、没有额外物理显存的 GA102，所以只有算力解锁才有意义。既定规则是：同一个 Turing booter、脚本和利用适用于任何 SEC2 接受 Turing 代 AES 和 RSA 密钥的卡。一位测试者报告，TU10x `booter_load` 在一张 GA102 CMP 90HX 上加载、SS0/SS1 PLM 写成功，同时自我限定写入的值 "were not right"（不对）、并警告一次阳性测试不够。对 GA102 booter 的另一次独立静态分析得出结论：因为大小被严格验证，不存在溢出点。没人跑过决定性测试：在 GA102 上加载 TU10x booter，并尝试一次带回读的已知良好单 PLM 写。
+> CMP 50HX 使用 TU102，显存访问控制寄存器完全不同。CMP 90HX 是带 10 GB GDDR6X、没有额外物理显存的 GA102，因此只有算力解锁对它有意义。现有规则认为，同一套 Turing booter、脚本和利用适用于所有 SEC2 接受 Turing 代 AES 与 RSA 密钥的显卡。一名测试者报告，TU10x `booter_load` 能在 GA102 CMP 90HX 上加载，SS0/SS1 PLM 写入也成功，但同时承认写入的值 "were not right"（不正确），并警告一次阳性结果不足以证明兼容。另一份针对 GA102 booter 的独立静态分析认为，长度经过严格验证，因此不存在溢出点。决定性测试仍未进行：在 GA102 上加载 TU10x booter，并尝试一次已知可行、带回读验证的单 PLM 写入。
 
 > [!NOTE]
-> **Windows 和非 Linux**
+> **Windows 及非 Linux 系统**
 >
-> 漏洞位于 GPU 固件里、不依赖 OS。当前实现是 Linux，而 Unix 主机或开源驱动都不是硬性要求，但一个 Windows 移植被描述为远不止几行工作。
+> 漏洞存在于 GPU 固件中，与 OS 无关。当前实现面向 Linux；Unix 主机或开源驱动也不是硬性要求，但资料认为 Windows 移植远不止修改几行代码。
 
 > [!NOTE]
-> **恢复一个 `csecret`**
+> **恢复某个 `csecret`**
 >
-> 三个索引映射到三个能力：`secret(6)` 解密 ECB 固件块（会产出 121.7 KB 明文固件加 Booter 代码）；`secret(2)` 伪造内容 MAC（那条路线的 CFG1 显存解锁和 PCIe 速度解锁两者的前提）；`secret(0)` 是启用带 `SKIP_VBIOS_SIG` 的 HULK 证书的调试绕过。**没有任何 csecret 被恢复过。** 三个都仍是需要电压毛刺硬件的差分故障分析目标。没有 **Booter 解密密钥**，加密的 booter 就无法重建（只能经调试密钥路线读取）；没有 **VBIOS 调试密钥**，VBIOS 就无法重新签名或进入调试模式。当前解锁通过把出厂的签名 booter 复用作执行引擎，绕开了这两者。
+> 三个索引对应三种能力：`secret(6)` 用于解密 ECB 固件块（可得到 121.7 KB 明文固件及 Booter 代码）；`secret(2)` 用于伪造内容 MAC（也是通过该路径进行 CFG1 显存解锁和 PCIe 速度解锁的前提）；`secret(0)` 是调试绕过，可启用带 `SKIP_VBIOS_SIG` 的 HULK 证书。**目前没有任何 csecret 被恢复。** 三者仍是需要电压毛刺硬件的差分故障分析目标。没有 **Booter 解密密钥**，就无法重建加密 booter，只能通过调试密钥路径读取；没有 **VBIOS 调试密钥**，就不能重新签名 VBIOS 或以调试模式运行。当前解锁通过复用出厂签名 booter 作为执行引擎，绕过了这两项需求。
 
 > [!NOTE]
-> **同一 bug 类的第二个实例**
+> **同一 bug 类的另一个实例**
 >
-> 论文（第 5.5 节）指出，GSP-RM 自己的驻留块携带同一 bug 类的第二个实例，那里的守卫全局是一个**公开的硬编码常量**、而非 RNG 播种。没有发布地址、没有在其上构建利用、档案里也没人验证过它。
+> 论文（第 5.5 节）指出，GSP-RM 自身的驻留块还包含同一 bug 类的第二个实例，其中守卫全局是**公开的硬编码常量**，而不是由 RNG 播种。该实例没有公开地址，也没有据此构建利用，资料中无人验证过它。
 
-### 记录的否定结果
+### 已记录的否定结果
 
-- **`envytools` 无法佐证任何这些。** 它的 Falcon 密码页有 Introduction、IO registers、Interrupts、"Submitting crypto commands: ccmd"、"Code authentication control" 和 "Crypto xfer control" 的小节标题，**每个都标着 "Todo: write me"**。没有关于 AES 引擎、密钥处理、签名代码认证、安全模式进出、代码页签名检查或任何 CMAC/CBC-MAC 方案的文档。记录下来，以免有人再搜。envytools 也只把 Falcon 硬件记录到 v5（GK208+）、不含任何 Ampere 或 GA100 覆盖；它的寄存器图（`UC_CTRL 0x100`、`UC_ENTRY 0x104`、`UC_CAPS 0x108`、`UC_STATUS 0x128`、`CODE_INDEX 0x180`、`CODE 0x184`、`DATA_INDEX[0-7] 0x1c0`、`SCRATCH0 0x040`）只是结构背景，**绝对不能**用来验证 GA100 寄存器地址。
-- **通过返回到 IMEM `0x100` 的 `_start` 重新进入 booter**（带连续两个签名）被测试，并以邮箱里同样的 `0x31` 失败。`0x00` 处的轻度安全引导程序在 Falcon 进入 HS 模式时被抹掉，所以没有可返回的东西。
-- **通过跳过 `secure_teardown` 收获活 SCP 机密** 在提出的当天就被两条对抗性逐字节静态迹线反驳：`0x107`-`0x147` 处的序言把每个机密立即自 XOR 成零、真正的密钥使用是 `0x1e20`-`0x1e70` 处的 AES 验证、`0x1e74`-`0x206e` 处的清理扫描连续三次背靠背自清零、最后一个密码操作是 `0x206e` 处的 `cxor $c0, $c0`。从 `0x2070` 到 `0x7eef` 有**零**个密码操作，而劫持点（`0x37b3` 处 `lcall 0x4d4`）恰好坐在那个密码静默缺口内。跳过节省不了什么，因为寄存器组在大约 0x1500 字节更早的代码处就已经空了。
-- **逆向 booter 以获得 HS 签名特权** 被它自己的提议者放弃。即使从硅片提取 AES 密钥，RSA 私钥仍缺失：晶片只持有公钥。剩下的理论路线是启用调试模式并用调试 RSA 私钥，但一颗物理熔丝在量产卡上禁用调试模式，只有工程样品启用它。
-- **主机侧 PCI 设备 ID 欺骗到 A100 ID（`0x20b0`）** 不可能：VBIOS/devinit 在驱动或 GSP 有机会之前就以卡级设备 ID 为键，而它对所有 GA100 卡甚至 Turing 卡都是同一个 booter，所以没有任何下游东西按主机 ID 分支。
+- **`envytools` 无法为上述内容提供佐证。** 它的 Falcon 密码页面列出了 Introduction、IO registers、Interrupts、"Submitting crypto commands: ccmd"、"Code authentication control" 和 "Crypto xfer control"，但**每个标题都标记为 "Todo: write me"**。其中没有 AES 引擎、密钥处理、签名代码认证、安全模式进入与退出、代码页签名检查或 CMAC/CBC-MAC 方案的文档。这里记录这一点，是为了避免重复搜索。envytools 对 Falcon 硬件的记录也只到 v5（GK208+），没有 Ampere 或 GA100 覆盖；其寄存器图（`UC_CTRL 0x100`、`UC_ENTRY 0x104`、`UC_CAPS 0x108`、`UC_STATUS 0x128`、`CODE_INDEX 0x180`、`CODE 0x184`、`DATA_INDEX[0-7] 0x1c0`、`SCRATCH0 0x040`）只能作为结构背景，**绝不能**用来验证 GA100 寄存器地址。
+- **通过返回 IMEM `0x100` 的 `_start` 重新进入 booter**（连续提供两个签名）已经测试过，但邮箱仍以 `0x31` 失败。Falcon 进入 HS 模式时会擦除 `0x00` 处的轻度安全引导程序，因此没有可供返回的代码。
+- **跳过 `secure_teardown` 以窃取活动 SCP 机密**在提出当天就被两条逐字节的对抗性静态追踪否定：`0x107`-`0x147` 的序言会立即将每个机密自 XOR 为零；真正使用密钥的是 `0x1e20`-`0x1e70` 的 AES 验证；`0x1e74`-`0x206e` 的清理扫描连续执行三次自清零；最后一条密码操作是 `0x206e` 的 `cxor $c0, $c0`。从 `0x2070` 到 `0x7eef` **没有**密码操作，劫持点（`0x37b3` 的 `lcall 0x4d4`）正好处于这段密码静默区间。跳过 teardown 并不能保留任何东西，因为寄存器组早在约 0x1500 字节之前就已清空。
+- **通过逆向 booter 获得 HS 签名权限**已被提出者自己放弃。即使从晶片提取 AES 密钥，RSA 私钥仍然缺失，因为晶片只保存公钥。理论上的剩余路线是启用调试模式并使用调试 RSA 私钥，但量产卡上的物理熔丝禁用了调试模式，只有工程样品启用了它。
+- **在主机侧将 PCI 设备 ID 欺骗为 A100 ID（`0x20b0`）**不可行：VBIOS/devinit 在驱动或 GSP 介入前就使用卡级设备 ID，且所有 GA100 卡甚至 Turing 卡使用的都是同一个 booter，因此下游没有按主机 ID 分支的逻辑。
 
 ---
 
