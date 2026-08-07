@@ -2,3 +2,4 @@ site/
 .cache/
 __pycache__/
 .codebuddy/
+.kilo/
