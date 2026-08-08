@@ -4,9 +4,11 @@
 
 共 55 个页面，约 27.8 万词；内容截至 **2026-07-31**。
 
+> 本文档主要使用 GPT-5.6-Luna 进行翻译
+
 ## 两种阅读方式
 
-- **[维基标签页](https://github.com/GypsumLabs/cmp170hx-zh/wiki)** 适合带侧边栏浏览。
+- **[维基页](https://github.com/GypsumLabs/cmp170hx-zh/wiki)** 适合直接在 GitHub 中浏览。  
   其中的页面由 `docs/` 生成，除链接样式外与这里完全相同。
 - **本仓库中的 `docs/`** 是唯一事实来源。它可以接受审查和拉取请求，
   也可以通过 MkDocs 构建带搜索功能的完整主题站点。
